@@ -405,13 +405,25 @@ type Album struct {
 	OwnerID          pgtype.UUID        `json:"owner_id"`
 	Title            string             `json:"title"`
 	Type             AlbumType          `json:"type"`
-	CoverAssetID     pgtype.UUID        `json:"cover_asset_id"`
 	RootPath         pgtype.Text        `json:"root_path"`
 	LastScannedAt    pgtype.Timestamptz `json:"last_scanned_at"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 	SourceWritable   bool               `json:"source_writable"`
 	AllowAppDeletion bool               `json:"allow_app_deletion"`
+}
+
+type AlbumCoverPick struct {
+	AlbumID  pgtype.UUID `json:"album_id"`
+	Position int16       `json:"position"`
+	AssetID  pgtype.UUID `json:"asset_id"`
+}
+
+type AlbumCoverWeekPick struct {
+	AlbumID  pgtype.UUID `json:"album_id"`
+	IsoWeek  string      `json:"iso_week"`
+	Position int16       `json:"position"`
+	AssetID  pgtype.UUID `json:"asset_id"`
 }
 
 type AlbumItem struct {

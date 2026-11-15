@@ -63,6 +63,14 @@ type assetEnv struct {
 // upload limit and returns it with the administrator signed in.
 func newAssetEnv(t *testing.T, uploadLimit int64) *assetEnv {
 	t.Helper()
+	return newAssetEnvWithClock(t, uploadLimit, nil)
+}
+
+// newAssetEnvWithClock is newAssetEnv with the instance clock injected:
+// the cover rotation derives its ISO week from it, so a test walks a
+// week boundary without waiting for one. A nil clock keeps time.Now.
+func newAssetEnvWithClock(t *testing.T, uploadLimit int64, now func() time.Time) *assetEnv {
+	t.Helper()
 	pool := dbtest.New(t)
 	if err := db.Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("apply migrations: %v", err)
@@ -78,6 +86,7 @@ func newAssetEnv(t *testing.T, uploadLimit int64) *assetEnv {
 		Events:           bus,
 		DataDir:          dataDir,
 		UploadLimitBytes: uploadLimit,
+		Now:              now,
 	})
 	env := &assetEnv{
 		router:  router,

@@ -183,7 +183,7 @@ func requireAlbumWriteForbidden(t *testing.T, rec *httptest.ResponseRecorder) {
 
 // requireAlbumCoverNotMember asserts the 400 VALIDATION_FAILED whose
 // details carry the album_cover_not_member message key.
-func requireAlbumCoverNotMember(t *testing.T, rec *httptest.ResponseRecorder) {
+func requireAlbumCoverNotMember(t *testing.T, rec *httptest.ResponseRecorder, wantCount int) {
 	t.Helper()
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d (body %q)",
@@ -198,6 +198,9 @@ func requireAlbumCoverNotMember(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 	if key, _ := (*apiErr.Details)["key"]; key != "album_cover_not_member" {
 		t.Errorf("details.key = %v, want album_cover_not_member", key)
+	}
+	if count, _ := (*apiErr.Details)["count"].(float64); int(count) != wantCount {
+		t.Errorf("details.count = %v, want %d (the refused frames)", (*apiErr.Details)["count"], wantCount)
 	}
 }
 
@@ -516,20 +519,23 @@ func TestCreateAlbumDialogSwitches(t *testing.T) {
 }
 
 // TestUpdateAlbum pins the property patch: every field lands, the
-// cover validation refuses every id that is not a live member of the
-// album itself, and an unknown album answers the reads'
-// single-shape 404.
+// cover write accepts only a full set of distinct live members of the
+// album itself (0 clears the pin), and an unknown album answers the
+// reads' single-shape 404.
 func TestUpdateAlbum(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 
+	// A directory album: four frames, so a full pin is four ids.
 	album := fixtureWriteAlbumID("71")
-	env.insertWallAlbum(t, album, adminID, "memory", "Original title", wallAlbumOpts{})
+	env.insertWallAlbum(t, album, adminID, "directory", "Original title", wallAlbumOpts{})
 
-	// Two live members, three non-live members, one live non-member
+	// Four live members, three non-live members, one live non-member
 	// of the caller's own, and one live asset of another account.
 	member := fixtureWallAssetID("71")
 	older := fixtureWallAssetID("72")
+	third := fixtureWallAssetID("78")
+	fourth := fixtureWallAssetID("79")
 	hiddenMember := fixtureWallAssetID("73")
 	trashedMember := fixtureWallAssetID("74")
 	componentMember := fixtureWallAssetID("75")
@@ -537,6 +543,8 @@ func TestUpdateAlbum(t *testing.T) {
 	base := time.Date(2026, 8, 1, 12, 0, 0, 0, time.UTC)
 	env.insertTimelineAsset(t, member, adminID, base, timelineAssetOpts{})
 	env.insertTimelineAsset(t, older, adminID, base.Add(-time.Hour), timelineAssetOpts{})
+	env.insertTimelineAsset(t, third, adminID, base.Add(-2*time.Hour), timelineAssetOpts{})
+	env.insertTimelineAsset(t, fourth, adminID, base.Add(-3*time.Hour), timelineAssetOpts{})
 	env.insertTimelineAsset(t, hiddenMember, adminID, base.Add(time.Hour), timelineAssetOpts{isHidden: true})
 	env.insertTimelineAsset(t, trashedMember, adminID, base.Add(time.Hour), timelineAssetOpts{deleted: true})
 	env.insertTimelineAsset(t, componentMember, adminID, base.Add(time.Hour), timelineAssetOpts{isComponent: true})
@@ -544,8 +552,20 @@ func TestUpdateAlbum(t *testing.T) {
 	graceID, _ := env.createSecondUser(t, "patch-cover-grace@example.com")
 	foreign := fixtureWallAssetID("77")
 	env.insertTimelineAsset(t, foreign, graceID, base.Add(time.Hour), timelineAssetOpts{})
-	for _, asset := range []uuid.UUID{member, older, hiddenMember, trashedMember, componentMember} {
+	for _, asset := range []uuid.UUID{member, older, third, fourth, hiddenMember, trashedMember, componentMember} {
 		env.addTimelineItem(t, album, asset, adminID)
+	}
+	// pinArray renders the set in the given pick order; pinBody is
+	// the one-field patch carrying it.
+	pinArray := func(ids ...uuid.UUID) string {
+		quoted := make([]string, 0, len(ids))
+		for _, id := range ids {
+			quoted = append(quoted, `"`+id.String()+`"`)
+		}
+		return `[` + strings.Join(quoted, ",") + `]`
+	}
+	pinBody := func(ids ...uuid.UUID) string {
+		return `{"coverAssetIds":` + pinArray(ids...) + `}`
 	}
 
 	t.Run("PatchesEachField", func(t *testing.T) {
@@ -554,17 +574,42 @@ func TestUpdateAlbum(t *testing.T) {
 			t.Errorf("title = %q, want the patched title", summary.Title)
 		}
 
-		cover := `{"coverAssetId":"` + older.String() + `"}`
-		summary = env.patchAlbum(t, env.cookie, album, cover)
-		// The pinned cover rides the summary as the single-element
-		// collage, and the detail reports the raw pin.
-		if len(summary.CoverAssetIds) != 1 || uuid.UUID(summary.CoverAssetIds[0]) != older {
-			t.Errorf("summary coverAssetIds = %v, want [%s] (the pin)", summary.CoverAssetIds, older)
+		pin := []uuid.UUID{older, member, fourth, third}
+		summary = env.patchAlbum(t, env.cookie, album, pinBody(pin...))
+		// The pinned set rides the summary in pick order, and the
+		// detail reports the same set as written.
+		if len(summary.CoverAssetIds) != len(pin) {
+			t.Fatalf("summary coverAssetIds = %v, want the four picks %v", summary.CoverAssetIds, pin)
+		}
+		for i, id := range pin {
+			if uuid.UUID(summary.CoverAssetIds[i]) != id {
+				t.Errorf("summary coverAssetIds[%d] = %s, want %s (pick order)",
+					i, summary.CoverAssetIds[i], id)
+			}
 		}
 		detail := env.getAlbumDetail(t, env.cookie, album, "")
-		if detail.CoverAssetId == nil || uuid.UUID(*detail.CoverAssetId) != older {
-			t.Errorf("detail coverAssetId = %v, want the pinned %s", detail.CoverAssetId, older)
+		if len(detail.CoverAssetIds) != len(pin) {
+			t.Fatalf("detail coverAssetIds = %v, want the four picks %v", detail.CoverAssetIds, pin)
 		}
+		for i, id := range pin {
+			if uuid.UUID(detail.CoverAssetIds[i]) != id {
+				t.Errorf("detail coverAssetIds[%d] = %s, want %s (pick order)", i, detail.CoverAssetIds[i], id)
+			}
+		}
+
+		// The empty set clears the pin and returns the album to the
+		// automatic group (the card answers a sampled group; the detail
+		// answers the empty pin).
+		summary = env.patchAlbum(t, env.cookie, album, `{"coverAssetIds":[]}`)
+		if len(summary.CoverAssetIds) != 4 {
+			t.Errorf("summary coverAssetIds after the clear = %v, want the 4 automatic frames",
+				summary.CoverAssetIds)
+		}
+		detail = env.getAlbumDetail(t, env.cookie, album, "")
+		if len(detail.CoverAssetIds) != 0 {
+			t.Errorf("detail coverAssetIds after the clear = %v, want empty (automatic)", detail.CoverAssetIds)
+		}
+		env.patchAlbum(t, env.cookie, album, pinBody(pin...)) // leave the pin of this scene
 
 		// The row itself carries the last patch's values.
 		if got := env.queryText(t, "SELECT title FROM albums WHERE id = $1", pgUUID(album)); got != "Renamed" {
@@ -573,15 +618,34 @@ func TestUpdateAlbum(t *testing.T) {
 	})
 
 	t.Run("PatchesMultipleFieldsAtOnce", func(t *testing.T) {
-		body := `{"title":"Combined","coverAssetId":"` + member.String() + `"}`
+		body := `{"title":"Combined","coverAssetIds":` + pinArray(fourth, third, member, older) + `}`
 		summary := env.patchAlbum(t, env.cookie, album, body)
 		if summary.Title != "Combined" {
 			t.Errorf("title = %q, want Combined", summary.Title)
 		}
-		if len(summary.CoverAssetIds) != 1 || uuid.UUID(summary.CoverAssetIds[0]) != member {
-			t.Errorf("coverAssetIds = %v, want the pinned member", summary.CoverAssetIds)
+		if len(summary.CoverAssetIds) != 4 || uuid.UUID(summary.CoverAssetIds[0]) != fourth {
+			t.Errorf("coverAssetIds = %v, want the new pick order starting at %s", summary.CoverAssetIds, fourth)
 		}
-		env.patchAlbum(t, env.cookie, album, `{"coverAssetId":"`+older.String()+`"}`) // leave a different pin
+		env.patchAlbum(t, env.cookie, album, pinBody(member, older, third, fourth)) // leave the scene's pin
+	})
+
+	t.Run("RejectsPartialSet", func(t *testing.T) {
+		// A cover is 0 or the card's frame count: a half-picked set is
+		// the picker's un-saveable state, never a stored one.
+		for _, ids := range [][]uuid.UUID{
+			{member},
+			{member, older},
+			{member, older, third},
+			{member, older, third, fourth, fixtureWallAssetID("80")},
+		} {
+			rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(ids...))
+			requireValidationFields(t, rec, "coverAssetIds")
+		}
+	})
+
+	t.Run("RejectsRepeatedFrame", func(t *testing.T) {
+		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, older, member, third))
+		requireValidationFields(t, rec, "coverAssetIds")
 	})
 
 	t.Run("RequiresAtLeastOneField", func(t *testing.T) {
@@ -605,25 +669,25 @@ func TestUpdateAlbum(t *testing.T) {
 	})
 
 	t.Run("RejectsCoverOutsideMembership", func(t *testing.T) {
-		body := `{"coverAssetId":"` + nonMember.String() + `"}`
-		rec := env.patchAlbumRaw(t, env.cookie, album, body)
-		requireAlbumCoverNotMember(t, rec)
+		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(nonMember, member, older, third))
+		requireAlbumCoverNotMember(t, rec, 1)
 	})
 
 	t.Run("RejectsCoverOfNonLiveMember", func(t *testing.T) {
 		// A hidden, trashed or component member row is a member no
 		// more: the cover must be a LIVE member.
 		for _, asset := range []uuid.UUID{hiddenMember, trashedMember, componentMember} {
-			body := `{"coverAssetId":"` + asset.String() + `"}`
-			rec := env.patchAlbumRaw(t, env.cookie, album, body)
-			requireAlbumCoverNotMember(t, rec)
+			rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, older, third, asset))
+			requireAlbumCoverNotMember(t, rec, 1)
 		}
+		// Two dead frames name two.
+		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, hiddenMember, trashedMember, older))
+		requireAlbumCoverNotMember(t, rec, 2)
 	})
 
 	t.Run("RejectsForeignCover", func(t *testing.T) {
-		body := `{"coverAssetId":"` + foreign.String() + `"}`
-		rec := env.patchAlbumRaw(t, env.cookie, album, body)
-		requireAlbumCoverNotMember(t, rec)
+		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(foreign, member, older, third))
+		requireAlbumCoverNotMember(t, rec, 1)
 	})
 
 	t.Run("UnknownAlbumAnswersReadShape404", func(t *testing.T) {
@@ -1124,7 +1188,7 @@ func TestAlbumWriteEvents(t *testing.T) {
 				t.Errorf("%s payload = %v, want exactly the albumId/userId pair", want.name, payload)
 			}
 			for _, banned := range []string{
-				"title", "type", "coverAssetId",
+				"title", "type", "coverAssetIds",
 				"itemCount", "assetIds", "added", "removed", "skipped",
 			} {
 				if payload[banned] != "" {

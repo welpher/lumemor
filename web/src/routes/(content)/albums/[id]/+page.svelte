@@ -107,7 +107,7 @@
 		updateAlbumAudience,
 		type AlbumDetail
 	} from '$lib/api/albums';
-	import { createTimelineClient, type BatchAction } from '$lib/api/timeline';
+	import { createTimelineClient, type BatchAction, type TimelineItem } from '$lib/api/timeline';
 	import { subscribeAlbumEvents, subscribeAssetEvents, subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
@@ -120,8 +120,11 @@
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AlbumPropertiesDialog, { type AlbumAutonomyDraft } from '$lib/albums/AlbumPropertiesDialog.svelte';
+	import CoverPickerDialog from '$lib/albums/CoverPickerDialog.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
+	import Image from '@lucide/svelte/icons/image';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import CalendarOff from '@lucide/svelte/icons/calendar-off';
@@ -152,6 +155,21 @@
 	// The properties dialog (the edit: title + source + audience).
 	let propertiesOpen = $state(false);
 	let propertiesErrorKey = $state('');
+
+	// The cover picker (the owner's four frames): the dialog seeds the
+	// stored pin, and its pool walks the album's own members -- the
+	// detail's items page is one page of many, so the picker asks the
+	// album narrow for the collection itself (bounded: five pages of
+	// 200 is the picker's honest ceiling, and a short pool only means
+	// the "no longer in the album" badge stays off).
+	let coverOpen = $state(false);
+	let coverErrorKey = $state('');
+	let coverInvalidCount = $state(0);
+	let coverPoolLoading = $state(false);
+	const coverPool = untrack(() =>
+		createTimelineClient({ path: '/api/v1/assets/timeline', view: 'timeline', albumId, limit: 200 })
+	);
+	const coverPoolItems = $derived($coverPool.items as readonly TimelineItem[]);
 
 	// The remove confirm (the directory album's un-ingest): the
 	// semantics say themselves -- the album and its photo data go,
@@ -303,6 +321,50 @@
 			unsubscribe();
 		};
 	});
+
+	// The cover picker's open: reseed the failure line and walk the
+	// collection to completion (the dialog's grid IS the pool the
+	// "no longer in the album" mark checks against).
+	async function openCoverPicker(): Promise<void> {
+		coverErrorKey = '';
+		coverInvalidCount = 0;
+		coverOpen = true;
+		coverPoolLoading = true;
+		if ($coverPool.status === 'idle' || $coverPool.errorKey !== '') {
+			coverPool.reset();
+		}
+		let pages = 0;
+		while ($coverPool.hasMore && $coverPool.errorKey === '' && pages < 5) {
+			await coverPool.loadMore();
+			pages += 1;
+		}
+		coverPoolLoading = false;
+	}
+
+	// The cover write: a full set of four frames, or the empty set that
+	// restores the weekly rotation. The 200 proves the set landed, so
+	// the detail adopts the written order; a refusal names the frames
+	// that left the album.
+	async function submitCover(assetIds: readonly string[]): Promise<void> {
+		if (writeBusy || detail === null) {
+			return;
+		}
+		writeBusy = true;
+		coverErrorKey = '';
+		coverInvalidCount = 0;
+		const outcome = await patchAlbum(albumId, { coverAssetIds: assetIds });
+		writeBusy = false;
+		if (!outcome.ok) {
+			coverErrorKey = outcome.errorKey;
+			coverInvalidCount = outcome.invalidCount ?? 0;
+			return;
+		}
+		if (detail !== null) {
+			detail = { ...detail, coverAssetIds: [...assetIds] };
+		}
+		coverOpen = false;
+		toast($_('albums_cover_saved'));
+	}
 
 	/** Adopt a write response's wall card into the detail's fields. */
 	function applyWriteFields(next: { title: string; itemCount: number }): void {
@@ -668,6 +730,18 @@
 				>
 					<PenLine size={20} aria-hidden="true" />
 				</IconButton>
+				<!-- The cover: the owner picks the album card's four
+				     frames (or clears them back to the weekly rotation).
+				     The member view holds no such arm, and the sync album's
+				     system-managed face renders none either. -->
+				<IconButton
+					disabled={writeBusy || coverPoolLoading}
+					aria-label={$_('albums_action_cover')}
+					title={$_('albums_action_cover')}
+					onclick={() => void openCoverPicker()}
+				>
+					<Image size={20} aria-hidden="true" />
+				</IconButton>
 				<!-- The rescan trigger: the directory album's own
 				     refresh -- the three-arm diff run over its source.
 				     One run at a time (the endpoint is idempotent, the
@@ -890,6 +964,20 @@
 		errorKey={propertiesErrorKey}
 		onsubmit={(draft) => void submitProperties(draft)}
 	/>
+
+	{#if owner && detail.type === 'directory'}
+		<CoverPickerDialog
+			bind:open={coverOpen}
+			items={coverPoolItems}
+			itemCount={detail.itemCount}
+			maxItems={4}
+			currentCoverIds={detail.coverAssetIds}
+			busy={writeBusy}
+			errorKey={coverErrorKey}
+			invalidCount={coverInvalidCount}
+			onsubmit={(assetIds) => void submitCover(assetIds)}
+		/>
+	{/if}
 {/if}
 
 <!-- The remove confirm (the directory album's un-ingest): the

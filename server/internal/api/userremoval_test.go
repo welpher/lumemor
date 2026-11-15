@@ -508,7 +508,8 @@ func TestDeleteUserTransferFoldsDuplicate(t *testing.T) {
 	env.exec(t, "INSERT INTO tags (id, owner_id, name) VALUES ($1, $2, 'trips')", pgUUID(tagID), pgUUID(graceID))
 	env.exec(t, "INSERT INTO asset_tags (asset_id, tag_id) VALUES ($1, $2)", pgUUID(dupID), pgUUID(tagID))
 	env.exec(t, "INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2)", pgUUID(adminID), pgUUID(dupID))
-	env.exec(t, "UPDATE albums SET cover_asset_id = $1 WHERE id = $2", pgUUID(dupID), pgUUID(dupAlbumID))
+	env.exec(t, "INSERT INTO album_cover_picks (album_id, position, asset_id) VALUES ($1, 0, $2)",
+		pgUUID(dupAlbumID), pgUUID(dupID))
 
 	rec := env.deleteUser(t, env.cookie, graceID, transferBody(t, adminID))
 	requireStatus(t, rec, http.StatusNoContent, "")
@@ -533,8 +534,8 @@ func TestDeleteUserTransferFoldsDuplicate(t *testing.T) {
 		pgUUID(adminID), pgUUID(keepID)); got != 1 {
 		t.Errorf("the duplicate's favorite did not follow the surviving row")
 	}
-	if cover := env.queryText(t, "SELECT cover_asset_id::text FROM albums WHERE id = $1", pgUUID(dupAlbumID)); cover != keepID.String() {
-		t.Errorf("album cover = %s, want the surviving copy %s", cover, keepID)
+	if cover := env.queryText(t, "SELECT asset_id::text FROM album_cover_picks WHERE album_id = $1 AND position = 0", pgUUID(dupAlbumID)); cover != keepID.String() {
+		t.Errorf("album cover pick = %s, want the surviving copy %s", cover, keepID)
 	}
 	// The shared file survives: the survivor names it, which is the
 	// shared-blob rule the file half reads.
@@ -607,8 +608,8 @@ func TestDeleteUserTransferFoldsEveryStatePair(t *testing.T) {
 				pgUUID(departingID), pgUUID(tagID))
 			env.exec(t, "INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2)",
 				pgUUID(adminID), pgUUID(departingID))
-			env.exec(t, "UPDATE albums SET cover_asset_id = $1 WHERE id = $2",
-				pgUUID(departingID), pgUUID(albumID))
+			env.exec(t, "INSERT INTO album_cover_picks (album_id, position, asset_id) VALUES ($1, 0, $2)",
+				pgUUID(albumID), pgUUID(departingID))
 
 			rec := env.deleteUser(t, env.cookie, graceID, transferBody(t, adminID))
 			requireStatus(t, rec, http.StatusNoContent, "")
@@ -654,8 +655,8 @@ func TestDeleteUserTransferFoldsEveryStatePair(t *testing.T) {
 				pgUUID(adminID), pgUUID(survivor)); got != 1 {
 				t.Errorf("the losing copy's favorite did not follow the survivor")
 			}
-			if cover := env.queryText(t, "SELECT cover_asset_id::text FROM albums WHERE id = $1", pgUUID(albumID)); cover != survivor.String() {
-				t.Errorf("album cover = %s, want the survivor %s", cover, survivor)
+			if cover := env.queryText(t, "SELECT asset_id::text FROM album_cover_picks WHERE album_id = $1 AND position = 0", pgUUID(albumID)); cover != survivor.String() {
+				t.Errorf("album cover pick = %s, want the survivor %s", cover, survivor)
 			}
 
 			// A folded Live Photo takes its component along: the pair is

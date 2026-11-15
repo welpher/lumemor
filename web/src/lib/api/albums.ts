@@ -127,8 +127,14 @@ export type AlbumCreateResult =
 	| { ok: true; album: AlbumSummary; skipped: AlbumAudienceSkip[]; sourceWritable: boolean }
 	| { ok: false; errorKey: string };
 
-/** The property patch's outcome (the response is the card after the edit). */
-export type AlbumPatchResult = { ok: true; album: AlbumSummary } | { ok: false; errorKey: string };
+/**
+ * The property patch's outcome (the response is the card after the
+ * edit). A refused cover names how many of the picked frames are no
+ * longer in the album (`invalidCount`), so the picker can point at
+ * them instead of asking for a blind re-pick.
+ */
+export type AlbumPatchResult =
+	{ ok: true; album: AlbumSummary } | { ok: false; errorKey: string; invalidCount?: number };
 
 /** A body-less mutation's outcome (the delete). */
 export type AlbumMutationResult = { ok: true } | { ok: false; errorKey: string };
@@ -172,38 +178,49 @@ const MESSAGE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Map one failed response onto the error-code i18n key, carrying the
- * write faces' message keys when the envelope's `details` hold one
+ * One failed response's translation: the error-code i18n key, carrying
+ * the write faces' message keys when the envelope's `details` hold one
  * (the VALIDATION_FAILED answers whose honest rendering is a message,
- * not the generic validation text).
+ * not the generic validation text), plus the refused-frame count the
+ * cover write states.
  */
-async function errorKeyFrom(response: Response): Promise<string> {
+type ErrorDetail = { key: string; count?: number };
+
+async function errorDetailFrom(response: Response): Promise<ErrorDetail> {
 	if (response.status === 401) {
 		// A dead session shows the session message, never
 		// login-credential text (the interceptor already flipped the
 		// store; the guard is redirecting).
-		return 'session_expired';
+		return { key: 'session_expired' };
 	}
 	let body: unknown;
 	try {
 		body = await response.json();
 	} catch {
-		return 'internal';
+		return { key: 'internal' };
 	}
 	if (body === null || typeof body !== 'object') {
-		return 'internal';
+		return { key: 'internal' };
 	}
 	const { code, details } = body as { code?: unknown; details?: unknown };
 	if (typeof code !== 'string' || code === '') {
-		return 'internal';
+		return { key: 'internal' };
 	}
 	if (code === 'VALIDATION_FAILED' && details !== null && typeof details === 'object') {
-		const key = (details as { key?: unknown }).key;
+		const { key, count } = details as { key?: unknown; count?: unknown };
 		if (typeof key === 'string' && MESSAGE_KEYS.has(key)) {
-			return key;
+			return typeof count === 'number' ? { key, count } : { key };
 		}
 	}
-	return code.toLowerCase();
+	return { key: code.toLowerCase() };
+}
+
+/**
+ * Map one failed response onto the error-code i18n key (the detail
+ * read's plain form).
+ */
+async function errorKeyFrom(response: Response): Promise<string> {
+	return (await errorDetailFrom(response)).key;
 }
 
 /** Read one response's JSON body; null when it does not parse. */
@@ -235,7 +252,7 @@ function summaryFrom(body: unknown): AlbumSummary | null {
 	if (candidate.isShared !== true && candidate.isShared !== false) {
 		return null;
 	}
-	if (!Array.isArray(candidate.coverAssetIds)) {
+	if (!Array.isArray(candidate.coverAssetIds) || candidate.coverAssetIds.length > 6) {
 		return null;
 	}
 	if (typeof candidate.itemCount !== 'number' || !Number.isInteger(candidate.itemCount) || candidate.itemCount < 0) {
@@ -394,7 +411,7 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	if (candidate.type !== 'memory' && candidate.type !== 'directory' && candidate.type !== 'sync') {
 		return null;
 	}
-	if (candidate.coverAssetId !== null && typeof candidate.coverAssetId !== 'string') {
+	if (!Array.isArray(candidate.coverAssetIds) || candidate.coverAssetIds.length > 6) {
 		return null;
 	}
 	// The source directory rides the directory albums only; a string
@@ -788,14 +805,17 @@ export async function completeAlbumPath(
 
 /**
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
- * properties (`title`, `coverAssetId`, `allowAppDeletion`, any
- * subset). The response is the album's wall card after the edit.
+ * properties (`title`, `coverAssetIds`, `allowAppDeletion`, any
+ * subset). The cover is a full set -- 0 restores the automatic
+ * weekly group, N pins the owner's order -- and a refused set names
+ * how many of its frames left the album. The response is the album's
+ * wall card after the edit.
  * The deletability switch is the DIRECTORY album's own (a memory
  * album answers the message key `album_deletable_not_directory`).
  */
 export async function patchAlbum(
 	albumId: string,
-	patch: { title?: string; coverAssetId?: string; allowAppDeletion?: boolean },
+	patch: { title?: string; coverAssetIds?: readonly string[]; allowAppDeletion?: boolean },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumPatchResult> {
 	let response: Response;
@@ -813,7 +833,8 @@ export async function patchAlbum(
 		return { ok: false, errorKey: 'internal' };
 	}
 	if (!response.ok) {
-		return { ok: false, errorKey: await errorKeyFrom(response) };
+		const detail = await errorDetailFrom(response);
+		return { ok: false, errorKey: detail.key, invalidCount: detail.count };
 	}
 	const album = summaryFrom(await bodyOf(response));
 	if (album === null || album.id !== albumId) {

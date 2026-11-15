@@ -148,13 +148,41 @@ FROM user_favorites uf
 WHERE uf.asset_id = sqlc.arg('from_asset')
 ON CONFLICT (user_id, asset_id) DO NOTHING;
 
--- name: MoveAlbumCovers :exec
--- A folded duplicate that pins an album's cover hands the pin to the
--- surviving row (covers carry no foreign key: a dangling pin would
--- outlive the row it names).
-UPDATE albums
-SET cover_asset_id = sqlc.arg('to_asset'), updated_at = now()
-WHERE cover_asset_id = sqlc.arg('from_asset');
+-- A folded duplicate that sits in a cover set hands its cell to the
+-- surviving row: the pin's store and the week store both name asset
+-- ids directly. The colliding-cell statements run FIRST and drop the
+-- duplicate's cell in every set that already holds the survivor (the
+-- two copies of one photo cannot hold two positions of the same
+-- set), so the moves that follow never trip the set's uniqueness.
+
+-- name: DropCollidingAlbumCoverPicks :exec
+DELETE FROM album_cover_week_picks drops
+WHERE drops.asset_id = sqlc.arg('from_asset')
+  AND EXISTS (
+      SELECT 1 FROM album_cover_week_picks kept
+      WHERE kept.album_id = drops.album_id
+        AND kept.iso_week = drops.iso_week
+        AND kept.asset_id = sqlc.arg('to_asset')
+  );
+
+-- name: DropCollidingAlbumCoverPinnedPicks :exec
+DELETE FROM album_cover_picks drops
+WHERE drops.asset_id = sqlc.arg('from_asset')
+  AND EXISTS (
+      SELECT 1 FROM album_cover_picks kept
+      WHERE kept.album_id = drops.album_id
+        AND kept.asset_id = sqlc.arg('to_asset')
+  );
+
+-- name: MoveAlbumCoverPicks :exec
+UPDATE album_cover_picks
+SET asset_id = sqlc.arg('to_asset')
+WHERE asset_id = sqlc.arg('from_asset');
+
+-- name: MoveAlbumCoverWeekPicks :exec
+UPDATE album_cover_week_picks
+SET asset_id = sqlc.arg('to_asset')
+WHERE asset_id = sqlc.arg('from_asset');
 
 -- name: ExtendAssetTrashMark :exec
 -- The both-trashed fold's mark: the surviving row keeps the LATER of

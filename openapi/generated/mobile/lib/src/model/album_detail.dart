@@ -17,7 +17,7 @@ part 'album_detail.g.dart';
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
 /// * [type] - The album's type. `memory` is a reference set the caller owns or that is shared to them; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
-/// * [coverAssetId] - The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
+/// * [coverAssetIds] - The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
 /// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Memory and sync albums omit it: a memory has no source. 
 /// * [sourceWritable] - The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
 /// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
@@ -43,9 +43,9 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   AlbumDetailTypeEnum get type;
   // enum typeEnum {  memory,  directory,  sync,  };
 
-  /// The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
-  @BuiltValueField(wireName: r'coverAssetId')
-  String? get coverAssetId;
+  /// The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
+  @BuiltValueField(wireName: r'coverAssetIds')
+  BuiltList<String> get coverAssetIds;
 
   /// The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Memory and sync albums omit it: a memory has no source. 
   @BuiltValueField(wireName: r'rootPath')
@@ -126,10 +126,10 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
       object.type,
       specifiedType: const FullType(AlbumDetailTypeEnum),
     );
-    yield r'coverAssetId';
-    yield object.coverAssetId == null ? null : serializers.serialize(
-      object.coverAssetId,
-      specifiedType: const FullType.nullable(String),
+    yield r'coverAssetIds';
+    yield serializers.serialize(
+      object.coverAssetIds,
+      specifiedType: const FullType(BuiltList, [FullType(String)]),
     );
     if (object.rootPath != null) {
       yield r'rootPath';
@@ -239,13 +239,12 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           ) as AlbumDetailTypeEnum;
           result.type = valueDes;
           break;
-        case r'coverAssetId':
+        case r'coverAssetIds':
           final valueDes = serializers.deserialize(
             value,
-            specifiedType: const FullType.nullable(String),
-          ) as String?;
-          if (valueDes == null) continue;
-          result.coverAssetId = valueDes;
+            specifiedType: const FullType(BuiltList, [FullType(String)]),
+          ) as BuiltList<String>;
+          result.coverAssetIds.replace(valueDes);
           break;
         case r'rootPath':
           final valueDes = serializers.deserialize(

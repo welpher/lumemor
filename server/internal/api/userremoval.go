@@ -581,11 +581,35 @@ func (s *server) foldDuplicateAsset(ctx context.Context, queries *dbgen.Queries,
 	}); err != nil {
 		return nil, fmt.Errorf("move the folded photo's favorites: %w", err)
 	}
-	if err := queries.MoveAlbumCovers(ctx, dbgen.MoveAlbumCoversParams{
+	// The cover cells move the same way (the pinned sets and the frozen
+	// weekly groups both name asset ids directly). A set that already
+	// holds the survivor drops the loser's colliding cell first -- one
+	// photo cannot fill two frames of one cover -- and the moves that
+	// follow hand the remaining cells over without tripping the sets'
+	// uniqueness.
+	if err := queries.DropCollidingAlbumCoverPicks(ctx, dbgen.DropCollidingAlbumCoverPicksParams{
 		ToAsset:   survivor,
 		FromAsset: loser,
 	}); err != nil {
-		return nil, fmt.Errorf("move the folded photo's album cover: %w", err)
+		return nil, fmt.Errorf("drop the folded photo's colliding cover week cell: %w", err)
+	}
+	if err := queries.DropCollidingAlbumCoverPinnedPicks(ctx, dbgen.DropCollidingAlbumCoverPinnedPicksParams{
+		ToAsset:   survivor,
+		FromAsset: loser,
+	}); err != nil {
+		return nil, fmt.Errorf("drop the folded photo's colliding pinned cover cell: %w", err)
+	}
+	if err := queries.MoveAlbumCoverPicks(ctx, dbgen.MoveAlbumCoverPicksParams{
+		ToAsset:   survivor,
+		FromAsset: loser,
+	}); err != nil {
+		return nil, fmt.Errorf("move the folded photo's pinned cover cell: %w", err)
+	}
+	if err := queries.MoveAlbumCoverWeekPicks(ctx, dbgen.MoveAlbumCoverWeekPicksParams{
+		ToAsset:   survivor,
+		FromAsset: loser,
+	}); err != nil {
+		return nil, fmt.Errorf("move the folded photo's cover week cell: %w", err)
 	}
 
 	// The both-trashed tie keeps the later countdown: the survivor's
