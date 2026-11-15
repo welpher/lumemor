@@ -361,6 +361,37 @@ test('`/` defers to the open layering: the drawer, the account menu and any open
 	flushSync();
 });
 
+test("`/` lands on the search page's own field while the shell bar is hidden", () => {
+	// The search route: the page's context bar replaces the shell
+	// topbar, and the stroke's promise ("focus the search box")
+	// follows the field there.
+	pageState.route.id = '/(content)/search';
+	const app = mount(Layout, {
+		target: document.body,
+		props: {
+			data: {},
+			params: {},
+			children: createRawSnippet(() => ({
+				render: () => '<input class="search-query" type="search" aria-label="Search" />'
+			}))
+		}
+	});
+	flushSync();
+
+	expect(document.body.querySelector('.shell-topbar')).toBeNull();
+	const box = document.body.querySelector<HTMLInputElement>('input.search-query');
+	if (box === null) {
+		throw new Error('missing page search field');
+	}
+	const onWindow = pressShell('/');
+	expect(onWindow.defaultPrevented).toBe(true);
+	expect(document.activeElement).toBe(box);
+
+	unmount(app);
+	flushSync();
+	pageState.route.id = '/(content)/timeline';
+});
+
 test('the `?` sheet mounts with the shell and answers the toggle', () => {
 	const app = mountLayout();
 	flushSync();

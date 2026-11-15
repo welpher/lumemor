@@ -116,23 +116,29 @@ func TestBudgetHoldHonorsWindow(t *testing.T) {
 	if err := db.Migrate(context.Background(), pool); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	// The window is placed one to two hours ahead of the REAL clock:
+	// whatever the wall reads, now sits outside it (a fixed window
+	// would flip the test's meaning for four hours a day).
+	ahead := func(hours int) string {
+		return time.Now().Add(time.Duration(hours) * time.Hour).Format("15:04")
+	}
 	if err := db.SaveRunBudget(context.Background(), dbgen.New(pool), db.RunBudget{
 		ConcurrencyPreset: "standard",
 		NightlyEnabled:    true,
-		NightlyStart:      "02:00",
-		NightlyEnd:        "06:00",
+		NightlyStart:      ahead(1),
+		NightlyEnd:        ahead(2),
 		PausedJobs:        db.PausedJobs{},
 	}); err != nil {
 		t.Fatalf("save the run budget: %v", err)
 	}
 	budget := NewBudget(pool, discardLogger())
 
-	// A heavy kind at noon: held to the window's opening.
+	// A heavy kind outside the window: held to the window's opening.
 	hold := budget.Hold(context.Background(), "transcode")
 	if hold <= 0 || hold > windowHoldCap {
 		t.Errorf("Hold(heavy outside window) = %v, want a positive hold within the chunk cap", hold)
 	}
-	// A light kind at noon: never window-gated.
+	// A light kind outside the window: never window-gated.
 	if hold := budget.Hold(context.Background(), "metadata"); hold != 0 {
 		t.Errorf("Hold(light outside window) = %v, want 0", hold)
 	}
