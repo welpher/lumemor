@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,11 @@ type MetadataWorker struct {
 	// directly constructed workers of the unit tests).
 	budget     *Budget
 	mlDispatch mlDispatchFunc
+	// motionDispatch queues the extracted motion component's own
+	// pipeline (its metadata row and its transcode). Nil leaves the
+	// row queued by nothing -- the wiring is the queue's, the
+	// directly constructed workers of the unit tests carry none.
+	motionDispatch func(ctx context.Context, assetID uuid.UUID)
 	// places is the in-memory place grid: the GPS step resolves
 	// the extraction's coordinates against it -- the nearest city
 	// within geodata.ResolutionRadiusKm writes assets.place_id,
@@ -111,6 +117,20 @@ func (w *MetadataWorker) Work(ctx context.Context, job *river.Job[MetadataArgs])
 	rawObject, tags, err := parseExiftoolJSON(raw)
 	if err != nil {
 		return fmt.Errorf("parse exiftool output of asset %s: %w", assetID, err)
+	}
+
+	// THE SINGLE-FILE MOTION PHOTO: a still whose video an Android
+	// camera embedded (the tail window or a binary tag) grows its
+	// component row here -- the silent step of the Live Photo chain.
+	// It runs before the transaction because it writes a file and its
+	// own row, and it never fails the job: the still is the asset, so
+	// an unreadable motion leaves it a plain photo with one log line.
+	// A component row never re-enters (its own metadata run refines
+	// its sidecar and stops there).
+	if row.MediaKind == dbgen.MediaKindImage && !row.IsComponent {
+		if info, statErr := os.Stat(path); statErr == nil {
+			w.applyMotionPhoto(ctx, assetID, tags, path, info.Size())
+		}
 	}
 
 	// The taken-at chain: EXIF DateTimeOriginal resolved with an
