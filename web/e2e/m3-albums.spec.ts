@@ -255,6 +255,14 @@ const RW_SEED_A = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait
 const RW_SEED_B = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other-second.jpg');
 const RW_SOURCE_HOST_DIR = path.join(specDir, 'fixtures/m3-source-rw');
 
+// The cover story's source: the repository's four-photo trip fixture,
+// bound read-only at the mount root. The album card holds four frames,
+// so the cover scene needs a collection of exactly that size -- the
+// scan ingests the four files in place (no other story in this stack
+// references them, so the dedup finds nothing to skip).
+const COVER_SOURCE_DIR = '/mnt/e2e-source/trip-2026';
+const COVER_ALBUM_TITLE = 'Trip frames 2026';
+
 // The two fixture photos the read-only album gathers (the source
 // tree's own names -- the story asserts them as the tiles' links).
 const PHOTO_A_NAME = 'IMG_E4_0001.jpg';
@@ -287,6 +295,13 @@ let albumId = '';
 
 // The writable album's id, captured the same way by its create scene.
 let rwAlbumId = '';
+
+// The cover scene's album id (created through the API -- the create
+// dialog's flow is scene 4's and 10's subject, the cover's is this
+// one's) and the four member ids it gathers, in the cover's pick
+// order.
+let coverAlbumId = '';
+let coverMemberIds: string[] = [];
 
 // The member's user id, captured by the bootstrap so the audience
 // write's request shape can be pinned against the real id.
@@ -712,6 +727,192 @@ test.describe('the administrator scenes', () => {
 			.getByRole('dialog', { name: 'Album properties', exact: true })
 			.getByRole('button', { name: 'Cancel', exact: true })
 			.click();
+	});
+
+	test("scene 7b: the cover picker pins the album card's four frames and clears back to the rotation", async ({
+		page
+	}) => {
+		// The four-frame collection: the trip fixture referenced in place
+		// (the read-only bind), scanned into the album. The creation and
+		// the rescan ride the API -- the dialogs those flows own are
+		// scenes 4 and 10's subject.
+		const created = await page.request.post('/api/v1/albums', {
+			data: { title: COVER_ALBUM_TITLE, rootPath: COVER_SOURCE_DIR, audience: [] }
+		});
+		expect(created.status()).toBe(201);
+		coverAlbumId = ((await created.json()) as { id?: string }).id ?? '';
+		expect(coverAlbumId).not.toBe('');
+		const rescan = await page.request.post(`/api/v1/albums/${coverAlbumId}/rescan`);
+		expect([200, 202]).toContain(rescan.status());
+
+		// The scan's convergence: four live members, then their ids in
+		// the timeline's order (newest first) -- the pick order the
+		// scene pins is its own, so the exact ids are read once here.
+		await expect
+			.poll(
+				async () => {
+					const detail = await page.request.get(`/api/v1/albums/${coverAlbumId}?limit=200`);
+					expect(detail.status()).toBe(200);
+					const body = (await detail.json()) as {
+						itemCount?: number;
+						items?: Array<{ assetId?: string }>;
+					};
+					if ((body.itemCount ?? 0) !== 4) {
+						return 0;
+					}
+					coverMemberIds = (body.items ?? []).map((item) => item.assetId ?? '');
+					return coverMemberIds.filter((id) => id !== '').length;
+				},
+				{ timeout: 60_000, intervals: [500, 1000, 2000] }
+			)
+			.toBe(4);
+
+		// The automatic group, read twice in one week: the same four
+		// frames (the rotation's freeze -- a family device that refreshes
+		// never sees the cover move).
+		const groupOf = async (): Promise<string[]> => {
+			const wall = await page.request.get('/api/v1/albums');
+			expect(wall.status()).toBe(200);
+			const body = (await wall.json()) as {
+				albums?: Array<{ id?: string; coverAssetIds?: string[] }>;
+			};
+			return (body.albums ?? []).find((album) => album.id === coverAlbumId)?.coverAssetIds ?? [];
+		};
+		const automatic = await groupOf();
+		expect(automatic).toHaveLength(4);
+		expect(automatic.every((id) => coverMemberIds.includes(id))).toBe(true);
+		expect(await groupOf()).toEqual(automatic);
+
+		// The card draws the automatic group in the answered order, the
+		// collage labelled as one image (each cell silent).
+		await page.goto('/albums');
+		const card = page.locator('a.album-card').filter({ hasText: COVER_ALBUM_TITLE });
+		await expect(card).toBeVisible();
+		await expect(card.locator('.album-card__cover')).toHaveAttribute('aria-label', 'Cover: 4 photos');
+		await expect(card.locator('.album-card__cell img')).toHaveCount(4);
+		const cardFrames = async (): Promise<string[]> =>
+			card
+				.locator('.album-card__cell img')
+				.evaluateAll((images) =>
+					images.map((image) => /\/assets\/([^/]+)\//.exec(image.getAttribute('src') ?? '')?.[1] ?? '')
+				);
+		expect(await cardFrames()).toEqual(automatic);
+
+		// The owner's pick: four frames in an order of the scene's own
+		// (the reverse of the wall's group), saved through the dialog.
+		await card.click();
+		await expect(page.locator('h1.album-bar__title')).toHaveText(COVER_ALBUM_TITLE);
+		await page.getByRole('button', { name: 'Set cover', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'Set the cover', exact: true });
+		await expect(dialog).toBeVisible();
+		// The stored pin is empty: the dialog opens on the automatic
+		// state.
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Automatic');
+		const options = dialog.locator('.cover-option');
+		await expect(options).toHaveCount(4);
+		const pin = [...coverMemberIds].reverse();
+		for (const id of pin) {
+			await options.filter({ has: page.locator(`img[src*="/assets/${id}/"]`) }).click();
+		}
+		await expect(dialog.locator('.cover-option__badge')).toHaveCount(4);
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Selected 4 / 4');
+
+		const patched = page.waitForRequest(
+			(request) => request.method() === 'PATCH' && request.url().endsWith(`/api/v1/albums/${coverAlbumId}`)
+		);
+		await dialog.getByRole('button', { name: 'Save cover', exact: true }).click();
+		const patch = await patched;
+		// The write carries the pick order exactly (the server stores
+		// and returns it as given).
+		expect(patch.postDataJSON()).toEqual({ coverAssetIds: pin });
+		expect((await patch.response())?.status()).toBe(200);
+		await expect(dialog).toHaveCount(0);
+		await expect(page.getByText('Cover updated.', { exact: true })).toBeVisible();
+
+		// The pinned card: the four frames in the PICK order, not the
+		// automatic group's.
+		await page.goto('/albums');
+		await expect(card.locator('.album-card__cell img')).toHaveCount(4);
+		expect(await cardFrames()).toEqual(pin);
+
+		// The partial state: reopening seeds the stored pin (its order,
+		// its numbers), and one removed frame blocks the save -- a cover
+		// is the full set or nothing.
+		await card.click();
+		await page.getByRole('button', { name: 'Set cover', exact: true }).click();
+		await expect(dialog).toBeVisible();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Selected 4 / 4');
+		// The numbers follow the PICK order, not the grid's own order:
+		// the frame picked first wears 1.
+		await expect(
+			options.filter({ has: page.locator(`img[src*="/assets/${pin[0]}/"]`) }).locator('.cover-option__badge')
+		).toHaveText('1');
+		await expect(
+			options.filter({ has: page.locator(`img[src*="/assets/${pin[3]}/"]`) }).locator('.cover-option__badge')
+		).toHaveText('4');
+		await options.filter({ has: page.locator(`img[src*="/assets/${pin[0]}/"]`) }).click();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Selected 3 / 4 · 1 more to pick');
+		await expect(dialog.getByRole('button', { name: 'Save cover', exact: true })).toBeDisabled();
+
+		// The way back: "Use the weekly rotation" empties the pick, the
+		// save writes the empty set, and the album returns to the
+		// automatic group.
+		await dialog.getByRole('button', { name: 'Use the weekly rotation', exact: true }).click();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Automatic');
+		const cleared = page.waitForRequest(
+			(request) => request.method() === 'PATCH' && request.url().endsWith(`/api/v1/albums/${coverAlbumId}`)
+		);
+		await dialog.getByRole('button', { name: 'Save cover', exact: true }).click();
+		expect((await cleared).postDataJSON()).toEqual({ coverAssetIds: [] });
+		await expect(dialog).toHaveCount(0);
+
+		const detail = await page.request.get(`/api/v1/albums/${coverAlbumId}`);
+		expect(((await detail.json()) as { coverAssetIds?: string[] }).coverAssetIds).toEqual([]);
+		expect(await groupOf()).toEqual(automatic);
+
+		// The contract's refusal matrix, through the API: a partial set
+		// names the field, a set with a frame outside the album names
+		// the count, and an over-full set never fits the card.
+		const partial = await page.request.patch(`/api/v1/albums/${coverAlbumId}`, {
+			data: { coverAssetIds: [coverMemberIds[0]] }
+		});
+		expect(partial.status()).toBe(400);
+		expect(await partial.json()).toMatchObject({
+			code: 'VALIDATION_FAILED',
+			details: { fields: ['coverAssetIds'] }
+		});
+
+		const stranger = await page.request.patch(`/api/v1/albums/${coverAlbumId}`, {
+			data: {
+				coverAssetIds: [
+					coverMemberIds[0],
+					coverMemberIds[1],
+					coverMemberIds[2],
+					'0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f60ff'
+				]
+			}
+		});
+		expect(stranger.status()).toBe(400);
+		expect(await stranger.json()).toMatchObject({
+			code: 'VALIDATION_FAILED',
+			details: { key: 'album_cover_not_member', count: 1 }
+		});
+
+		const overfull = await page.request.patch(`/api/v1/albums/${coverAlbumId}`, {
+			data: { coverAssetIds: [...coverMemberIds, '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f60ff'] }
+		});
+		expect(overfull.status()).toBe(400);
+		expect(await overfull.json()).toMatchObject({
+			code: 'VALIDATION_FAILED',
+			details: { fields: ['coverAssetIds'] }
+		});
+
+		// The album goes before the removal scenes (each of them counts
+		// the wall): the un-ingest purges the four ingested rows, and
+		// the wall is back to its two albums.
+		const removed = await page.request.delete(`/api/v1/albums/${coverAlbumId}`);
+		expect(removed.status()).toBe(204);
+		await expect(page.locator('a.album-card').filter({ hasText: COVER_ALBUM_TITLE })).toHaveCount(0);
 	});
 });
 

@@ -212,6 +212,22 @@ const OWN_C_NAME = 'IMG_M3M_C.jpg';
 const SOURCE_ALBUM_TITLE = 'Coastal days 2026';
 const MEMORY_TITLE = 'Late summer 2026';
 
+// The cover story's own set: the memory band holds six frames, so the
+// cover scene needs six members. Four extra photos join the creator's
+// two -- uploaded after the story's count-sensitive scenes have run --
+// and one memory gathers all six, so the band's full ladder and the
+// picker's six-pick path are exercised at their real count.
+const COVER_MEMORY_TITLE = 'Six frames 2026';
+const COVER_SEED_FILES = [
+	{ file: path.join(repoRoot, 'server/internal/ml/testdata/face-portrait.jpg'), name: 'IMG_M3M_D.jpg' },
+	{
+		file: path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-orientation6.jpg'),
+		name: 'IMG_M3M_E.jpg'
+	},
+	{ file: path.join(repoRoot, 'server/internal/ml/testdata/ocr-text.png'), name: 'IMG_M3M_F.png' },
+	{ file: path.join(repoRoot, 'server/internal/ml/testdata/ocr-zh-text.png'), name: 'IMG_M3M_G.png' }
+];
+
 // The skip-note honesty line (the picker's report face).
 const SKIP_NOTE =
 	"1 photo is not visible right now and stayed out — a shared photo's visibility is re-checked at add time.";
@@ -1192,5 +1208,121 @@ test.describe('the closing scenes', () => {
 		await expect(retired.locator('.memory-overlay')).toHaveCount(0);
 		await retired.close();
 		await shareeContext.close();
+	});
+
+	test("scene 15: the memory cover picker pins the band's six frames and clears back to the rotation", async ({
+		page
+	}) => {
+		// The six-frame collection: four uploads join the creator's own
+		// pair (the library's seed pattern), and one memory gathers all
+		// six through the membership write.
+		const coverIds: string[] = [ownAId, ownBId];
+		for (const seed of COVER_SEED_FILES) {
+			const upload = await page.request.post('/api/v1/assets', {
+				multipart: {
+					deviceAssetId: `m3m-e2e-cover-${seed.name}`,
+					fileName: seed.name,
+					deviceCreatedAt: '2026-09-20T12:00:00Z',
+					deviceTimeZone: 'UTC',
+					photo: {
+						name: seed.name,
+						mimeType: seed.name.endsWith('.png') ? 'image/png' : 'image/jpeg',
+						buffer: await readFile(seed.file)
+					}
+				}
+			});
+			expect(upload.status()).toBe(201);
+			coverIds.push(((await upload.json()) as { id?: string }).id ?? '');
+		}
+		expect(coverIds.filter((id) => id !== '')).toHaveLength(6);
+
+		const created = await page.request.post('/api/v1/memories', {
+			data: { title: COVER_MEMORY_TITLE, audience: [] }
+		});
+		expect(created.status()).toBe(201);
+		const coverMemoryId = ((await created.json()) as { id?: string }).id ?? '';
+		expect(coverMemoryId).not.toBe('');
+		const added = await page.request.post(`/api/v1/albums/${coverMemoryId}/items`, {
+			data: { assetIds: coverIds }
+		});
+		expect(added.status()).toBe(200);
+		expect(((await added.json()) as { added?: number }).added).toBe(6);
+
+		// The wall's fresh answer: the card, its six-frame automatic
+		// group (below twice the band's frame count, so one stable
+		// sample), and the band labelled as one image.
+		await page.goto('/memories');
+		const card = page.locator('button.memory-card').filter({ hasText: COVER_MEMORY_TITLE });
+		await expect(card).toBeVisible();
+		await expect(card.locator('.memory-card__count')).toHaveAttribute('aria-label', '6 photos');
+		await expect(card.locator('.memory-card__cover')).toHaveAttribute('aria-label', 'Cover: 6 photos');
+		await expect(card.locator('.memory-card__frame img')).toHaveCount(6);
+		const bandFrames = async (): Promise<string[]> =>
+			card
+				.locator('.memory-card__frame img')
+				.evaluateAll((images) =>
+					images.map((image) => /\/assets\/([^/]+)\//.exec(image.getAttribute('src') ?? '')?.[1] ?? '')
+				);
+		const automatic = await bandFrames();
+		expect(automatic).toHaveLength(6);
+		await expect
+			.poll(async () => {
+				const wall = await page.request.get('/api/v1/albums');
+				const body = (await wall.json()) as {
+					albums?: Array<{ id?: string; coverAssetIds?: string[] }>;
+				};
+				return (body.albums ?? []).find((album) => album.id === coverMemoryId)?.coverAssetIds ?? [];
+			})
+			.toEqual(automatic);
+
+		// The owner's pick: six frames in an order of the scene's own,
+		// saved through the overlay's dialog.
+		await page.goto(`/memories?memory=${coverMemoryId}`);
+		const overlay = page.getByRole('dialog', { name: 'Memory playback', exact: true });
+		await expect(overlay).toBeVisible();
+		await overlay.getByRole('button', { name: 'Change cover', exact: true }).click();
+		const dialog = page.getByRole('dialog', { name: 'Set the cover', exact: true });
+		await expect(dialog).toBeVisible();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Automatic');
+		const options = dialog.locator('.cover-option');
+		await expect(options).toHaveCount(6);
+		const pin = [...coverIds].reverse();
+		for (const id of pin) {
+			await options.filter({ has: page.locator(`img[src*="/assets/${id}/"]`) }).click();
+		}
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Selected 6 / 6');
+		const patched = page.waitForRequest(
+			(request) => request.method() === 'PATCH' && request.url().endsWith(`/api/v1/albums/${coverMemoryId}`)
+		);
+		await dialog.getByRole('button', { name: 'Save cover', exact: true }).click();
+		expect((await patched).postDataJSON()).toEqual({ coverAssetIds: pin });
+		await expect(page.getByText('Cover updated.', { exact: true })).toBeVisible();
+
+		// The pinned band: the six frames in the pick order.
+		await page.goto('/memories');
+		await expect(card.locator('.memory-card__frame img')).toHaveCount(6);
+		expect(await bandFrames()).toEqual(pin);
+
+		// The way back to the rotation: the empty set, and the band
+		// answers the automatic group again.
+		await page.goto(`/memories?memory=${coverMemoryId}`);
+		await overlay.getByRole('button', { name: 'Change cover', exact: true }).click();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Selected 6 / 6');
+		await dialog.getByRole('button', { name: 'Use the weekly rotation', exact: true }).click();
+		await expect(dialog.locator('.cover-picker__count')).toContainText('Automatic');
+		const cleared = page.waitForRequest(
+			(request) => request.method() === 'PATCH' && request.url().endsWith(`/api/v1/albums/${coverMemoryId}`)
+		);
+		await dialog.getByRole('button', { name: 'Save cover', exact: true }).click();
+		expect((await cleared).postDataJSON()).toEqual({ coverAssetIds: [] });
+		await page.goto('/memories');
+		expect(await bandFrames()).toEqual(automatic);
+
+		// The story's own memory is gone by now; this scene's six-frame
+		// one leaves the wall the same way: the delete, then the card's
+		// absence (nothing after this scene counts the wall).
+		const deleted = await page.request.delete(`/api/v1/albums/${coverMemoryId}`);
+		expect(deleted.status()).toBe(204);
+		await expect(page.locator('button.memory-card').filter({ hasText: COVER_MEMORY_TITLE })).toHaveCount(0);
 	});
 });
