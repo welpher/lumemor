@@ -40,10 +40,14 @@ func (ThumbnailArgs) Kind() string { return "thumbnail" }
 type ThumbnailWorker struct {
 	river.WorkerDefaults[ThumbnailArgs]
 
-	pool       *pgxpool.Pool
-	bus        *events.Bus
-	dataDir    string
-	logger     *slog.Logger
+	pool    *pgxpool.Pool
+	bus     *events.Bus
+	dataDir string
+	logger  *slog.Logger
+	// budget is the background work's gate: the pause switches, the
+	// night window and the concurrency dial. Nil gates nothing (the
+	// directly constructed workers of the unit tests).
+	budget     *Budget
 	mlDispatch mlDispatchFunc
 }
 
@@ -65,6 +69,25 @@ func (w *ThumbnailWorker) Timeout(job *river.Job[ThumbnailArgs]) time.Duration {
 // pipeline (the video simply has no thumbnail), exactly like the
 // transcode job's own `off` preset.
 func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs]) error {
+
+	// The budget gate: a paused or window-held class snoozes without
+	// consuming an attempt (the job reschedules itself and holds no
+	// worker slot); the dial's slot -- for the classes that share the
+	// pipeline pool -- is held for the work. Nil budgets (the unit
+	// tests' directly constructed workers) gate nothing.
+	if w.budget != nil {
+		hold, gateErr := w.budget.Gate(ctx, "thumbnail")
+		if gateErr != nil {
+			return gateErr
+		}
+		if hold > 0 {
+			return river.JobSnooze(hold)
+		}
+		// The dial's slot is held for this job's work and released
+		// when it ends -- success, failure or retry alike.
+		defer w.budget.Release()
+	}
+
 	assetID := job.Args.AssetID
 
 	row, err := dbgen.New(w.pool).GetAssetForMetadata(ctx, pgUUID(assetID))
@@ -85,12 +108,17 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 		return fmt.Errorf("resolve file of asset %s: %w", assetID, err)
 	}
 
-	// Image assets get the three AVIF sizes; video assets get the
-	// poster frame instead -- never AVIF thumbnails (the poster IS the
+	// Image assets get the serving copies at the instance's image
+	// settings (the tile and preview sizes, the encoding, the
+	// full-size copy switch); video assets get the poster frame
+	// instead -- never an encoded image thumbnail (the poster IS the
 	// video's thumbnail, served by the thumbnail endpoint; the
 	// playable stream is the transcode job's product). A video under
 	// a thumbnailFrame=off instance skips the capture: no poster, no
-	// blurhash, the pipeline still completes below.
+	// blurhash, the pipeline still completes below. A corrupt image
+	// settings row answers the defaults (the corrupt read is
+	// logged): the pipeline keeps deriving while the log points at
+	// the row to fix.
 	var hash string
 	skipDerivation := false
 	if row.MediaKind == dbgen.MediaKindVideo {
@@ -105,7 +133,17 @@ func (w *ThumbnailWorker) Work(ctx context.Context, job *river.Job[ThumbnailArgs
 			hash, err = media.GeneratePoster(ctx, path, assetID.String())
 		}
 	} else {
-		hash, err = media.GenerateThumbnails(path, assetID.String())
+		image, imageSettingsErr := db.ImageSettingsOf(ctx, dbgen.New(w.pool))
+		if imageSettingsErr != nil {
+			w.logger.Error("thumbnail job: image settings are corrupt, using the default", "error", imageSettingsErr)
+		}
+		hash, err = media.GenerateThumbnailsWithOptions(path, assetID.String(), media.DeriveOptions{
+			TileBox:      image.TileSize,
+			ViewLongEdge: image.PreviewSize,
+			Format:       image.Format,
+			FullSize:     image.FullSize,
+			RawEmbedded:  image.RawEmbedded,
+		})
 	}
 	if err != nil {
 		return fmt.Errorf("derive serving copies of asset %s: %w", assetID, err)

@@ -585,3 +585,150 @@ test('a non-admin caller sees the mapped auth_forbidden message', async () => {
 	unmount(page);
 	flushSync();
 });
+
+// THE RUN SETTINGS STRIP AND THE REBUILD'S STOP (E33): the task
+// panel's top card carries the three dials -- the concurrency steps,
+// the night window (its inputs dead while off), the five per-kind
+// pauses -- saving on change, immediately, whole document; and a
+// running rebuild row carries the stop that closes the run at its
+// next breakpoint.
+
+function budgetBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		concurrencyPreset: 'standard',
+		nightlyEnabled: false,
+		nightlyStart: '02:00',
+		nightlyEnd: '06:00',
+		pausedJobs: { thumbnail: false, metadata: false, transcode: false, ml: false, places: false },
+		...overrides
+	};
+}
+
+/** The jobs/models stub plus the budget's read and save routes. */
+function stubFetchWithBudget(jobs: unknown[], budget: unknown): ReturnType<typeof vi.fn> {
+	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/admin/settings/run-budget' && init?.method === 'PUT') {
+			return jsonResponse(200, JSON.parse(String(init.body)));
+		}
+		if (url === '/api/v1/admin/settings/run-budget') {
+			return jsonResponse(200, budget);
+		}
+		const base = stubFetchWithModels(jobs, []);
+		return (base as unknown as (i: RequestInfo | URL, ii?: RequestInit) => Response)(input, init);
+	});
+}
+
+test('the run-settings strip renders the dials and saves the whole document on change', async () => {
+	vi.stubGlobal('fetch', stubFetchWithBudget([downloadRun], budgetBody()));
+	mountPage();
+	await settle();
+
+	const strip = document.body.querySelector<HTMLElement>('[data-testid="run-settings"]');
+	expect(strip).not.toBeNull();
+	// The dial's three steps with the current one pressed.
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-standard"]')?.ariaPressed).toBe(
+		'true'
+	);
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-light"]')?.ariaPressed).toBe('false');
+
+	// The save is immediate: stepping the dial down PUTs the whole
+	// document with the new preset.
+	document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-light"]')?.click();
+	await settle();
+	const put = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+		(call) => String(call[0]) === '/api/v1/admin/settings/run-budget' && call[1]?.method === 'PUT'
+	);
+	expect(put).toBeDefined();
+	const saved = JSON.parse(String(put![1].body));
+	expect(saved.concurrencyPreset).toBe('light');
+	// The whole document rides: the pauses and the window too.
+	expect(saved.pausedJobs).toEqual(budgetBody().pausedJobs);
+	expect(saved.nightlyStart).toBe('02:00');
+});
+
+test("the night window's time inputs go dead while the switch is off", async () => {
+	vi.stubGlobal('fetch', stubFetchWithBudget([downloadRun], budgetBody({ nightlyEnabled: false })));
+	mountPage();
+	await settle();
+
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-start"]')?.disabled).toBe(true);
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-end"]')?.disabled).toBe(true);
+
+	// The switch on: the inputs wake.
+	document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-toggle"]')?.click();
+	await settle();
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-start"]')?.disabled).toBe(false);
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-end"]')?.disabled).toBe(false);
+});
+
+test('the five pause switches carry the budget and save on change', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetchWithBudget(
+			[downloadRun],
+			budgetBody({ pausedJobs: { thumbnail: true, metadata: false, transcode: false, ml: false, places: false } })
+		)
+	);
+	mountPage();
+	await settle();
+
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-thumbnail"]')?.checked).toBe(true);
+	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-places"]')?.checked).toBe(false);
+	// Flipping a switch PUTs the whole document with it.
+	document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-places"]')?.click();
+	await settle();
+	const put = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+		(call) => String(call[0]) === '/api/v1/admin/settings/run-budget' && call[1]?.method === 'PUT'
+	);
+	const saved = JSON.parse(String(put![1].body));
+	expect(saved.pausedJobs.places).toBe(true);
+	expect(saved.pausedJobs.thumbnail).toBe(true);
+});
+
+test('a running rebuild row carries the stop, and stopping POSTs and refetches', async () => {
+	const rebuildRun = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11', {
+		kind: 'rebuild_derivatives',
+		state: 'running',
+		total: 12,
+		done: 4,
+		startedAt: '2026-11-03T14:00:00Z'
+	});
+	let stops = 0;
+	const reads = stubFetchWithBudget([rebuildRun], budgetBody()) as unknown as (
+		i: RequestInfo | URL,
+		ii?: RequestInit
+	) => Promise<Response>;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/admin/derivatives/rebuild/stop' && init?.method === 'POST') {
+			stops += 1;
+			return jsonResponse(200, { jobRunId: rebuildRun.id });
+		}
+		return reads(input, init);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const stop = document.body.querySelector<HTMLButtonElement>('[data-testid="job-stop"]');
+	expect(stop).not.toBeNull();
+	stop?.click();
+	await settle();
+	expect(stops).toBe(1);
+});
+
+test('a rebuild row that already closed carries no stop', async () => {
+	const closedRun = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f12', {
+		kind: 'rebuild_derivatives',
+		state: 'succeeded',
+		total: 12,
+		done: 12,
+		startedAt: '2026-11-03T14:00:00Z',
+		finishedAt: '2026-11-03T14:03:00Z'
+	});
+	vi.stubGlobal('fetch', stubFetchWithBudget([closedRun], budgetBody()));
+	mountPage();
+	await settle();
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="job-stop"]')).toBeNull();
+});

@@ -53,14 +53,19 @@ import 'package:lumemor_api/src/model/bearer_session.dart';
 import 'package:lumemor_api/src/model/camera_facet_count.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/cluster_face_response.dart';
+import 'package:lumemor_api/src/model/concurrency_preset.dart';
 import 'package:lumemor_api/src/model/create_admin_request.dart';
 import 'package:lumemor_api/src/model/delete_model200_response.dart';
+import 'package:lumemor_api/src/model/derivative_format.dart';
+import 'package:lumemor_api/src/model/derivatives_summary_response.dart';
 import 'package:lumemor_api/src/model/device_session.dart';
 import 'package:lumemor_api/src/model/download_format.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:lumemor_api/src/model/face_detail.dart';
 import 'package:lumemor_api/src/model/face_detail_asset.dart';
+import 'package:lumemor_api/src/model/image_settings_response.dart';
+import 'package:lumemor_api/src/model/image_settings_update_request.dart';
 import 'package:lumemor_api/src/model/job_run_kind.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
@@ -100,6 +105,7 @@ import 'package:lumemor_api/src/model/move_face_response.dart';
 import 'package:lumemor_api/src/model/pairing_consume_request.dart';
 import 'package:lumemor_api/src/model/pairing_token_response.dart';
 import 'package:lumemor_api/src/model/password_change_request.dart';
+import 'package:lumemor_api/src/model/paused_jobs_state.dart';
 import 'package:lumemor_api/src/model/person_avatar_response.dart';
 import 'package:lumemor_api/src/model/person_birthdate_response.dart';
 import 'package:lumemor_api/src/model/person_facet_count.dart';
@@ -109,8 +115,12 @@ import 'package:lumemor_api/src/model/person_summary.dart';
 import 'package:lumemor_api/src/model/place_facet_count.dart';
 import 'package:lumemor_api/src/model/place_summary.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
+import 'package:lumemor_api/src/model/rebuild_derivatives_request.dart';
+import 'package:lumemor_api/src/model/rebuild_derivatives_response.dart';
 import 'package:lumemor_api/src/model/remove_album_items_response.dart';
 import 'package:lumemor_api/src/model/remove_tag_assets_response.dart';
+import 'package:lumemor_api/src/model/run_budget_settings_response.dart';
+import 'package:lumemor_api/src/model/run_budget_settings_update_request.dart';
 import 'package:lumemor_api/src/model/search_facets.dart';
 import 'package:lumemor_api/src/model/search_response.dart';
 import 'package:lumemor_api/src/model/server_info.dart';
@@ -196,14 +206,19 @@ part 'serializers.g.dart';
   CameraFacetCount,
   ClusterDetail,
   ClusterFaceResponse,
+  ConcurrencyPreset,
   CreateAdminRequest,
   DeleteModel200Response,
+  DerivativeFormat,
+  DerivativesSummaryResponse,
   DeviceSession,
   DownloadFormat,
   Error,
   ExifSummary,
   FaceDetail,
   FaceDetailAsset,
+  ImageSettingsResponse,
+  ImageSettingsUpdateRequest,
   JobRunKind,
   JobRunListResponse,
   JobRunResponse,
@@ -243,6 +258,7 @@ part 'serializers.g.dart';
   PairingConsumeRequest,
   PairingTokenResponse,
   PasswordChangeRequest,
+  PausedJobsState,
   PersonAvatarResponse,
   PersonBirthdateResponse,
   PersonFacetCount,
@@ -252,8 +268,12 @@ part 'serializers.g.dart';
   PlaceFacetCount,
   PlaceSummary,
   PlacesRerunResponse,
+  RebuildDerivativesRequest,
+  RebuildDerivativesResponse,
   RemoveAlbumItemsResponse,
   RemoveTagAssetsResponse,
+  RunBudgetSettingsResponse,
+  RunBudgetSettingsUpdateRequest,
   SearchFacets,
   SearchResponse,
   ServerInfo,

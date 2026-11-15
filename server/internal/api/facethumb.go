@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
@@ -67,8 +68,19 @@ func (s *server) GetFaceThumbnail(w http.ResponseWriter, r *http.Request, faceId
 	// The source pixels: the view derivative, never the original.
 	// Its absence is the not-ready state of this endpoint, folded
 	// into the same 404 -- the asset exists but the crop cannot be
-	// derived yet, and the caller learns nothing either way.
-	viewPath := storage.ThumbPath(uuid.UUID(face.AssetID.Bytes).String(), media.SizeView)
+	// derived yet, and the caller learns nothing either way. The
+	// encoding follows the instance's configured one, falling back
+	// to the shipped AVIF when the configured file is absent (the
+	// same discipline the asset thumbnail serves under).
+	assetID := uuid.UUID(face.AssetID.Bytes).String()
+	settings, settingsErr := db.ImageSettingsOf(r.Context(), s.queries)
+	if settingsErr != nil {
+		s.logger.Error("resolve a face crop's source encoding; answering the default", "error", settingsErr)
+	}
+	viewPath := storage.ThumbPath(assetID, media.SizeView, settings.Format)
+	if _, err := os.Stat(viewPath); err != nil && settings.Format != media.FormatAvif {
+		viewPath = storage.ThumbPath(assetID, media.SizeView, media.FormatAvif)
+	}
 	if _, err := os.Stat(viewPath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			s.writePersonNotFound(w)

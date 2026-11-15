@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
@@ -55,7 +56,7 @@ func (e *env) blurhashOf(t *testing.T, id uuid.UUID) pgtype.Text {
 // (empty when the directory does not exist).
 func (e *env) thumbFiles(t *testing.T, id uuid.UUID) []string {
 	t.Helper()
-	dir := filepath.Dir(storage.ThumbPath(id.String(), media.SizeTile))
+	dir := filepath.Dir(storage.ThumbPath(id.String(), media.SizeTile, media.FormatAvif))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -72,9 +73,9 @@ func (e *env) thumbFiles(t *testing.T, id uuid.UUID) []string {
 
 // requireJobThumbDimensions pins a derived file's dimensions through
 // the media package's decoder.
-func requireJobThumbDimensions(t *testing.T, id uuid.UUID, size string, wantWidth, wantHeight int) {
+func requireJobThumbDimensions(t *testing.T, id uuid.UUID, size, ext string, wantWidth, wantHeight int) {
 	t.Helper()
-	path := storage.ThumbPath(id.String(), size)
+	path := storage.ThumbPath(id.String(), size, ext)
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("thumbnail %s missing: %v", path, err)
 	}
@@ -84,6 +85,24 @@ func requireJobThumbDimensions(t *testing.T, id uuid.UUID, size string, wantWidt
 	}
 	if width != wantWidth || height != wantHeight {
 		t.Errorf("%s = %dx%d, want %dx%d", path, width, height, wantWidth, wantHeight)
+	}
+}
+
+// enableFullSizeCopy writes the image settings the full-size tests
+// run under: the shipped sizes and encoding with the full-resolution
+// copy on. The shipped default posture (the copy OFF) is pinned by
+// TestThumbnailJobDefaultSettingsSkipTheOriginal; these tests pin the
+// sizes' correctness, which the copy carries.
+func enableFullSizeCopy(t *testing.T, e *env) {
+	t.Helper()
+	if err := db.SaveImageSettings(t.Context(), e.queries, db.ImageSettings{
+		TileSize:    250,
+		PreviewSize: 1080,
+		Format:      media.FormatAvif,
+		FullSize:    true,
+		RawEmbedded: true,
+	}); err != nil {
+		t.Fatalf("save the full-size image settings: %v", err)
 	}
 }
 
@@ -97,6 +116,7 @@ func requireJobThumbDimensions(t *testing.T, id uuid.UUID, size string, wantWidt
 func TestThumbnailJobGoldenJPEG(t *testing.T) {
 	requireThumbnails(t)
 	e := newEnv(t)
+	enableFullSizeCopy(t, e)
 
 	deviceTakenAt := time.Date(2020, 3, 1, 12, 0, 0, 0, time.UTC).Truncate(time.Microsecond)
 	id := e.insertAsset(t, "originals/golden/golden.jpg", goldenFixture(t), deviceTakenAt, `{}`)
@@ -108,9 +128,9 @@ func TestThumbnailJobGoldenJPEG(t *testing.T) {
 		return e.assetOf(t, id).readyAt.Valid
 	})
 
-	requireJobThumbDimensions(t, id, media.SizeTile, 64, 64)
-	requireJobThumbDimensions(t, id, media.SizeView, 64, 64)
-	requireJobThumbDimensions(t, id, media.SizeOriginal, 64, 64)
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 64, 64)
+	requireJobThumbDimensions(t, id, media.SizeView, media.FormatAvif, 64, 64)
+	requireJobThumbDimensions(t, id, media.SizeOriginal, media.FormatAvif, 64, 64)
 
 	hash := e.blurhashOf(t, id)
 	if !hash.Valid || len(hash.String) < 6 {
@@ -139,6 +159,7 @@ func TestThumbnailJobGoldenJPEG(t *testing.T) {
 func TestThumbnailJobSizes(t *testing.T) {
 	requireThumbnails(t)
 	e := newEnv(t)
+	enableFullSizeCopy(t, e)
 
 	large, err := os.ReadFile(filepath.Join("..", "media", "testdata", "golden-large.jpg"))
 	if err != nil {
@@ -154,9 +175,9 @@ func TestThumbnailJobSizes(t *testing.T) {
 		return e.assetOf(t, id).readyAt.Valid
 	})
 
-	requireJobThumbDimensions(t, id, media.SizeTile, 250, 125)
-	requireJobThumbDimensions(t, id, media.SizeView, 1080, 540)
-	requireJobThumbDimensions(t, id, media.SizeOriginal, 1600, 800)
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 250, 125)
+	requireJobThumbDimensions(t, id, media.SizeView, media.FormatAvif, 1080, 540)
+	requireJobThumbDimensions(t, id, media.SizeOriginal, media.FormatAvif, 1600, 800)
 }
 
 // TestThumbnailJobHEIC is the mandated HEIC flow: a real HEIC decodes
@@ -167,6 +188,7 @@ func TestThumbnailJobHEIC(t *testing.T) {
 		t.Skip("this libvips build carries no HEIC decoder (libheif); run the suite inside the dev container (make docker-test)")
 	}
 	e := newEnv(t)
+	enableFullSizeCopy(t, e)
 
 	heic, err := os.ReadFile(filepath.Join("..", "media", "testdata", "golden-large.heic"))
 	if err != nil {
@@ -182,9 +204,9 @@ func TestThumbnailJobHEIC(t *testing.T) {
 		return e.assetOf(t, id).readyAt.Valid
 	})
 
-	requireJobThumbDimensions(t, id, media.SizeTile, 250, 125)
-	requireJobThumbDimensions(t, id, media.SizeView, 1080, 540)
-	requireJobThumbDimensions(t, id, media.SizeOriginal, 1600, 800)
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 250, 125)
+	requireJobThumbDimensions(t, id, media.SizeView, media.FormatAvif, 1080, 540)
+	requireJobThumbDimensions(t, id, media.SizeOriginal, media.FormatAvif, 1600, 800)
 
 	hash := e.blurhashOf(t, id)
 	if !hash.Valid || len(hash.String) < 6 {
@@ -308,6 +330,7 @@ func TestThumbnailJobPosterFrameOffSkipsCapture(t *testing.T) {
 func TestThumbnailJobOrientation(t *testing.T) {
 	requireThumbnails(t)
 	e := newEnv(t)
+	enableFullSizeCopy(t, e)
 
 	portrait, err := os.ReadFile(filepath.Join("..", "media", "testdata", "portrait-orientation6.jpg"))
 	if err != nil {
@@ -323,8 +346,8 @@ func TestThumbnailJobOrientation(t *testing.T) {
 		return e.assetOf(t, id).readyAt.Valid
 	})
 
-	requireJobThumbDimensions(t, id, media.SizeTile, 100, 200)
-	requireJobThumbDimensions(t, id, media.SizeOriginal, 100, 200)
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 100, 200)
+	requireJobThumbDimensions(t, id, media.SizeOriginal, media.FormatAvif, 100, 200)
 }
 
 // TestThumbnailJobRerunIsIdempotent is the mandated re-run contract: a
@@ -335,6 +358,7 @@ func TestThumbnailJobOrientation(t *testing.T) {
 func TestThumbnailJobRerunIsIdempotent(t *testing.T) {
 	requireThumbnails(t)
 	e := newEnv(t)
+	enableFullSizeCopy(t, e)
 
 	large, err := os.ReadFile(filepath.Join("..", "media", "testdata", "golden-large.jpg"))
 	if err != nil {
@@ -380,9 +404,9 @@ func TestThumbnailJobRerunIsIdempotent(t *testing.T) {
 			t.Errorf("thumbnail files after the re-run = %v, want the same set as before %v", secondFiles, firstFiles)
 		}
 	}
-	requireJobThumbDimensions(t, id, media.SizeTile, 250, 125)
-	requireJobThumbDimensions(t, id, media.SizeView, 1080, 540)
-	requireJobThumbDimensions(t, id, media.SizeOriginal, 1600, 800)
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 250, 125)
+	requireJobThumbDimensions(t, id, media.SizeView, media.FormatAvif, 1080, 540)
+	requireJobThumbDimensions(t, id, media.SizeOriginal, media.FormatAvif, 1600, 800)
 
 	secondHash := e.blurhashOf(t, id)
 	if secondHash != firstHash {
@@ -426,5 +450,96 @@ func TestThumbnailJobMissingAsset(t *testing.T) {
 	}
 	if got := countEvents(e.bus, "asset.ready"); got != 0 {
 		t.Errorf("asset.ready events = %d, want 0", got)
+	}
+}
+
+// TestThumbnailJobSettingsHonorTheDocument pins the settings-reading
+// discipline: the job derives at the image settings' document --
+// here, a 320 tile at WebP with the full-size copy on -- and a row
+// saved before the ingest binds at that derivation.
+func TestThumbnailJobSettingsHonorTheDocument(t *testing.T) {
+	requireThumbnails(t)
+	e := newEnv(t)
+	if err := db.SaveImageSettings(t.Context(), e.queries, db.ImageSettings{
+		TileSize:    320,
+		PreviewSize: 1440,
+		Format:      media.FormatWebp,
+		FullSize:    true,
+		RawEmbedded: true,
+	}); err != nil {
+		t.Fatalf("save the image settings: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join("..", "jobs", "testdata", "golden.jpg"))
+	if err != nil {
+		t.Fatalf("read the golden fixture: %v", err)
+	}
+	id := e.insertAsset(t, "originals/depth/settings-honor.jpg", content, time.Now(), `{}`)
+	if err := e.queue.EnqueueThumbnail(t.Context(), id); err != nil {
+		t.Fatalf("enqueue thumbnail job: %v", err)
+	}
+	eventually(t, jobWaitTimeout, "the settings-honoring asset to become ready", func() bool {
+		return e.assetOf(t, id).readyAt.Valid
+	})
+
+	// The sizes and encoding follow the document: a 320-box tile and
+	// a 1440-long-edge view, both WebP, plus the full-size copy.
+	for _, tt := range []struct {
+		size         string
+		wantW, wantH int
+	}{
+		// The 64x64 golden source never upscales: the boxes bind
+		// only, the source size stays.
+		{media.SizeTile, 64, 64},
+		{media.SizeView, 64, 64},
+		{media.SizeOriginal, 64, 64},
+	} {
+		path := storage.ThumbPath(id.String(), tt.size, media.FormatWebp)
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("derivative %s missing: %v", path, err)
+		}
+		width, height, err := media.ImageDimensions(path)
+		if err != nil {
+			t.Fatalf("decode %s: %v", path, err)
+		}
+		if width != tt.wantW || height != tt.wantH {
+			t.Errorf("%s = %dx%d, want %dx%d", path, width, height, tt.wantW, tt.wantH)
+		}
+	}
+	// The shipped encoding's paths are NOT written: the document's
+	// encoding is the one the file carries.
+	avifPath := storage.ThumbPath(id.String(), media.SizeTile, media.FormatAvif)
+	if _, err := os.Stat(avifPath); !os.IsNotExist(err) {
+		t.Errorf("AVIF tile stat err = %v, want NotExist when the format is WebP", err)
+	}
+}
+
+// TestThumbnailJobDefaultSettingsSkipTheOriginal pins the shipped
+// posture: the settings row absent, the job derives the tile and the
+// view and NOTHING else -- the full-resolution copy is disk the
+// default declines to spend.
+func TestThumbnailJobDefaultSettingsSkipTheOriginal(t *testing.T) {
+	requireThumbnails(t)
+	e := newEnv(t)
+
+	content, err := os.ReadFile(filepath.Join("..", "jobs", "testdata", "golden.jpg"))
+	if err != nil {
+		t.Fatalf("read the golden fixture: %v", err)
+	}
+	id := e.insertAsset(t, "originals/depth/default-posture.jpg", content, time.Now(), `{}`)
+	if err := e.queue.EnqueueThumbnail(t.Context(), id); err != nil {
+		t.Fatalf("enqueue thumbnail job: %v", err)
+	}
+	eventually(t, jobWaitTimeout, "the default-posture asset to become ready", func() bool {
+		return e.assetOf(t, id).readyAt.Valid
+	})
+
+	// The 64x64 golden source: tile and view keep the source size
+	// (never upscaled), and no original exists.
+	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 64, 64)
+	requireJobThumbDimensions(t, id, media.SizeView, media.FormatAvif, 64, 64)
+	original := storage.ThumbPath(id.String(), media.SizeOriginal, media.FormatAvif)
+	if _, err := os.Stat(original); !os.IsNotExist(err) {
+		t.Errorf("original derivative stat err = %v, want NotExist under the shipped posture", err)
 	}
 }

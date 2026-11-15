@@ -26,6 +26,7 @@ import (
 	"github.com/google/uuid"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -656,7 +657,7 @@ func TestGetAssetThumbnailServing(t *testing.T) {
 		"original": []byte("original-avif-bytes"),
 	}
 	for size, content := range derived {
-		env.writeDerivedFile(t, storage.ThumbPath(assetID, size), content)
+		env.writeDerivedFile(t, storage.ThumbPath(assetID, size, media.FormatAvif), content)
 	}
 	wantETag := `"` + checksum[:16] + `"`
 
