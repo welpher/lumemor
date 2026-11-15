@@ -99,15 +99,19 @@ func (q *Queries) DropMergedTags(ctx context.Context, arg DropMergedTagsParams) 
 }
 
 const duplicateOwnedAssets = `-- name: DuplicateOwnedAssets :many
-SELECT d.id AS duplicate_id,
-       k.id AS surviving_id
+SELECT d.id AS departing_id,
+       (d.deleted_at IS NULL)::boolean AS departing_live,
+       d.deleted_at AS departing_deleted_at,
+       k.id AS existing_id,
+       k.deleted_at AS existing_deleted_at
 FROM assets d
 JOIN assets k
   ON k.owner_id = $1
  AND k.checksum = d.checksum
- AND k.deleted_at IS NULL
 WHERE d.owner_id = $2
-  AND d.deleted_at IS NULL
+  AND NOT d.is_component
+  AND NOT k.is_component
+ORDER BY d.id
 `
 
 type DuplicateOwnedAssetsParams struct {
@@ -116,16 +120,28 @@ type DuplicateOwnedAssetsParams struct {
 }
 
 type DuplicateOwnedAssetsRow struct {
-	DuplicateID pgtype.UUID `json:"duplicate_id"`
-	SurvivingID pgtype.UUID `json:"surviving_id"`
+	DepartingID        pgtype.UUID        `json:"departing_id"`
+	DepartingLive      bool               `json:"departing_live"`
+	DepartingDeletedAt pgtype.Timestamptz `json:"departing_deleted_at"`
+	ExistingID         pgtype.UUID        `json:"existing_id"`
+	ExistingDeletedAt  pgtype.Timestamptz `json:"existing_deleted_at"`
 }
 
-// The transfer arm's collision set: the departing account's LIVE
-// rows whose content the receiver already holds live. One live copy
-// per owner is the storage rule, so these rows cannot change hands;
-// they fold into the receiver's copy instead (the fingerprint is the
-// checksum, and a trashed row of either side is not a collision --
-// the uniqueness is partial on live rows).
+// The collision set of BOTH disposal arms: every departing row whose
+// content the destination owner already holds, in ANY state pair --
+// live/live, live/trashed, trashed/live and trashed/trashed.
+// assets_owner_checksum_uq is a TOTAL unique index on (owner_id,
+// checksum) over live rows AND trashed rows alike (00008), so the
+// ownership write collides whatever the two rows' states are; a
+// live-only predicate here misses three of the four pairs and lets
+// the write trip the index (a 500 the caller cannot read as anything).
+// The same index makes the pair 1:1 per checksum on each side: one
+// account holds at most one row of a given content, in either state,
+// so one departing row meets at most one destination row.
+// Component rows (a Live Photo's video half) stay out of the fold on
+// both sides: a component is not content of its own -- it rides its
+// photo's decision, and the fold purges it together with the photo it
+// belongs to.
 func (q *Queries) DuplicateOwnedAssets(ctx context.Context, arg DuplicateOwnedAssetsParams) ([]DuplicateOwnedAssetsRow, error) {
 	rows, err := q.db.Query(ctx, duplicateOwnedAssets, arg.ToOwner, arg.FromOwner)
 	if err != nil {
@@ -135,7 +151,13 @@ func (q *Queries) DuplicateOwnedAssets(ctx context.Context, arg DuplicateOwnedAs
 	var items []DuplicateOwnedAssetsRow
 	for rows.Next() {
 		var i DuplicateOwnedAssetsRow
-		if err := rows.Scan(&i.DuplicateID, &i.SurvivingID); err != nil {
+		if err := rows.Scan(
+			&i.DepartingID,
+			&i.DepartingLive,
+			&i.DepartingDeletedAt,
+			&i.ExistingID,
+			&i.ExistingDeletedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -144,6 +166,30 @@ func (q *Queries) DuplicateOwnedAssets(ctx context.Context, arg DuplicateOwnedAs
 		return nil, err
 	}
 	return items, nil
+}
+
+const extendAssetTrashMark = `-- name: ExtendAssetTrashMark :exec
+UPDATE assets
+SET deleted_at = GREATEST(deleted_at, $1),
+    updated_at = now()
+WHERE id = $2
+`
+
+type ExtendAssetTrashMarkParams struct {
+	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+	ID        pgtype.UUID        `json:"id"`
+}
+
+// The both-trashed fold's mark: the surviving row keeps the LATER of
+// the two deletion marks. The family reading is the generous one --
+// content stays recoverable as long as either copy had left, so the
+// countdown restarts from the later mark instead of shrinking to the
+// surviving row's own. GREATEST over the row's current value keeps a
+// survivor whose own mark is later untouched, which is what makes the
+// write order-free.
+func (q *Queries) ExtendAssetTrashMark(ctx context.Context, arg ExtendAssetTrashMarkParams) error {
+	_, err := q.db.Exec(ctx, extendAssetTrashMark, arg.DeletedAt, arg.ID)
+	return err
 }
 
 const foldSyncAlbumMembership = `-- name: FoldSyncAlbumMembership :exec
@@ -530,6 +576,43 @@ func (q *Queries) ReassignShareGrants(ctx context.Context, arg ReassignShareGran
 	return err
 }
 
+const releaseArrivingDeviceIdentity = `-- name: ReleaseArrivingDeviceIdentity :exec
+UPDATE assets departing
+SET device_asset_id = NULL,
+    updated_at = now()
+FROM assets existing
+WHERE departing.owner_id = $1
+  AND existing.owner_id = $2
+  AND departing.device_asset_id IS NOT NULL
+  AND existing.device_asset_id = departing.device_asset_id
+  AND departing.deleted_at IS NULL
+  AND existing.deleted_at IS NULL
+`
+
+type ReleaseArrivingDeviceIdentityParams struct {
+	FromOwner pgtype.UUID `json:"from_owner"`
+	ToOwner   pgtype.UUID `json:"to_owner"`
+}
+
+// device_asset_id is an upload-IDEMPOTENCY key, not content: the
+// partial index assets_owner_device_asset_id_live_uq allows one LIVE
+// row per (owner, device asset), so a live departing row arriving at
+// a destination that already holds a live row of the same device
+// identity trips it -- and the checksum fold cannot cover that pair,
+// because the two rows are DIFFERENT content: a device may re-render a
+// file under the same library identity (an edited photo keeps its
+// device-side id while its bytes change), and the two backups then
+// carry one id with two checksums. The arriving row releases the
+// identity instead: the destination's own copy is the live row that
+// governs what that device dedupes against, and the departing account
+// is about to be gone, so no idempotency anchor is lost. The transfer
+// arm only -- the trash arm's write lands every arriving row TRASHED
+// in the same statement, and the index covers live rows alone.
+func (q *Queries) ReleaseArrivingDeviceIdentity(ctx context.Context, arg ReleaseArrivingDeviceIdentityParams) error {
+	_, err := q.db.Exec(ctx, releaseArrivingDeviceIdentity, arg.FromOwner, arg.ToOwner)
+	return err
+}
+
 const transferAlbumOwnership = `-- name: TransferAlbumOwnership :exec
 UPDATE albums
 SET owner_id = $1, updated_at = now()
@@ -564,8 +647,10 @@ type TransferAssetOwnershipParams struct {
 
 // The transfer arm's photo handover: every row the departing account
 // owned -- live, trashed, hidden, components alike -- becomes the
-// receiver's. The collision set is settled first, so the storage
-// rule's one-live-copy-per-owner holds through the write.
+// receiver's. The collision set is settled first over EVERY state pair
+// (the uniqueness index is total), so no row survives here that the
+// receiver already holds in any state; what is left is content the
+// receiver does not have at all.
 func (q *Queries) TransferAssetOwnership(ctx context.Context, arg TransferAssetOwnershipParams) error {
 	_, err := q.db.Exec(ctx, transferAssetOwnership, arg.ToOwner, arg.FromOwner)
 	return err
@@ -645,7 +730,13 @@ type TrashOwnedAssetsParams struct {
 // address (blob rows of both states, already-trashed external rows):
 // every remaining row becomes the caller's and carries a deletion
 // mark. The COALESCE keeps an existing mark: a photo that was already
-// in the departing account's trash keeps its own countdown.
+// in the departing account's trash keeps its own countdown. The
+// collision set is settled first over EVERY state pair (the total
+// (owner, checksum) index covers trashed rows too, so a caller who
+// already holds the same content -- in any state -- would otherwise
+// trip it), and the partial device index needs no pass here: this
+// statement moves every row it writes into the trashed state in the
+// same update, and that index covers live rows alone.
 func (q *Queries) TrashOwnedAssets(ctx context.Context, arg TrashOwnedAssetsParams) error {
 	_, err := q.db.Exec(ctx, trashOwnedAssets, arg.ToOwner, arg.FromOwner)
 	return err

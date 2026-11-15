@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/events"
 )
 
 // deleteUser fires the disposal request at the router with the given
@@ -51,6 +52,81 @@ func transferBody(t *testing.T, receiver uuid.UUID) string {
 // trashBody renders one trash-arm disposition.
 func trashBody() string {
 	return `{"dispose":"trash"}`
+}
+
+// removalAssetOpts carries the fixture values the fold's cases vary:
+// the checksum the storage's uniqueness rule keys on, the state, the
+// storage kind, the Live Photo link and the device identity.
+type removalAssetOpts struct {
+	checksum  string
+	component bool
+	external  bool
+	// deletedAt stamps the row's trash mark; the zero value keeps the
+	// row live (and the fixture's own clock out of the assertion).
+	deletedAt time.Time
+	livePhoto uuid.UUID
+	deviceID  string
+	filePath  string
+}
+
+// insertRemovalAsset inserts one fixture row with an EXPLICIT checksum:
+// a collision is two rows over the SAME content, which
+// insertTimelineAsset's per-id checksum cannot express.
+func (e *assetEnv) insertRemovalAsset(t *testing.T, id, owner uuid.UUID, opts removalAssetOpts) {
+	t.Helper()
+	path := opts.filePath
+	if path == "" {
+		path = "originals/fixtures/" + id.String()
+	}
+	storageKind := "blob"
+	if opts.external {
+		storageKind = "external"
+	}
+	mediaKind, mime, name := "image", "image/jpeg", "fixture-"+id.String()+".jpg"
+	if opts.component {
+		mediaKind, mime, name = "video", "video/quicktime", "fixture-"+id.String()+".mov"
+	}
+	var deletedAt, readyAt, deviceID, livePhoto any
+	if !opts.deletedAt.IsZero() {
+		deletedAt = opts.deletedAt
+	}
+	if !opts.component {
+		readyAt = time.Now()
+	}
+	if opts.deviceID != "" {
+		deviceID = opts.deviceID
+	}
+	if opts.livePhoto != uuid.Nil {
+		livePhoto = pgUUID(opts.livePhoto)
+	}
+	if _, err := e.pool.Exec(context.Background(), `
+		INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at,
+			taken_at_source, is_component, deleted_at, ready_at, pending_jobs,
+			device_asset_id, live_photo_video_id
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, 1024, $7, $8, 40, 30,
+			now() - interval '1 hour', 'import', $9, $10, $11, 0, $12, $13
+		)`,
+		pgUUID(id), pgUUID(owner), storageKind, path, opts.checksum, name,
+		mime, mediaKind, opts.component, deletedAt, readyAt, deviceID, livePhoto); err != nil {
+		t.Fatalf("insert fixture asset %s: %v", id, err)
+	}
+}
+
+// requireAssetDeleted asserts the fold's event discipline: exactly one
+// asset.deleted, naming the row the fold purged (a purged Live Photo's
+// component stays silent -- no view ever listed it).
+func requireAssetDeleted(t *testing.T, bus *events.Bus, want uuid.UUID) {
+	t.Helper()
+	published := busEventsOf(t, bus, "asset.deleted")
+	if len(published) != 1 {
+		t.Fatalf("asset.deleted events = %d, want 1", len(published))
+	}
+	if got := published[0]["assetId"]; got != want.String() {
+		t.Errorf("asset.deleted names %s, want the folded row %s", got, want)
+	}
 }
 
 // newMember seeds one plain account with its own stream and a live
@@ -390,11 +466,12 @@ func TestDeleteUserTransferSettlesContent(t *testing.T) {
 	}
 }
 
-// TestDeleteUserTransferFoldsDuplicate pins the collision rule: a
-// photo the receiver already holds live folds into the receiver's
-// copy -- memberships, labels, favorites and the album cover follow
-// the surviving row, the redundant row goes, and the shared file
-// stays because the survivor names it.
+// TestDeleteUserTransferFoldsDuplicate pins the both-live collision
+// pair: a photo the receiver already holds live folds into the
+// receiver's copy -- memberships, labels, favorites and the album
+// cover follow the surviving row, the redundant row goes, and the
+// shared file stays because the survivor names it. (The mixed and
+// both-trashed pairs are the state-pair test's.)
 func TestDeleteUserTransferFoldsDuplicate(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	graceID, _ := env.newMember(t, "grace@example.com")
@@ -463,6 +540,225 @@ func TestDeleteUserTransferFoldsDuplicate(t *testing.T) {
 	// shared-blob rule the file half reads.
 	if _, err := os.Stat(sharedPath); err != nil {
 		t.Errorf("the shared file went with the folded row: %v", err)
+	}
+}
+
+// TestDeleteUserTransferFoldsEveryStatePair pins the collision rule
+// over the four state pairs the total (owner, checksum) index allows
+// -- live/live, live/trashed, trashed/live and trashed/trashed. The
+// live copy wins a mixed pair (the arriving content stays visible; a
+// trashed copy of it does not bind it), a tie keeps the receiver's own
+// row (under the later deletion mark when both are trashed), the
+// losing row's context moves onto the survivor, a losing Live Photo
+// takes its component row along, and the losing row announces
+// asset.deleted. The 204 is the regression's own proof: the live-only
+// predicate this rule replaced answered 500 on three of the four pairs
+// (the ownership write tripped the total index).
+func TestDeleteUserTransferFoldsEveryStatePair(t *testing.T) {
+	const shared = "state-pair-checksum"
+	cases := []struct {
+		name             string
+		departingDeleted time.Duration
+		existingDeleted  time.Duration
+		wantSurvivor     string // "departing" | "existing"
+		component        bool
+	}{
+		{name: "BothLive", wantSurvivor: "existing", component: true},
+		{name: "DepartingLiveReceiverTrashed", existingDeleted: 2 * time.Hour, wantSurvivor: "departing"},
+		{name: "DepartingTrashedReceiverLive", departingDeleted: 2 * time.Hour, wantSurvivor: "existing"},
+		{name: "BothTrashed", departingDeleted: time.Hour, existingDeleted: 5 * time.Hour, wantSurvivor: "existing"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAssetEnv(t, testUploadLimit)
+			graceID, _ := env.newMember(t, "grace@example.com")
+			adminID := env.sessionUserID(t)
+
+			departingID, existingID := uuid.New(), uuid.New()
+			departingOpts := removalAssetOpts{checksum: shared}
+			if tc.departingDeleted > 0 {
+				departingOpts.deletedAt = time.Now().Add(-tc.departingDeleted)
+			}
+			existingOpts := removalAssetOpts{checksum: shared}
+			if tc.existingDeleted > 0 {
+				existingOpts.deletedAt = time.Now().Add(-tc.existingDeleted)
+			}
+			componentID := uuid.Nil
+			if tc.component {
+				// The pair: the component row lands first (the photo's
+				// foreign key names it), then the photo links to it.
+				componentID = uuid.New()
+				env.insertRemovalAsset(t, componentID, graceID, removalAssetOpts{
+					checksum: "state-pair-component", component: true,
+				})
+				departingOpts.livePhoto = componentID
+			}
+			env.insertRemovalAsset(t, departingID, graceID, departingOpts)
+			env.insertRemovalAsset(t, existingID, adminID, existingOpts)
+
+			// The losing copy's context: a memory membership, a label, a
+			// favorite of the receiver's, and an album it pins as cover.
+			albumID, tagID := uuid.New(), uuid.New()
+			env.insertTimelineAlbum(t, albumID, graceID, "memory")
+			env.addTimelineItem(t, albumID, departingID, graceID)
+			env.exec(t, "INSERT INTO tags (id, owner_id, name) VALUES ($1, $2, 'trips')",
+				pgUUID(tagID), pgUUID(graceID))
+			env.exec(t, "INSERT INTO asset_tags (asset_id, tag_id) VALUES ($1, $2)",
+				pgUUID(departingID), pgUUID(tagID))
+			env.exec(t, "INSERT INTO user_favorites (user_id, asset_id) VALUES ($1, $2)",
+				pgUUID(adminID), pgUUID(departingID))
+			env.exec(t, "UPDATE albums SET cover_asset_id = $1 WHERE id = $2",
+				pgUUID(departingID), pgUUID(albumID))
+
+			rec := env.deleteUser(t, env.cookie, graceID, transferBody(t, adminID))
+			requireStatus(t, rec, http.StatusNoContent, "")
+
+			survivor, loser := existingID, departingID
+			if tc.wantSurvivor == "departing" {
+				survivor, loser = departingID, existingID
+			}
+
+			// ONE row of the content survives, under the receiver.
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", shared); got != 1 {
+				t.Fatalf("rows over the shared content = %d, want 1", got)
+			}
+			if owner := env.queryText(t, "SELECT owner_id::text FROM assets WHERE checksum = $1", shared); owner != adminID.String() {
+				t.Errorf("the surviving copy's owner = %s, want the receiver", owner)
+			}
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1", pgUUID(loser)); got != 0 {
+				t.Errorf("the losing copy's row survived")
+			}
+
+			// The survivor's state: live wins a mixed pair, a tie keeps
+			// the destination's row under the LATER mark.
+			wantLive := tc.departingDeleted == 0 || tc.existingDeleted == 0
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at IS NULL", pgUUID(survivor)); (got == 1) != wantLive {
+				t.Errorf("survivor live = %v, want %v", got == 1, wantLive)
+			}
+			if !wantLive {
+				if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at > now() - interval '2 hours'", pgUUID(survivor)); got != 1 {
+					t.Errorf("the survivor kept the earlier mark, want the later of the two")
+				}
+			}
+
+			// The context rode the content onto the survivor.
+			if got := env.queryInt(t, "SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+				pgUUID(albumID), pgUUID(survivor)); got != 1 {
+				t.Errorf("the losing copy's album membership did not follow the survivor")
+			}
+			if got := env.queryInt(t, "SELECT count(*) FROM asset_tags WHERE asset_id = $1 AND tag_id = $2",
+				pgUUID(survivor), pgUUID(tagID)); got != 1 {
+				t.Errorf("the losing copy's label did not follow the survivor")
+			}
+			if got := env.queryInt(t, "SELECT count(*) FROM user_favorites WHERE user_id = $1 AND asset_id = $2",
+				pgUUID(adminID), pgUUID(survivor)); got != 1 {
+				t.Errorf("the losing copy's favorite did not follow the survivor")
+			}
+			if cover := env.queryText(t, "SELECT cover_asset_id::text FROM albums WHERE id = $1", pgUUID(albumID)); cover != survivor.String() {
+				t.Errorf("album cover = %s, want the survivor %s", cover, survivor)
+			}
+
+			// A folded Live Photo takes its component along: the pair is
+			// one asset, and an orphan component row would outlive its
+			// photo.
+			if tc.component {
+				if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1", pgUUID(componentID)); got != 0 {
+					t.Errorf("the folded photo's Live Photo component survived as an orphan row")
+				}
+			}
+			requireAssetDeleted(t, env.bus, loser)
+		})
+	}
+}
+
+// TestDeleteUserTrashArmFoldsCallersCopy pins the trash arm's collision
+// rule: the acting administrator may hold the same content in any
+// state, and the total (owner, checksum) index refuses the re-own that
+// ignores it -- the same fold, the caller's row being the destination.
+// A live departing row survives a trashed caller's copy (and is trashed
+// by this arm), a live caller's copy is never trashed by someone else's
+// disposal, and a both-trashed pair keeps the later mark.
+func TestDeleteUserTrashArmFoldsCallersCopy(t *testing.T) {
+	const shared = "trash-arm-collision"
+	cases := []struct {
+		name             string
+		departingDeleted time.Duration
+		existingDeleted  time.Duration
+		wantSurvivor     string // "departing" | "existing"
+	}{
+		{name: "BothLive", wantSurvivor: "existing"},
+		{name: "DepartingLiveCallerTrashed", existingDeleted: 3 * time.Hour, wantSurvivor: "departing"},
+		{name: "BothTrashed", departingDeleted: time.Hour, existingDeleted: 6 * time.Hour, wantSurvivor: "existing"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			env := newAssetEnv(t, testUploadLimit)
+			graceID, _ := env.newMember(t, "grace@example.com")
+			adminID := env.sessionUserID(t)
+
+			departingID, existingID := uuid.New(), uuid.New()
+			departingOpts := removalAssetOpts{checksum: shared}
+			if tc.departingDeleted > 0 {
+				departingOpts.deletedAt = time.Now().Add(-tc.departingDeleted)
+			}
+			existingOpts := removalAssetOpts{checksum: shared}
+			if tc.existingDeleted > 0 {
+				existingOpts.deletedAt = time.Now().Add(-tc.existingDeleted)
+			}
+			env.insertRemovalAsset(t, departingID, graceID, departingOpts)
+			env.insertRemovalAsset(t, existingID, adminID, existingOpts)
+
+			tagID := uuid.New()
+			env.exec(t, "INSERT INTO tags (id, owner_id, name) VALUES ($1, $2, 'trips')",
+				pgUUID(tagID), pgUUID(graceID))
+			env.exec(t, "INSERT INTO asset_tags (asset_id, tag_id) VALUES ($1, $2)",
+				pgUUID(departingID), pgUUID(tagID))
+
+			rec := env.deleteUser(t, env.cookie, graceID, trashBody())
+			requireStatus(t, rec, http.StatusNoContent, "")
+
+			survivor, loser := existingID, departingID
+			if tc.wantSurvivor == "departing" {
+				survivor, loser = departingID, existingID
+			}
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", shared); got != 1 {
+				t.Fatalf("rows over the shared content = %d, want 1", got)
+			}
+			if owner := env.queryText(t, "SELECT owner_id::text FROM assets WHERE id = $1", pgUUID(survivor)); owner != adminID.String() {
+				t.Errorf("the surviving copy's owner = %s, want the caller", owner)
+			}
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1", pgUUID(loser)); got != 0 {
+				t.Errorf("the losing copy's row survived")
+			}
+
+			// The survivor's state: the arm lands every arriving live
+			// row trashed, and a caller's live copy of the content is
+			// not the caller's to lose.
+			wantLive := tc.name == "BothLive"
+			if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at IS NULL", pgUUID(survivor)); (got == 1) != wantLive {
+				t.Errorf("survivor live = %v, want %v", got == 1, wantLive)
+			}
+			if tc.departingDeleted > 0 && tc.existingDeleted > 0 {
+				if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at > now() - interval '2 hours'", pgUUID(survivor)); got != 1 {
+					t.Errorf("the survivor kept the earlier mark, want the later of the two")
+				}
+			}
+
+			// The label rode the content onto the survivor (the departing
+			// account's tags are the caller's now).
+			if got := env.queryInt(t, "SELECT count(*) FROM asset_tags WHERE asset_id = $1 AND tag_id = $2",
+				pgUUID(survivor), pgUUID(tagID)); got != 1 {
+				t.Errorf("the folded label did not follow the survivor")
+			}
+			requireAssetDeleted(t, env.bus, loser)
+			if tc.name == "BothLive" {
+				// Nothing transitioned into the trash: the caller already
+				// held the content live.
+				if published := busEventsOf(t, env.bus, "asset.trashed"); len(published) != 0 {
+					t.Errorf("asset.trashed events = %d, want none", len(published))
+				}
+			}
+		})
 	}
 }
 
@@ -568,6 +864,74 @@ func TestDeleteUserTrashArmMovesPhotosIntoCallersTrash(t *testing.T) {
 	if events := eventsOfAlbum(t, env.bus, "album.deleted", graceSync); len(events) != 0 {
 		t.Errorf("album.deleted for the stream = %d events, want silence", len(events))
 	}
+}
+
+// TestDeleteUserReleasesCollidingDeviceIdentity pins the second
+// uniqueness axis: device_asset_id is an upload-idempotency key, and
+// its partial index allows one LIVE row per (owner, device asset) --
+// a pair the checksum fold cannot cover, because the two rows carry
+// DIFFERENT content (a device may re-render a file under the same
+// library identity, so two backups of it hold one id with two
+// checksums). The transfer arm releases the arriving row's identity;
+// the trash arm needs no such pass, because its write lands every
+// arriving row trashed in the same statement and the index covers live
+// rows alone.
+func TestDeleteUserReleasesCollidingDeviceIdentity(t *testing.T) {
+	const device = "device-asset-identity"
+
+	t.Run("TransferArmReleasesTheArrivingIdentity", func(t *testing.T) {
+		env := newAssetEnv(t, testUploadLimit)
+		graceID, _ := env.newMember(t, "grace@example.com")
+		adminID := env.sessionUserID(t)
+
+		departingID, existingID := uuid.New(), uuid.New()
+		env.insertTimelineAsset(t, existingID, adminID, time.Now().Add(-2*time.Hour), timelineAssetOpts{ready: true, width: 40, height: 30})
+		env.exec(t, "UPDATE assets SET device_asset_id = $1 WHERE id = $2", device, pgUUID(existingID))
+		env.insertRemovalAsset(t, departingID, graceID, removalAssetOpts{
+			checksum: "device-identity-departing", deviceID: device,
+		})
+
+		rec := env.deleteUser(t, env.cookie, graceID, transferBody(t, adminID))
+		requireStatus(t, rec, http.StatusNoContent, "")
+
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND device_asset_id IS NULL", pgUUID(departingID)); got != 1 {
+			t.Errorf("the arriving row kept the device identity the receiver already holds live")
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND device_asset_id = $2", pgUUID(existingID), device); got != 1 {
+			t.Errorf("the receiver's own row lost its device identity")
+		}
+		if owner := env.queryText(t, "SELECT owner_id::text FROM assets WHERE id = $1", pgUUID(departingID)); owner != adminID.String() {
+			t.Errorf("the arriving row's owner = %s, want the receiver", owner)
+		}
+	})
+
+	t.Run("TrashArmNeedsNoRelease", func(t *testing.T) {
+		// Same pair, the trash arm: the arriving row is trashed by the
+		// same statement that re-owns it, so the live-only index never
+		// sees it -- and the identity survives, which is the honest
+		// state (a restore brings the row back under its own id).
+		env := newAssetEnv(t, testUploadLimit)
+		graceID, _ := env.newMember(t, "grace@example.com")
+		adminID := env.sessionUserID(t)
+
+		departingID, existingID := uuid.New(), uuid.New()
+		env.insertTimelineAsset(t, existingID, adminID, time.Now().Add(-2*time.Hour), timelineAssetOpts{ready: true, width: 40, height: 30})
+		env.exec(t, "UPDATE assets SET device_asset_id = $1 WHERE id = $2", device, pgUUID(existingID))
+		env.insertRemovalAsset(t, departingID, graceID, removalAssetOpts{
+			checksum: "device-identity-departing", deviceID: device,
+		})
+
+		rec := env.deleteUser(t, env.cookie, graceID, trashBody())
+		requireStatus(t, rec, http.StatusNoContent, "")
+
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at IS NOT NULL AND device_asset_id = $2",
+			pgUUID(departingID), device); got != 1 {
+			t.Errorf("the trashed arriving row lost its own device identity")
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1 AND deleted_at IS NULL", pgUUID(existingID)); got != 1 {
+			t.Errorf("the caller's live copy of another content was trashed")
+		}
+	})
 }
 
 // TestDeleteUserIsAtomic pins the transaction's whole-or-nothing

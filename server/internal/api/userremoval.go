@@ -8,12 +8,17 @@
 //     Photo components alike), the albums and memories, and the tags
 //     attached to them. The departing stream folds into the receiver's
 //     own stream, so the photos keep their place in the family
-//     timeline; a LIVE photo the receiver already holds (the storage
-//     rule keeps one live copy per owner) folds into the receiver's
-//     copy with its memberships, tags, favorites and album cover
-//     following the surviving row. The share grants on the departing
-//     account's albums ride the container: the receiver carries them
-//     and the grantees keep their access.
+//     timeline. Photo content the receiver already holds -- in ANY
+//     state, because the storage's uniqueness rule is owner plus
+//     checksum over the live and the trashed rows alike -- is a
+//     collision the ownership write cannot carry: it folds into the
+//     receiver's copy under the survivor rule (see
+//     foldDuplicateAsset), which keeps the live copy of a mixed pair
+//     and the receiver's own row on a tie, moving the losing copy's
+//     memberships, tags, favorites and album cover onto the survivor.
+//     The share grants on the departing account's albums ride the
+//     container: the receiver carries them and the grantees keep
+//     their access.
 //
 //   - The TRASH arm walks the photos into the CALLING administrator's
 //     trash, where the instance's retention window governs them. The
@@ -24,8 +29,13 @@
 //     trash move, and the family's other source files are never
 //     touched. The move is the one step the transaction cannot do
 //     itself (it needs the operating system's permission), so it runs
-//     ahead of the row writes and every failure compensates the moves
-//     already performed before the transaction rolls back.
+//     ahead of the row writes and EVERY failure after the first move
+//     compensates the moves already performed before the transaction
+//     rolls back -- the re-own's own failures inside the arm as well
+//     as the account row's delete and the commit after it. Content the
+//     calling administrator already holds collides here exactly as it
+//     does on the transfer arm (the same total index), so the caller's
+//     own copy is the fold's destination owner.
 //
 // Both arms settle the rows that would otherwise block the account's
 // deletion -- the photos, the albums, the tag rows, the authorship of
@@ -99,7 +109,10 @@ type userRemovalOutcome struct {
 	// trashedAssets are the live photos the trash arm moved, with
 	// their media kinds (the events' payload).
 	trashedAssets map[uuid.UUID]dbgen.MediaKind
-	// purged are the folded duplicates' file facts.
+	// purged are the collision fold's losing rows, one entry per
+	// purged row (a purged photo's Live Photo component is an entry of
+	// its own, flagged silent); the events of the non-component ones
+	// and the post-commit file half both read this list.
 	purged []purgedMember
 }
 
@@ -190,7 +203,11 @@ func (s *server) DeleteUser(w http.ResponseWriter, r *http.Request, id oapitypes
 	// The rows are committed gone; the events follow. The transfer arm
 	// announces the containers it moved (their walls and audiences
 	// converge through their own reads); the trash arm announces the
-	// containers it removed and every photo whose state transitioned.
+	// containers it removed and every photo whose state transitioned;
+	// both arms announce every row the collision fold purged, because a
+	// client holding that id has to let it go (the folded row is gone
+	// and no view will serve it again). The component rows stay silent:
+	// no client view ever listed a Live Photo's video half.
 	for _, album := range outcome.movedAlbums {
 		s.publishAlbumEvent("album.updated", album, requester.userID)
 	}
@@ -201,6 +218,9 @@ func (s *server) DeleteUser(w http.ResponseWriter, r *http.Request, id oapitypes
 		s.publishAssetEventByID("asset.trashed", asset, kind)
 	}
 	for _, member := range outcome.purged {
+		if !member.component {
+			s.publishAssetEventByID("asset.deleted", member.id, member.kind)
+		}
 		s.removePurgedMemberFiles(r, member)
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -346,12 +366,13 @@ func (s *server) transferUserContent(ctx context.Context, queries *dbgen.Queries
 		return outcome, err
 	}
 
-	// The collision set: a LIVE photo the receiver already holds folds
-	// into the receiver's copy -- memberships, tags, favorites and the
-	// album cover follow the surviving row, and the redundant row goes
-	// through the permanent delete's own sweep (the face clusters
-	// re-home and dissolve before their faces cascade, exactly like
-	// the trash expiry's purge).
+	// The collision set: content the receiver already holds in ANY
+	// state folds into a single surviving row -- the losing copy's
+	// memberships, tags, favorites and album cover move across and the
+	// losing row goes through the permanent delete's own sweep (the
+	// face clusters re-home and dissolve before their faces cascade,
+	// exactly like the trash expiry's purge). The survivor rule lives
+	// in foldDuplicateAsset.
 	duplicates, err := queries.DuplicateOwnedAssets(ctx, dbgen.DuplicateOwnedAssetsParams{
 		ToOwner:   pgUUID(to),
 		FromOwner: pgUUID(from),
@@ -360,11 +381,23 @@ func (s *server) transferUserContent(ctx context.Context, queries *dbgen.Queries
 		return outcome, fmt.Errorf("resolve the content the receiver already holds: %w", err)
 	}
 	for _, duplicate := range duplicates {
-		member, err := s.foldDuplicateAsset(ctx, queries, duplicate)
+		purged, err := s.foldDuplicateAsset(ctx, queries, duplicate)
 		if err != nil {
 			return outcome, err
 		}
-		outcome.purged = append(outcome.purged, member)
+		outcome.purged = append(outcome.purged, purged...)
+	}
+
+	// The device identity's own axis, which the checksum fold cannot
+	// cover (two rows may carry one device id with different content):
+	// the partial (owner, device asset) index allows one LIVE row per
+	// pair, so an arriving live row releases an identity the receiver
+	// already holds live.
+	if err := queries.ReleaseArrivingDeviceIdentity(ctx, dbgen.ReleaseArrivingDeviceIdentityParams{
+		FromOwner: pgUUID(from),
+		ToOwner:   pgUUID(to),
+	}); err != nil {
+		return outcome, fmt.Errorf("release the colliding device identities: %w", err)
 	}
 
 	if err := queries.TransferAssetOwnership(ctx, dbgen.TransferAssetOwnershipParams{
@@ -476,75 +509,147 @@ func (s *server) foldUserStream(ctx context.Context, queries *dbgen.Queries, fro
 	return nil
 }
 
-// foldDuplicateAsset folds one live duplicate into the surviving row
-// and purges the redundant one. The file facts are collected before
-// the row goes (the post-commit file half spends them); the purge runs
-// the permanent delete's own order -- the cluster representatives
-// re-home, the clusters left without members dissolve with their
-// per-user labels, then the row goes and the schema's cascades take
-// the faces, the embeddings, the EXIF and the OCR text.
-func (s *server) foldDuplicateAsset(ctx context.Context, queries *dbgen.Queries, duplicate dbgen.DuplicateOwnedAssetsRow) (purgedMember, error) {
-	from := duplicate.DuplicateID
-	to := duplicate.SurvivingID
-	assetID := uuid.UUID(from.Bytes)
+// foldDuplicateAsset settles one collision of the disposal's fold: the
+// departing row and the destination owner's row hold the same content,
+// and the total (owner, checksum) index -- live and trashed rows alike
+// -- leaves room for only one of them once the ownership write runs.
+// The survivor rule is one law for both arms:
+//
+//   - The LIVE row wins a mixed pair. Content that arrives live stays
+//     visible under the destination owner (an earlier trash decision
+//     about the same content does not bind it -- whoever wants it gone
+//     can trash it again), so a live departing row survives a trashed
+//     destination copy, and a live destination copy survives a trashed
+//     departing row.
+//   - A tie keeps the DESTINATION's row: both live keeps the receiver's
+//     copy (its file, its readiness, its place), both trashed keeps it
+//     with the LATER of the two deletion marks (the family reading is
+//     the generous one: the content stays recoverable as long as either
+//     copy had left).
+//
+// The loser's context moves onto the survivor first -- album
+// memberships, tag links, favorites and any album cover it pinned --
+// because that context describes the content, not the copy. Then the
+// loser is purged through the permanent delete's own sweep, and a
+// purged photo's Live Photo component goes with it: a component row is
+// not content of its own, and left behind it would outlive the photo
+// that names it as an orphan row no view can reach.
+func (s *server) foldDuplicateAsset(ctx context.Context, queries *dbgen.Queries, duplicate dbgen.DuplicateOwnedAssetsRow) ([]purgedMember, error) {
+	departing := duplicate.DepartingID
+	existing := duplicate.ExistingID
+	departingLive := duplicate.DepartingLive
+	existingLive := !duplicate.ExistingDeletedAt.Valid
+	// The survivor rule: the live row wins a mixed pair, and a tie --
+	// both live, or both trashed -- keeps the destination's row.
+	survivor, loser := existing, departing
+	if departingLive != existingLive && departingLive {
+		survivor, loser = departing, existing
+	}
 
 	if err := queries.MoveAssetAlbumMemberships(ctx, dbgen.MoveAssetAlbumMembershipsParams{
-		ToAsset:   to,
-		FromAsset: from,
+		ToAsset:   survivor,
+		FromAsset: loser,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("move the folded photo's album memberships: %w", err)
+		return nil, fmt.Errorf("move the folded photo's album memberships: %w", err)
 	}
 	if err := queries.MoveAssetTagAssignments(ctx, dbgen.MoveAssetTagAssignmentsParams{
-		ToAsset:   to,
-		FromAsset: from,
+		ToAsset:   survivor,
+		FromAsset: loser,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("move the folded photo's tags: %w", err)
+		return nil, fmt.Errorf("move the folded photo's tags: %w", err)
 	}
 	if err := queries.MoveAssetFavorites(ctx, dbgen.MoveAssetFavoritesParams{
-		ToAsset:   to,
-		FromAsset: from,
+		ToAsset:   survivor,
+		FromAsset: loser,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("move the folded photo's favorites: %w", err)
+		return nil, fmt.Errorf("move the folded photo's favorites: %w", err)
 	}
 	if err := queries.MoveAlbumCovers(ctx, dbgen.MoveAlbumCoversParams{
-		ToAsset:   to,
-		FromAsset: from,
+		ToAsset:   survivor,
+		FromAsset: loser,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("move the folded photo's album cover: %w", err)
+		return nil, fmt.Errorf("move the folded photo's album cover: %w", err)
 	}
 
-	row, err := queries.GetAssetByID(ctx, from)
+	// The both-trashed tie keeps the later countdown: the survivor's
+	// mark reaches forward to the departing row's when that one left
+	// later (GREATEST leaves the survivor's own mark alone otherwise).
+	if duplicate.DepartingDeletedAt.Valid && duplicate.ExistingDeletedAt.Valid {
+		if err := queries.ExtendAssetTrashMark(ctx, dbgen.ExtendAssetTrashMarkParams{
+			ID:        survivor,
+			DeletedAt: duplicate.DepartingDeletedAt,
+		}); err != nil {
+			return nil, fmt.Errorf("extend the folded photo's trash mark: %w", err)
+		}
+	}
+
+	row, err := queries.GetAssetByID(ctx, loser)
 	if err != nil {
-		return purgedMember{}, fmt.Errorf("load the folded photo: %w", err)
+		return nil, fmt.Errorf("load the folded photo: %w", err)
 	}
+	members := make([]purgedMember, 0, 2)
+	photo, err := s.purgeFoldedRow(ctx, queries, row)
+	if err != nil {
+		return nil, err
+	}
+	members = append(members, photo)
 
-	// The shared-blob reference count for the file half, taken before
-	// the row goes (the count excludes this row, so it answers the same
-	// either side). An external row counts nothing: its only file of
-	// ours is the trash copy keyed by the id, and the family's source
-	// file is never touched.
+	if !row.LivePhotoVideoID.Valid {
+		return members, nil
+	}
+	// The pair discipline, in the permanent delete's own order: the
+	// photo row goes first (the component delete would otherwise trip
+	// the foreign key the photo still holds on it), then the component
+	// row and its files.
+	component, err := queries.GetAssetByID(ctx, row.LivePhotoVideoID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return members, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("load the folded photo's Live Photo component: %w", err)
+	}
+	purgedComponent, err := s.purgeFoldedRow(ctx, queries, component)
+	if err != nil {
+		return nil, err
+	}
+	return append(members, purgedComponent), nil
+}
+
+// purgeFoldedRow purges one losing row through the permanent delete's
+// own order and answers its post-commit facts: the shared-blob
+// reference count first (taken before the row goes; it excludes the row
+// itself, so it answers the same either side), the cluster sweep (a
+// representative face re-homes before the cascade removes it, a cluster
+// left without members dissolves with its per-user labels), then the
+// row -- the schema's cascades take the faces, the exif, the embeddings
+// and the OCR text. An external row counts no file reference: the only
+// file of ours it names is the trash copy keyed by the id, and the
+// family's source file is never touched.
+func (s *server) purgeFoldedRow(ctx context.Context, queries *dbgen.Queries, row dbgen.Asset) (purgedMember, error) {
+	assetID := uuid.UUID(row.ID.Bytes)
 	var fileRefs int64
 	if row.StorageKind != dbgen.StorageKindExternal {
+		var err error
 		if fileRefs, err = queries.CountAssetFileReferences(ctx, dbgen.CountAssetFileReferencesParams{
 			FilePath: row.FilePath,
 			ID:       row.ID,
 		}); err != nil {
-			return purgedMember{}, fmt.Errorf("count the file references of the folded photo: %w", err)
+			return purgedMember{}, fmt.Errorf("count the file references of the folded photo %s: %w", assetID, err)
 		}
 	}
 
 	if err := queries.RehomeClusterRepresentatives(ctx, dbgen.RehomeClusterRepresentativesParams{
-		AssetID: from,
+		AssetID: row.ID,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("rehome the clusters of the folded photo's faces: %w", err)
+		return purgedMember{}, fmt.Errorf("rehome the clusters of the folded photo's %s faces: %w", assetID, err)
 	}
 	if err := queries.DissolveVacatedClusters(ctx, dbgen.DissolveVacatedClustersParams{
-		AssetID: from,
+		AssetID: row.ID,
 	}); err != nil {
-		return purgedMember{}, fmt.Errorf("dissolve the clusters the folded photo's faces held: %w", err)
+		return purgedMember{}, fmt.Errorf("dissolve the clusters the folded photo's %s faces held: %w", assetID, err)
 	}
-	if _, err := queries.DeleteAssetPermanently(ctx, from); err != nil {
-		return purgedMember{}, fmt.Errorf("delete the folded photo's row: %w", err)
+	if _, err := queries.DeleteAssetPermanently(ctx, row.ID); err != nil {
+		return purgedMember{}, fmt.Errorf("delete the folded photo's row %s: %w", assetID, err)
 	}
 
 	return purgedMember{
@@ -559,15 +664,37 @@ func (s *server) foldDuplicateAsset(ctx context.Context, queries *dbgen.Queries,
 }
 
 // trashUserContent walks the departing account's photos into the
-// caller's trash: the albums and memories go with the account (their
-// memberships, shares and preferences cascade), the photos re-own to
-// the caller with their deletion marks, and an external row's source
-// file moves into the server's trash area ahead of its write. Every
-// row that re-owns is trashed by the same write, so the storage rule's
-// one-live-copy-per-owner cannot collide across the handover.
+// caller's trash: content the caller already holds folds first (the
+// same collision set and survivor rule as the transfer arm, onto the
+// acting administrator), the albums and memories go with the account
+// (their memberships, shares and preferences cascade), the photos
+// re-own to the caller with their deletion marks, and an external row's
+// source file moves into the server's trash area ahead of its write.
 func (s *server) trashUserContent(r *http.Request, queries *dbgen.Queries, actor, from uuid.UUID) (userRemovalOutcome, error) {
 	outcome := userRemovalOutcome{trashedAssets: make(map[uuid.UUID]dbgen.MediaKind)}
 	ctx := r.Context()
+
+	// The collision set first, before any file moves and before the
+	// rows it purges are listed for their events: the total (owner,
+	// checksum) index refuses a re-own onto an owner who holds the same
+	// content in ANY state, so the acting administrator's own copy is
+	// the fold's destination. A purged departing row is gone before the
+	// external listing below, so its source file is never moved for a
+	// row that no longer exists.
+	duplicates, err := queries.DuplicateOwnedAssets(ctx, dbgen.DuplicateOwnedAssetsParams{
+		ToOwner:   pgUUID(actor),
+		FromOwner: pgUUID(from),
+	})
+	if err != nil {
+		return outcome, fmt.Errorf("resolve the content the caller already holds: %w", err)
+	}
+	for _, duplicate := range duplicates {
+		purged, err := s.foldDuplicateAsset(ctx, queries, duplicate)
+		if err != nil {
+			return outcome, err
+		}
+		outcome.purged = append(outcome.purged, purged...)
+	}
 
 	albums, err := queries.ListOwnedAlbumIDs(ctx, pgUUID(from))
 	if err != nil {
