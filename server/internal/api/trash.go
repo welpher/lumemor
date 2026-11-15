@@ -228,6 +228,22 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 		return
 	}
 
+	// A COMPONENT'S DELETE CHANGES ITS STILLS' SHAPE: the link nulls
+	// through the schema, so the stills are read BEFORE the row goes
+	// (afterwards nothing points at it) and each one announces its
+	// change below -- the same convergence the pair maintenance
+	// publishes, so an open wall drops the type mark instead of
+	// keeping a mark for a motion that no longer exists.
+	var orphanedStills []dbgen.ListLivePhotoStillsOfMotionRow
+	if row.IsComponent {
+		stills, err := s.queries.ListLivePhotoStillsOfMotion(r.Context(), row.ID)
+		if err != nil {
+			s.internalError(w, r, "list the component's stills", err)
+			return
+		}
+		orphanedStills = stills
+	}
+
 	// The photo row goes before its linked component video row: the
 	// component delete would otherwise trip the foreign key the photo
 	// still holds on it.
@@ -271,6 +287,18 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 				return
 			}
 		}
+	}
+
+	for _, still := range orphanedStills {
+		if still.DeletedAt.Valid {
+			// A trashed still has no surface to converge (the trash
+			// view renders no type mark).
+			continue
+		}
+		s.events.Publish("asset.updated", map[string]string{
+			"assetId": uuid.UUID(still.ID.Bytes).String(),
+			"kind":    string(dbgen.MediaKindImage),
+		})
 	}
 
 	s.publishAssetEvent("asset.deleted", row)
