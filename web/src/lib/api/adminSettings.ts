@@ -512,3 +512,176 @@ export function saveModelSettings(
 ): Promise<NetworkingSettingsResult<ModelSettings>> {
 	return writeSettings(MODEL_SETTINGS_ENDPOINT, settings, modelSettingsFrom, fetcher);
 }
+
+/** The derivative image settings, exactly the contract's shape. */
+export type ImageSettings = components['schemas']['ImageSettingsResponse'];
+
+/** The run budget, exactly the contract's shape. */
+export type RunBudgetSettings = components['schemas']['RunBudgetSettingsResponse'];
+
+/** The derivative summary's cost line, exactly the contract's shape. */
+export type DerivativesSummary = components['schemas']['DerivativesSummaryResponse'];
+
+const IMAGE_SETTINGS_ENDPOINT = '/api/v1/admin/settings/image';
+const RUN_BUDGET_ENDPOINT = '/api/v1/admin/settings/run-budget';
+const DERIVATIVES_SUMMARY_ENDPOINT = '/api/v1/admin/derivatives/summary';
+const DERIVATIVES_REBUILD_ENDPOINT = '/api/v1/admin/derivatives/rebuild';
+const DERIVATIVES_REBUILD_STOP_ENDPOINT = '/api/v1/admin/derivatives/rebuild/stop';
+
+/** Structurally validate one image settings body; null when it is not one. */
+function imageSettingsFrom(body: unknown): ImageSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<ImageSettings>;
+	if (
+		typeof candidate.tileSize !== 'number' ||
+		typeof candidate.previewSize !== 'number' ||
+		typeof candidate.format !== 'string' ||
+		typeof candidate.fullSize !== 'boolean' ||
+		typeof candidate.rawEmbedded !== 'boolean'
+	) {
+		return null;
+	}
+	return body as ImageSettings;
+}
+
+/** Structurally validate one run budget body; null when it is not one. */
+function runBudgetSettingsFrom(body: unknown): RunBudgetSettings | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<RunBudgetSettings>;
+	if (
+		typeof candidate.concurrencyPreset !== 'string' ||
+		typeof candidate.nightlyEnabled !== 'boolean' ||
+		typeof candidate.nightlyStart !== 'string' ||
+		typeof candidate.nightlyEnd !== 'string' ||
+		candidate.pausedJobs === null ||
+		typeof candidate.pausedJobs !== 'object' ||
+		typeof candidate.pausedJobs.thumbnail !== 'boolean' ||
+		typeof candidate.pausedJobs.metadata !== 'boolean' ||
+		typeof candidate.pausedJobs.transcode !== 'boolean' ||
+		typeof candidate.pausedJobs.ml !== 'boolean' ||
+		typeof candidate.pausedJobs.places !== 'boolean'
+	) {
+		return null;
+	}
+	return body as RunBudgetSettings;
+}
+
+/** Structurally validate one derivative summary body; null when it is not one. */
+function derivativesSummaryFrom(body: unknown): DerivativesSummary | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<DerivativesSummary>;
+	if (
+		typeof candidate.imageCount !== 'number' ||
+		typeof candidate.estimateMinutes !== 'number' ||
+		!Number.isInteger(candidate.imageCount) ||
+		!Number.isInteger(candidate.estimateMinutes)
+	) {
+		return null;
+	}
+	return body as DerivativesSummary;
+}
+
+/** GET /api/v1/admin/settings/image: the derivative image settings. */
+export function getImageSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<ImageSettings>> {
+	return readSettings(IMAGE_SETTINGS_ENDPOINT, imageSettingsFrom, fetcher);
+}
+
+/** PUT /api/v1/admin/settings/image: save the sizes and encoding wholesale. */
+export function saveImageSettings(
+	settings: ImageSettings,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<ImageSettings>> {
+	return writeSettings(IMAGE_SETTINGS_ENDPOINT, settings, imageSettingsFrom, fetcher);
+}
+
+/** GET /api/v1/admin/settings/run-budget: the background work's budget. */
+export function getRunBudgetSettings(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<RunBudgetSettings>> {
+	return readSettings(RUN_BUDGET_ENDPOINT, runBudgetSettingsFrom, fetcher);
+}
+
+/** PUT /api/v1/admin/settings/run-budget: save the budget wholesale. */
+export function saveRunBudgetSettings(
+	settings: RunBudgetSettings,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<RunBudgetSettings>> {
+	return writeSettings(RUN_BUDGET_ENDPOINT, settings, runBudgetSettingsFrom, fetcher);
+}
+
+/** GET /api/v1/admin/derivatives/summary: the image card's cost line. */
+export function getDerivativesSummary(
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<NetworkingSettingsResult<DerivativesSummary>> {
+	return readSettings(DERIVATIVES_SUMMARY_ENDPOINT, derivativesSummaryFrom, fetcher);
+}
+
+/** One rebuild action's outcome: the run identifier, or the failure's i18n key. */
+export type RebuildResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
+
+/** POST /api/v1/admin/derivatives/rebuild: start (or join) the rebuild run. */
+export async function rebuildDerivatives(
+	scope: 'missing' | 'all',
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<RebuildResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			DERIVATIVES_REBUILD_ENDPOINT,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ scope })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as { jobRunId?: unknown };
+	if (typeof candidate?.jobRunId !== 'string') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, jobRunId: candidate.jobRunId };
+}
+
+/** POST /api/v1/admin/derivatives/rebuild/stop: ask the in-flight run to stop. */
+export async function stopDerivativesRebuild(fetcher: typeof fetch = globalThis.fetch): Promise<RebuildResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(DERIVATIVES_REBUILD_STOP_ENDPOINT, { method: 'POST' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	let body: unknown;
+	try {
+		body = await response.json();
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as { jobRunId?: unknown };
+	if (typeof candidate?.jobRunId !== 'string') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, jobRunId: candidate.jobRunId };
+}

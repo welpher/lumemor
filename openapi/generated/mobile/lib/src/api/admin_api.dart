@@ -16,7 +16,10 @@ import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
 import 'package:lumemor_api/src/model/delete_model200_response.dart';
+import 'package:lumemor_api/src/model/derivatives_summary_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/image_settings_response.dart';
+import 'package:lumemor_api/src/model/image_settings_update_request.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
@@ -31,6 +34,10 @@ import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source_switch_request.dart';
 import 'package:lumemor_api/src/model/model_source_switch_response.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
+import 'package:lumemor_api/src/model/rebuild_derivatives_request.dart';
+import 'package:lumemor_api/src/model/rebuild_derivatives_response.dart';
+import 'package:lumemor_api/src/model/run_budget_settings_response.dart';
+import 'package:lumemor_api/src/model/run_budget_settings_update_request.dart';
 import 'package:lumemor_api/src/model/storage_settings_response.dart';
 import 'package:lumemor_api/src/model/storage_settings_update_request.dart';
 import 'package:lumemor_api/src/model/tiles_settings_response.dart';
@@ -435,6 +442,174 @@ class AdminApi {
     );
   }
 
+  /// Read the derivative library&#39;s size and rebuild estimate.
+  /// The image card&#39;s cost line: how many image assets the library carries and how long a full derivative rebuild would take, as the instance itself estimates it.  THE ESTIMATE IS DECLARED, NOT MEASURED: the server multiplies the image count by one second per asset (one decode plus the tile and view encodes at the shipped settings), divides by the concurrency the run-budget dial currently maps, and rounds up to whole minutes, with one minute the floor. The answer is the plan-of-record number the dialog quotes back before the rebuild starts, never a promise: NAS-class storage, the encoding format and the dial all move it.  The count covers IMAGE assets only: the rebuild re-derives the three serving sizes of images; video assets carry a poster frame the rebuild does not touch. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [DerivativesSummaryResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<DerivativesSummaryResponse>> getDerivativesSummary({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/derivatives/summary';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    DerivativesSummaryResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(DerivativesSummaryResponse),
+      ) as DerivativesSummaryResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<DerivativesSummaryResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Read the derivative image settings.
+  /// The image card&#39;s document: the sizes and encoding every NEW derivation runs at. Five knobs, the honest set --  - &#x60;tileSize&#x60;: the timeline tile&#39;s bounding box, 250 (the   shipped default) or 320 (sharper on high-density screens). - &#x60;previewSize&#x60;: the viewer&#39;s inline preview long edge, 1080   (the shipped default), 1440 or 2048. - &#x60;format&#x60;: the serving copies&#39; encoding, &#x60;avif&#x60; (smaller,   slower to encode) or &#x60;webp&#x60; (faster, a little larger). On a   weak machine AVIF makes first browsing slower; the card says   so beside the knob. - &#x60;fullSize&#x60;: whether the thumbnail job also derives the   full-resolution serving copy (shipped OFF: the viewer reads   the preview, which is enough to look at and cheaper to   store). - &#x60;rawEmbedded&#x60;: whether a RAW source derives from its   embedded preview (shipped ON).  THE COST STATEMENT IS THE CARD&#39;S, NOT THIS DOCUMENT&#39;S: saving these values recomputes nothing. Derivatives already on disk stay exactly as they are; only assets derived AFTER the save (new uploads, and the explicit rebuild run) use the new values. A rebuild mid-flight keeps the parameters it started with.  The color space (P3), progressive encoding and the per-size quality are deliberately NOT knobs: a family instance does not need twenty dials.  A corrupt settings row answers the defaults with the corruption logged server-side. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [ImageSettingsResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<ImageSettingsResponse>> getImageSettings({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/settings/image';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    ImageSettingsResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(ImageSettingsResponse),
+      ) as ImageSettingsResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<ImageSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Read one model source probe&#39;s result.
   /// The probe the switch dialog polls. A source probe -- the download-to-staging of a URL, or the accept of an uploaded file, then the sha256 check when one was given, the sandbox load of the ONNX graph and the slot contract&#39;s shape and dimension checks -- runs in the server&#39;s background after the probe POST answered 202; this read answers the probe&#39;s current state, whatever it is: running (with its download progress), ok (with the facts the dialog renders), error (with the reason that names the exact check that failed) or warn (the checks passed, the host is not on the download sources list, and the save may still proceed).  A probe is transient: its record lives for a few minutes after it settles, then it is gone -- an unknown or expired probeId answers 404 and the dialog simply probes again. 
   ///
@@ -594,6 +769,90 @@ class AdminApi {
     }
 
     return Response<ModelSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Read the background work&#39;s budget.
+  /// The task panel&#39;s run-settings document: the three dials that decide WHEN the background work spends the machine&#39;s capacity --  - &#x60;concurrencyPreset&#x60;: the dial&#39;s three steps, &#x60;light&#x60;   (one job at a time), &#x60;standard&#x60; (half the cores) and &#x60;full&#x60;   (all but one core). The panel never asks for a NUMBER: a   NAS owner does not know what to type, so the dial speaks in   steps and the mapping is the honest explanation line. - &#x60;nightlyEnabled&#x60; with &#x60;nightlyStart&#x60;/&#x60;nightlyEnd&#x60;: the night   window (shipped 02:00-06:00, off). While it is on, the HEAVY   work -- derivative rebuilds, video transcodes, model   recomputation -- runs only inside it; a window that ends   stops the work at the asset it just finished and the next   window resumes from there. A window that spans midnight   (start after end) is a legal shape. Uploads and browsing   are NEVER held by the window -- they are foreground work,   not background jobs. - &#x60;pausedJobs&#x60;: the five per-kind pause switches   (thumbnails, metadata, transcode, machine learning, place   resolution). A paused kind&#39;s NEW jobs sit held; the one   already running finishes. Uploads of a paused kind enqueue   without being blocked -- the request never waits, the job   does.  Both the concurrency preset and the pauses take effect immediately: every job reads this document when it starts, so a save changes what the NEXT job sees, and a held job wakes within the hold&#39;s own granularity to re-read it.  A corrupt settings row answers the defaults with the corruption logged server-side. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [RunBudgetSettingsResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<RunBudgetSettingsResponse>> getRunBudgetSettings({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/settings/run-budget';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    RunBudgetSettingsResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(RunBudgetSettingsResponse),
+      ) as RunBudgetSettingsResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<RunBudgetSettingsResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -1486,6 +1745,112 @@ class AdminApi {
     );
   }
 
+  /// Start a derivative rebuild run.
+  /// The image card&#39;s explicit rebuild: one run that re-derives the serving copies of every image asset at the settings the instance currently carries.  THE COST IS NEVER SILENT: the image card states what the settings change (nothing is recomputed until this run is asked for), and the two scopes are the honest pair --  - &#x60;missing&#x60; derives only the assets whose current-format   serving files are absent: a library that has never been   rebuilt, or one that gained the full-size copy, pays only   for what it lacks (minutes on a family library). - &#x60;all&#x60; re-derives every image asset at the current settings   and removes the other encoding format&#39;s stale files: the CPU   belongs to the rebuild for the estimate&#39;s duration, and   browsing is slower while it runs.  THE RUN IS A JOB: it lists on the task panel with the four states, its progress counts the image assets it visited, and the pause and window rules that govern thumbnail-class work hold it the same way -- a night window that closes stops it at the asset it just finished, and the next window resumes from there, never from zero.  The endpoint is idempotent the way the place re-resolution is: a rebuild run still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; a finished run never blocks a new one.  SETTINGS CHANGES NEVER TRIGGER THIS: saving the image settings writes the document only -- the serving copies already on disk stay as they are until an explicit rebuild re-derives them. 
+  ///
+  /// Parameters:
+  /// * [rebuildDerivativesRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [RebuildDerivativesResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<RebuildDerivativesResponse>> rebuildDerivatives({ 
+    required RebuildDerivativesRequest rebuildDerivativesRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/derivatives/rebuild';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(RebuildDerivativesRequest);
+      _bodyData = _serializers.serialize(rebuildDerivativesRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    RebuildDerivativesResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(RebuildDerivativesResponse),
+      ) as RebuildDerivativesResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<RebuildDerivativesResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Start a full place re-resolution run.
   /// The places-data-update path of the admin surface: one run that re-resolves the place of EVERY asset whose exif row carries GPS coordinates, against the baked place data the server currently runs on. The run that refills resolutions after the baked GeoNames data changed -- the startup import of a rebuilt image replaces the place tables and, through the schema&#39;s ON DELETE SET NULL, releases every stale resolution; this run is the deliberate step that refills them. (The metadata job resolves every NEW upload on its own; this run only matters for re-resolving what already exists.)  The scope is every GPS-bearing asset row whatever its lifecycle state -- place resolution is metadata, not visibility. &#x60;total&#x60; and &#x60;done&#x60; of the run&#39;s &#x60;job_runs&#x60; row count those assets and &#x60;failed&#x60; the ones whose re-resolution write failed.  The endpoint is idempotent the way the model rerun is: a place re-resolution run still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; a finished (or failed) run never blocks a new one.  The run is API-only for now: no admin page button is wired to it yet (the job panel&#39;s listing shows its progress like any other run). 
   ///
@@ -1824,6 +2189,90 @@ class AdminApi {
     );
   }
 
+  /// Stop the in-flight derivative rebuild run.
+  /// The task panel&#39;s stop for a rebuild in flight: the run&#39;s row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild&#39;s &#x60;missing&#x60; scope skips them.  The run closes &#x60;failed&#x60; with &#x60;failed&#x60; counting nothing: the task panel renders the reason line as stopped, not as a broken run -- the admin asked for this ending.  A stop with no rebuild in flight (the run finished between the panel&#39;s listing and the click, or none ever started) answers 409 &#x60;REBUILD_NOT_RUNNING&#x60;: the flag has nothing to land on. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [RebuildDerivativesResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<RebuildDerivativesResponse>> stopDerivativesRebuild({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/derivatives/rebuild/stop';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    RebuildDerivativesResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(RebuildDerivativesResponse),
+      ) as RebuildDerivativesResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<RebuildDerivativesResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Switch a slot onto a probed source.
   /// The second half of a source import, and the official list&#39;s switch: the slot is switched onto the source the request names, under the slot&#39;s lock. The answer is 202 -- the switch itself is seconds, the recalculation its semantics demand is an async run the task panel owns.  The body depends on the kind:  - &#x60;builtin&#x60; (the official list): &#x60;modelId&#x60; names the manifest   entry; nothing was probed because the entry is the   validated list. A cross-dimension switch of the embed slot   requires &#x60;confirmWipe: true&#x60; -- the confirmation is the   dialog&#39;s contract, and the response reports the wipe&#39;s facts   exactly as the activation switch does. - &#x60;url&#x60; or &#x60;file&#x60; (a custom source): &#x60;probeId&#x60; names a probe   that finished OK -- the server never reuses an unverified   result, a missing or failed probe answers 400. The model is   registered from the staged bytes (same sha256 reuse: bytes   already on disk are never stored twice), activated, and the   slot&#39;s recalculation run is enqueued.  The slot lock: a switch stops being possible while one is in flight (409) -- the same-dimension switch is seconds, but the recalculation it started is the slot&#39;s business, and two overlapping switches would race its products. The switch refuses to lose the named persons: a face slot&#39;s recalculation inherits the cluster names by overlap, so the confirm copy states what is kept; nothing here deletes a user label.  A failed switch changes nothing: the slot keeps its previous model and its products. 
   ///
@@ -1932,6 +2381,112 @@ class AdminApi {
     );
   }
 
+  /// Save the derivative image settings.
+  /// The settings save. Every field is contract-required (an omitted one would decode as its zero value and silently change the posture), and each value is checked against its enum: the tile sizes 250 and 320, the preview sizes 1080, 1440 and 2048, the encodings &#x60;avif&#x60; and &#x60;webp&#x60;.  The save writes the document and nothing else: no derivation starts, no existing serving file is touched, and a rebuild already running keeps its own starting parameters. The new values bind at the next derivation -- a new upload&#39;s thumbnail job, or the explicit rebuild run the image card starts.  The save takes effect without a restart: the thumbnail job reads the settings at run time, so an upload that arrives after the save derives at them. 
+  ///
+  /// Parameters:
+  /// * [imageSettingsUpdateRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [ImageSettingsResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<ImageSettingsResponse>> updateImageSettings({ 
+    required ImageSettingsUpdateRequest imageSettingsUpdateRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/settings/image';
+    final _options = Options(
+      method: r'PUT',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(ImageSettingsUpdateRequest);
+      _bodyData = _serializers.serialize(imageSettingsUpdateRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    ImageSettingsResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(ImageSettingsResponse),
+      ) as ImageSettingsResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<ImageSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Save the model download settings and download sources.
   /// The settings save. &#x60;autoDownload&#x60;, &#x60;allowedHosts&#x60; and &#x60;mirrorBaseUrl&#x60; are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  &#x60;allowedHosts&#x60; replaces the stored list wholesale; every entry must be a hostname, optionally with a leading &#x60;*.&#x60; wildcard label and an optional port. &#x60;mirrorBaseUrl&#x60;, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins &#x60;allowedHosts&#x60; automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
   ///
@@ -2027,6 +2582,112 @@ class AdminApi {
     }
 
     return Response<ModelSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Save the background work&#39;s budget.
+  /// The budget save. Every field is contract-required (an omitted one would decode as its zero value and silently change the posture), and each value is checked: the concurrency preset against its three-step enum, the two times against the &#x60;HH:MM&#x60; form, and the five pause switches against booleans.  The two times must differ: an equal pair would define a zero-length window, which reads as a window that never opens -- turning the window OFF is the honest way to say that, so the save refuses the ambiguous shape.  The save takes effect immediately, without a restart: the next job a worker picks up reads the fresh document, and a job already held wakes within its hold granularity and re-reads. The switches never touch a job already running -- the one in flight finishes, which is the card&#39;s own headline.  The window and the pauses NEVER gate an upload or a serving request: they are worker-side facts. The upload path enqueues without consulting them, and the browser&#39;s reads are answered whatever the budget says. 
+  ///
+  /// Parameters:
+  /// * [runBudgetSettingsUpdateRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [RunBudgetSettingsResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<RunBudgetSettingsResponse>> updateRunBudgetSettings({ 
+    required RunBudgetSettingsUpdateRequest runBudgetSettingsUpdateRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/settings/run-budget';
+    final _options = Options(
+      method: r'PUT',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(RunBudgetSettingsUpdateRequest);
+      _bodyData = _serializers.serialize(runBudgetSettingsUpdateRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    RunBudgetSettingsResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(RunBudgetSettingsResponse),
+      ) as RunBudgetSettingsResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<RunBudgetSettingsResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

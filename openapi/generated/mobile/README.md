@@ -91,8 +91,11 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**deleteModel**](doc/AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
+[*AdminApi*](doc/AdminApi.md) | [**getDerivativesSummary**](doc/AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
+[*AdminApi*](doc/AdminApi.md) | [**getImageSettings**](doc/AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
 [*AdminApi*](doc/AdminApi.md) | [**getModelProbe**](doc/AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [*AdminApi*](doc/AdminApi.md) | [**getModelSettings**](doc/AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
+[*AdminApi*](doc/AdminApi.md) | [**getRunBudgetSettings**](doc/AdminApi.md#getrunbudgetsettings) | **GET** /admin/settings/run-budget | Read the background work&#39;s budget.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTilesSettings**](doc/AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTranscodingSettings**](doc/AdminApi.md#gettranscodingsettings) | **GET** /admin/settings/transcoding | Read the video transcoding settings.
@@ -103,12 +106,16 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**listModels**](doc/AdminApi.md#listmodels) | **GET** /admin/models | List the registered models and the download run&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [*AdminApi*](doc/AdminApi.md) | [**probeModelSource**](doc/AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
+[*AdminApi*](doc/AdminApi.md) | [**rebuildDerivatives**](doc/AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**runUpdateCheck**](doc/AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
+[*AdminApi*](doc/AdminApi.md) | [**stopDerivativesRebuild**](doc/AdminApi.md#stopderivativesrebuild) | **POST** /admin/derivatives/rebuild/stop | Stop the in-flight derivative rebuild run.
 [*AdminApi*](doc/AdminApi.md) | [**switchModelSource**](doc/AdminApi.md#switchmodelsource) | **POST** /admin/models/{slot}/source | Switch a slot onto a probed source.
+[*AdminApi*](doc/AdminApi.md) | [**updateImageSettings**](doc/AdminApi.md#updateimagesettings) | **PUT** /admin/settings/image | Save the derivative image settings.
 [*AdminApi*](doc/AdminApi.md) | [**updateModelSettings**](doc/AdminApi.md#updatemodelsettings) | **PUT** /admin/settings/models | Save the model download settings and download sources.
+[*AdminApi*](doc/AdminApi.md) | [**updateRunBudgetSettings**](doc/AdminApi.md#updaterunbudgetsettings) | **PUT** /admin/settings/run-budget | Save the background work&#39;s budget.
 [*AdminApi*](doc/AdminApi.md) | [**updateStorageSettings**](doc/AdminApi.md#updatestoragesettings) | **PUT** /admin/settings/storage | Validate and save the storage template.
 [*AdminApi*](doc/AdminApi.md) | [**updateTilesSettings**](doc/AdminApi.md#updatetilessettings) | **PUT** /admin/settings/tiles | Save the map tile source setting.
 [*AdminApi*](doc/AdminApi.md) | [**updateTranscodingSettings**](doc/AdminApi.md#updatetranscodingsettings) | **PUT** /admin/settings/transcoding | Save the video transcoding settings.
@@ -221,14 +228,19 @@ Class | Method | HTTP request | Description
  - [CameraFacetCount](doc/CameraFacetCount.md)
  - [ClusterDetail](doc/ClusterDetail.md)
  - [ClusterFaceResponse](doc/ClusterFaceResponse.md)
+ - [ConcurrencyPreset](doc/ConcurrencyPreset.md)
  - [CreateAdminRequest](doc/CreateAdminRequest.md)
  - [DeleteModel200Response](doc/DeleteModel200Response.md)
+ - [DerivativeFormat](doc/DerivativeFormat.md)
+ - [DerivativesSummaryResponse](doc/DerivativesSummaryResponse.md)
  - [DeviceSession](doc/DeviceSession.md)
  - [DownloadFormat](doc/DownloadFormat.md)
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
  - [FaceDetail](doc/FaceDetail.md)
  - [FaceDetailAsset](doc/FaceDetailAsset.md)
+ - [ImageSettingsResponse](doc/ImageSettingsResponse.md)
+ - [ImageSettingsUpdateRequest](doc/ImageSettingsUpdateRequest.md)
  - [JobRunKind](doc/JobRunKind.md)
  - [JobRunListResponse](doc/JobRunListResponse.md)
  - [JobRunResponse](doc/JobRunResponse.md)
@@ -268,6 +280,7 @@ Class | Method | HTTP request | Description
  - [PairingConsumeRequest](doc/PairingConsumeRequest.md)
  - [PairingTokenResponse](doc/PairingTokenResponse.md)
  - [PasswordChangeRequest](doc/PasswordChangeRequest.md)
+ - [PausedJobsState](doc/PausedJobsState.md)
  - [PersonAvatarResponse](doc/PersonAvatarResponse.md)
  - [PersonBirthdateResponse](doc/PersonBirthdateResponse.md)
  - [PersonFacetCount](doc/PersonFacetCount.md)
@@ -277,8 +290,12 @@ Class | Method | HTTP request | Description
  - [PlaceFacetCount](doc/PlaceFacetCount.md)
  - [PlaceSummary](doc/PlaceSummary.md)
  - [PlacesRerunResponse](doc/PlacesRerunResponse.md)
+ - [RebuildDerivativesRequest](doc/RebuildDerivativesRequest.md)
+ - [RebuildDerivativesResponse](doc/RebuildDerivativesResponse.md)
  - [RemoveAlbumItemsResponse](doc/RemoveAlbumItemsResponse.md)
  - [RemoveTagAssetsResponse](doc/RemoveTagAssetsResponse.md)
+ - [RunBudgetSettingsResponse](doc/RunBudgetSettingsResponse.md)
+ - [RunBudgetSettingsUpdateRequest](doc/RunBudgetSettingsUpdateRequest.md)
  - [SearchFacets](doc/SearchFacets.md)
  - [SearchResponse](doc/SearchResponse.md)
  - [ServerInfo](doc/ServerInfo.md)

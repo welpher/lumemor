@@ -42,7 +42,7 @@ VALUES ($1, $2, $3, $4);
 -- the scans are independent, and the guard's scope is the pin (a
 -- global kind lookup would serialize every album's scan behind one
 -- unrelated one).
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1
   AND album_id = $2
@@ -67,7 +67,7 @@ WHERE id = $1;
 -- queued or running). The download endpoint's idempotence lookup: an
 -- in-flight run answers 200 with its identifier instead of a second
 -- enqueue.
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1 AND state IN ('queued', 'running')
 ORDER BY created_at DESC, id DESC
@@ -79,7 +79,7 @@ LIMIT 1;
 -- most recent finished run answers 200 the same way (a repeated click
 -- neither re-downloads a landed group nor piles up runs; the job's own
 -- retries own the recovery of a failed one).
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1
 ORDER BY created_at DESC, id DESC
@@ -131,7 +131,7 @@ WHERE id = $1;
 -- The task panel's listing: the newest runs across every kind, in
 -- creation order (the uuidv7 id as the tiebreak). The limit is the
 -- page bound the admin surface pins (default 50, maximum 200).
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 ORDER BY created_at DESC, id DESC
 LIMIT $1;
@@ -140,6 +140,38 @@ LIMIT $1;
 -- One run's row: the driver reads its total at pick-up (the started
 -- event echoes the enqueue-time scope, the durable truth, not a
 -- recount).
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
+FROM job_runs
+WHERE id = $1;
+
+-- name: SetJobRunResumeFrom :exec
+-- The rebuild walk's breakpoint write: the id of the last asset the
+-- run finished, so a window edge or a pause re-enters past
+-- everything already re-derived. Other kinds never write it.
+UPDATE job_runs
+SET resume_from = $2, updated_at = now()
+WHERE id = $1;
+
+-- name: ClearJobRunResumeFrom :exec
+-- The run's completion write: the cursor is the walk's own scratch,
+-- cleared when the walk ends (succeeded or failed) so a finished row
+-- carries no dangling resume state.
+UPDATE job_runs
+SET resume_from = NULL, updated_at = now()
+WHERE id = $1;
+
+-- name: RequestJobRunStop :exec
+-- The task panel's stop: marks the in-flight run asked-to-stop. The
+-- driver -- which checks the flag between assets -- closes the run at
+-- the asset it just finished. Nothing happens when no run of the id
+-- is in flight (the flag lands on a closed row harmlessly).
+UPDATE job_runs
+SET stop_requested = true, updated_at = now()
+WHERE id = $1
+  AND state IN ('queued', 'running');
+
+-- name: GetJobRunStopRequested :one
+-- The rebuild driver's per-page stop check: one boolean read.
+SELECT stop_requested
 FROM job_runs
 WHERE id = $1;

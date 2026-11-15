@@ -660,3 +660,428 @@ func TestNewSettingsFacesGuardPinsTheAdminRole(t *testing.T) {
 		})
 	}
 }
+
+// The image card's settings face and the run budget's face: the same
+// GET/PUT shape over the instance_settings rows the derivative
+// settings own (the image card's five knobs; the task panel's three
+// dials). Their tests ride this file's env -- the settings faces are
+// one surface family.
+
+// TestImageSettingsGetAnswersDefault pins the read of a fresh
+// instance: the shipped posture -- the 250 tile, the 1080 preview,
+// AVIF, no full-size copy, RAW sources deriving from their embedded
+// previews.
+func TestImageSettingsGetAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	rec := env.getSetting(t, "image", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET image settings status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode image settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.TileSize != 250 || settings.PreviewSize != 1080 {
+		t.Errorf("sizes = %d/%d, want the shipped 250/1080", settings.TileSize, settings.PreviewSize)
+	}
+	if settings.Format != apigen.Avif {
+		t.Errorf("format = %q, want the shipped avif", settings.Format)
+	}
+	if settings.FullSize {
+		t.Error("fullSize = true, want the shipped off")
+	}
+	if !settings.RawEmbedded {
+		t.Error("rawEmbedded = false, want the shipped on")
+	}
+}
+
+// TestImageSettingsPutSavesDocument pins the save: a full document
+// persists (answering the saved value) and the read adopts it; a
+// second save replaces the row (the setting is one value).
+func TestImageSettingsPutSavesDocument(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	body := `{"tileSize":320,"previewSize":1440,"format":"webp","fullSize":false,"rawEmbedded":true}`
+	rec := env.putSetting(t, "image", body, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT image settings status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode image settings %q: %v", rec.Body.String(), err)
+	}
+	if settings.TileSize != 320 || settings.PreviewSize != 1440 || settings.Format != apigen.Webp || settings.FullSize || !settings.RawEmbedded {
+		t.Errorf("answered settings = %+v, want the saved document", settings)
+	}
+
+	rec = env.getSetting(t, "image", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET after the save status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	settings = apigen.ImageSettingsResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode reread image settings: %v", err)
+	}
+	if settings.TileSize != 320 || settings.Format != apigen.Webp {
+		t.Errorf("reread settings = %+v, want the saved document persisted", settings)
+	}
+}
+
+// TestImageSettingsPutRejectsInvalid pins the validation: a missing
+// required field or a value outside its enum answers 400 naming the
+// field, and nothing is written.
+func TestImageSettingsPutRejectsInvalid(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+	for _, tt := range []struct {
+		name   string
+		body   string
+		fields []string
+	}{
+		{
+			name:   "missing tileSize",
+			body:   `{"previewSize":1080,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"tileSize"},
+		},
+		{
+			name:   "tileSize out of enum",
+			body:   `{"tileSize":500,"previewSize":1080,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"tileSize"},
+		},
+		{
+			name:   "previewSize out of enum",
+			body:   `{"tileSize":250,"previewSize":9999,"format":"avif","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"previewSize"},
+		},
+		{
+			name:   "format out of enum",
+			body:   `{"tileSize":250,"previewSize":1080,"format":"jpegxl","fullSize":false,"rawEmbedded":true}`,
+			fields: []string{"format"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := env.putSetting(t, "image", tt.body, env.cookie)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %q)", rec.Code, rec.Body.String())
+			}
+			var envelope struct {
+				Code    string   `json:"code"`
+				Details struct{} `json:"details"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode the error envelope: %v", err)
+			}
+			if envelope.Code != "VALIDATION_FAILED" {
+				t.Errorf("code = %q, want VALIDATION_FAILED", envelope.Code)
+			}
+		})
+	}
+	// Nothing was written: the read still answers the defaults.
+	rec := env.getSetting(t, "image", env.cookie)
+	var settings apigen.ImageSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &settings); err != nil {
+		t.Fatalf("decode the untouched read: %v", err)
+	}
+	if settings.TileSize != 250 || settings.Format != apigen.Avif {
+		t.Errorf("settings after the rejected saves = %+v, want the untouched defaults", settings)
+	}
+}
+
+// TestRunBudgetSettingsGetAnswersDefault pins the read of a fresh
+// instance: the standard dial, the window off (the shipped times ride
+// along), nothing paused.
+func TestRunBudgetSettingsGetAnswersDefault(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	rec := env.getSetting(t, "run-budget", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET run budget status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var budget apigen.RunBudgetSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &budget); err != nil {
+		t.Fatalf("decode run budget %q: %v", rec.Body.String(), err)
+	}
+	if budget.ConcurrencyPreset != apigen.ConcurrencyPresetStandard {
+		t.Errorf("preset = %q, want the standard step", budget.ConcurrencyPreset)
+	}
+	if budget.NightlyEnabled {
+		t.Error("nightlyEnabled = true, want the shipped off")
+	}
+	if budget.NightlyStart != "02:00" || budget.NightlyEnd != "06:00" {
+		t.Errorf("window = %s-%s, want the shipped 02:00-06:00", budget.NightlyStart, budget.NightlyEnd)
+	}
+	if budget.PausedJobs.Thumbnail || budget.PausedJobs.Metadata || budget.PausedJobs.Transcode || budget.PausedJobs.Ml || budget.PausedJobs.Places {
+		t.Errorf("paused jobs = %+v, want nothing paused", budget.PausedJobs)
+	}
+}
+
+// TestRunBudgetSettingsPutSavesDocument pins the save: a full
+// document persists and the read adopts it.
+func TestRunBudgetSettingsPutSavesDocument(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+
+	body := `{"concurrencyPreset":"light","nightlyEnabled":true,"nightlyStart":"01:30","nightlyEnd":"05:30","pausedJobs":{"thumbnail":true,"metadata":false,"transcode":false,"ml":false,"places":false}}`
+	rec := env.putSetting(t, "run-budget", body, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT run budget status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var budget apigen.RunBudgetSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &budget); err != nil {
+		t.Fatalf("decode run budget %q: %v", rec.Body.String(), err)
+	}
+	if budget.ConcurrencyPreset != apigen.ConcurrencyPresetLight || !budget.NightlyEnabled || budget.NightlyStart != "01:30" || !budget.PausedJobs.Thumbnail {
+		t.Errorf("answered budget = %+v, want the saved document", budget)
+	}
+
+	rec = env.getSetting(t, "run-budget", env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET after the save status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	budget = apigen.RunBudgetSettingsResponse{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &budget); err != nil {
+		t.Fatalf("decode the reread budget: %v", err)
+	}
+	if budget.ConcurrencyPreset != apigen.ConcurrencyPresetLight || !budget.NightlyEnabled {
+		t.Errorf("reread budget = %+v, want the saved document persisted", budget)
+	}
+}
+
+// TestRunBudgetSettingsPutRejectsInvalid pins the validation: a
+// missing field, a preset outside its enum, a malformed time, an
+// equal-time window and a missing pause switch each answer 400, and
+// nothing is written.
+func TestRunBudgetSettingsPutRejectsInvalid(t *testing.T) {
+	env := newStorageSettingsEnv(t)
+	for _, tt := range []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing nightlyStart",
+			body: `{"concurrencyPreset":"light","nightlyEnabled":false,"nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"ml":false,"places":false}}`,
+		},
+		{
+			name: "preset out of enum",
+			body: `{"concurrencyPreset":"turbo","nightlyEnabled":false,"nightlyStart":"02:00","nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"ml":false,"places":false}}`,
+		},
+		{
+			name: "malformed start time",
+			body: `{"concurrencyPreset":"light","nightlyEnabled":true,"nightlyStart":"2:0","nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"ml":false,"places":false}}`,
+		},
+		{
+			name: "equal times",
+			body: `{"concurrencyPreset":"light","nightlyEnabled":true,"nightlyStart":"06:00","nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"ml":false,"places":false}}`,
+		},
+		{
+			name: "missing pause switch",
+			body: `{"concurrencyPreset":"light","nightlyEnabled":false,"nightlyStart":"02:00","nightlyEnd":"06:00","pausedJobs":{"thumbnail":false,"metadata":false,"transcode":false,"places":false}}`,
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := env.putSetting(t, "run-budget", tt.body, env.cookie)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %q)", rec.Code, rec.Body.String())
+			}
+			var envelope struct {
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode the error envelope: %v", err)
+			}
+			if envelope.Code != "VALIDATION_FAILED" {
+				t.Errorf("code = %q, want VALIDATION_FAILED", envelope.Code)
+			}
+		})
+	}
+	rec := env.getSetting(t, "run-budget", env.cookie)
+	var budget apigen.RunBudgetSettingsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &budget); err != nil {
+		t.Fatalf("decode the untouched read: %v", err)
+	}
+	if budget.ConcurrencyPreset != apigen.ConcurrencyPresetStandard {
+		t.Errorf("budget after the rejected saves = %+v, want the untouched defaults", budget)
+	}
+}
+
+// The derivative actions' endpoint tests: the summary read, the
+// rebuild start (validation, the in-flight join) and the stop (the
+// 409 with nothing in flight). The walk's own behavior is the jobs
+// package's; these pin the endpoints' contract shapes.
+
+// fakeRebuildEnqueuer records the enqueue's scope: the handler-level
+// seam the tests inject instead of a real queue.
+type fakeRebuildEnqueuer struct {
+	scope string
+	calls int
+}
+
+func (f *fakeRebuildEnqueuer) EnqueueDerivativesRebuild(_ context.Context, scope string) (uuid.UUID, error) {
+	f.calls++
+	f.scope = scope
+	id, _ := uuid.NewV7()
+	return id, nil
+}
+
+// newDerivativesEnv is the settings env with a rebuild seam wired.
+func newDerivativesEnv(t *testing.T) (*storageSettingsEnv, *fakeRebuildEnqueuer) {
+	t.Helper()
+	pool := newSetupEnv(t)
+	seam := &fakeRebuildEnqueuer{}
+	router := NewRouter(&Deps{Pool: pool, Version: testVersion, DerivativesRebuilds: seam})
+	rec := postAdmin(t, router, createAdminBody(t, "ada@example.com", testPassword, nil))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create admin: status = %d, want %d", rec.Code, http.StatusCreated)
+	}
+	cookie, _ := loginCookie(t, router, "ada@example.com", testPassword, "derivatives-tests")
+	return &storageSettingsEnv{router: router, pool: pool, cookie: cookie}, seam
+}
+
+// TestDerivativesSummaryAnswersTheDeclaredEstimate pins the summary
+// read: an empty library counts zero images and floors the estimate
+// at one minute.
+func TestDerivativesSummaryAnswersTheDeclaredEstimate(t *testing.T) {
+	env, _ := newDerivativesEnv(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/derivatives/summary", nil)
+	req.AddCookie(env.cookie)
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET summary status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var summary apigen.DerivativesSummaryResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
+		t.Fatalf("decode the summary: %v", err)
+	}
+	if summary.ImageCount != 0 {
+		t.Errorf("imageCount = %d, want 0 on a fresh instance", summary.ImageCount)
+	}
+	if summary.EstimateMinutes != 1 {
+		t.Errorf("estimateMinutes = %d, want the floor of 1", summary.EstimateMinutes)
+	}
+}
+
+// TestRebuildDerivativesValidationAndStart pins the rebuild start:
+// a scope outside the enum answers 400; a valid scope with no queue
+// wired answers 500; a valid scope with a wired seam answers 202 and
+// hands the scope to the queue.
+func TestRebuildDerivativesValidationAndStart(t *testing.T) {
+	env, seam := newDerivativesEnv(t)
+
+	post := func(body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/derivatives/rebuild", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(env.cookie)
+		rec := httptest.NewRecorder()
+		env.router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := post(`{"scope":"everything"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("invalid scope status = %d, want 400 (body %q)", rec.Code, rec.Body.String())
+	}
+	if seam.calls != 0 {
+		t.Errorf("enqueue calls after the invalid scope = %d, want 0", seam.calls)
+	}
+
+	// No queue wired: the plain settings env's router has no seam.
+	plain := newStorageSettingsEnv(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/derivatives/rebuild", strings.NewReader(`{"scope":"all"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(plain.cookie)
+	rec := httptest.NewRecorder()
+	plain.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("no-seam status = %d, want 500 (body %q)", rec.Code, rec.Body.String())
+	}
+
+	if rec := post(`{"scope":"missing"}`); rec.Code != http.StatusAccepted {
+		t.Fatalf("valid scope status = %d, want 202 (body %q)", rec.Code, rec.Body.String())
+	}
+	if seam.calls != 1 || seam.scope != "missing" {
+		t.Errorf("seam = %d calls scope %q, want one call with the missing scope", seam.calls, seam.scope)
+	}
+}
+
+// TestRebuildDerivativesJoinsInFlight pins the idempotence: a rebuild
+// run still in flight answers 200 with its identifier and enqueues
+// nothing.
+func TestRebuildDerivativesJoinsInFlight(t *testing.T) {
+	env, seam := newDerivativesEnv(t)
+
+	inFlight, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("new run id: %v", err)
+	}
+	if _, err := env.pool.Exec(context.Background(),
+		`INSERT INTO job_runs (id, kind, total, state) VALUES ($1, 'rebuild_derivatives', 12, 'running')`, pgUUID(inFlight)); err != nil {
+		t.Fatalf("seed the in-flight run: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/derivatives/rebuild", strings.NewReader(`{"scope":"all"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(env.cookie)
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("join status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+	var response apigen.RebuildDerivativesResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode the join response: %v", err)
+	}
+	if response.JobRunId != inFlight {
+		t.Errorf("joined run = %s, want the in-flight run %s", response.JobRunId, inFlight)
+	}
+	if seam.calls != 0 {
+		t.Errorf("enqueue calls after the join = %d, want 0", seam.calls)
+	}
+}
+
+// TestStopDerivativesRebuild pins the stop: a stop with nothing in
+// flight answers 409 naming the code; a stop over an in-flight run
+// answers 200 and sets the row's flag (the driver's breakpoint
+// check reads it).
+func TestStopDerivativesRebuild(t *testing.T) {
+	env, _ := newDerivativesEnv(t)
+
+	post := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/derivatives/rebuild/stop", nil)
+		req.AddCookie(env.cookie)
+		rec := httptest.NewRecorder()
+		env.router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	first := post()
+	if first.Code != http.StatusConflict {
+		t.Fatalf("stop with nothing in flight status = %d, want 409 (body %q)", first.Code, first.Body.String())
+	}
+	var envelope struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(first.Body.Bytes(), &envelope); err != nil || envelope.Code != "REBUILD_NOT_RUNNING" {
+		t.Errorf("stop's code = %q err %v, want REBUILD_NOT_RUNNING", envelope.Code, err)
+	}
+
+	inFlight, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("new run id: %v", err)
+	}
+	if _, err := env.pool.Exec(context.Background(),
+		`INSERT INTO job_runs (id, kind, total, state) VALUES ($1, 'rebuild_derivatives', 12, 'running')`, pgUUID(inFlight)); err != nil {
+		t.Fatalf("seed the in-flight run: %v", err)
+	}
+	rec := post()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stop over an in-flight run status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+	var flagged bool
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT stop_requested FROM job_runs WHERE id = $1", pgUUID(inFlight)).Scan(&flagged); err != nil {
+		t.Fatalf("read the stop flag: %v", err)
+	}
+	if !flagged {
+		t.Error("stop_requested = false, want the stop recorded on the row")
+	}
+}

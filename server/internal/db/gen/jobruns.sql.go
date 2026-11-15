@@ -11,8 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearJobRunResumeFrom = `-- name: ClearJobRunResumeFrom :exec
+UPDATE job_runs
+SET resume_from = NULL, updated_at = now()
+WHERE id = $1
+`
+
+// The run's completion write: the cursor is the walk's own scratch,
+// cleared when the walk ends (succeeded or failed) so a finished row
+// carries no dangling resume state.
+func (q *Queries) ClearJobRunResumeFrom(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearJobRunResumeFrom, id)
+	return err
+}
+
 const findInFlightAlbumRescan = `-- name: FindInFlightAlbumRescan :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1
   AND album_id = $2
@@ -48,12 +62,14 @@ func (q *Queries) FindInFlightAlbumRescan(ctx context.Context, arg FindInFlightA
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AlbumID,
+		&i.ResumeFrom,
+		&i.StopRequested,
 	)
 	return i, err
 }
 
 const findInFlightJobRunByKind = `-- name: FindInFlightJobRunByKind :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1 AND state IN ('queued', 'running')
 ORDER BY created_at DESC, id DESC
@@ -79,6 +95,8 @@ func (q *Queries) FindInFlightJobRunByKind(ctx context.Context, kind string) (Jo
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AlbumID,
+		&i.ResumeFrom,
+		&i.StopRequested,
 	)
 	return i, err
 }
@@ -109,7 +127,7 @@ func (q *Queries) FinishJobRun(ctx context.Context, arg FinishJobRunParams) erro
 }
 
 const getJobRun = `-- name: GetJobRun :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE id = $1
 `
@@ -132,8 +150,24 @@ func (q *Queries) GetJobRun(ctx context.Context, id pgtype.UUID) (JobRun, error)
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AlbumID,
+		&i.ResumeFrom,
+		&i.StopRequested,
 	)
 	return i, err
+}
+
+const getJobRunStopRequested = `-- name: GetJobRunStopRequested :one
+SELECT stop_requested
+FROM job_runs
+WHERE id = $1
+`
+
+// The rebuild driver's per-page stop check: one boolean read.
+func (q *Queries) GetJobRunStopRequested(ctx context.Context, id pgtype.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, getJobRunStopRequested, id)
+	var stop_requested bool
+	err := row.Scan(&stop_requested)
+	return stop_requested, err
 }
 
 const incrementJobRunDone = `-- name: IncrementJobRunDone :exec
@@ -234,7 +268,7 @@ func (q *Queries) InsertJobRun(ctx context.Context, arg InsertJobRunParams) erro
 }
 
 const latestJobRunByKind = `-- name: LatestJobRunByKind :one
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 WHERE kind = $1
 ORDER BY created_at DESC, id DESC
@@ -261,12 +295,14 @@ func (q *Queries) LatestJobRunByKind(ctx context.Context, kind string) (JobRun, 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.AlbumID,
+		&i.ResumeFrom,
+		&i.StopRequested,
 	)
 	return i, err
 }
 
 const listJobRuns = `-- name: ListJobRuns :many
-SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id
+SELECT id, kind, total, done, failed, state, started_at, finished_at, created_at, updated_at, album_id, resume_from, stop_requested
 FROM job_runs
 ORDER BY created_at DESC, id DESC
 LIMIT $1
@@ -296,6 +332,8 @@ func (q *Queries) ListJobRuns(ctx context.Context, limit int32) ([]JobRun, error
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AlbumID,
+			&i.ResumeFrom,
+			&i.StopRequested,
 		); err != nil {
 			return nil, err
 		}
@@ -318,6 +356,41 @@ WHERE id = $1
 // panel's honest start time.
 func (q *Queries) MarkJobRunRunning(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, markJobRunRunning, id)
+	return err
+}
+
+const requestJobRunStop = `-- name: RequestJobRunStop :exec
+UPDATE job_runs
+SET stop_requested = true, updated_at = now()
+WHERE id = $1
+  AND state IN ('queued', 'running')
+`
+
+// The task panel's stop: marks the in-flight run asked-to-stop. The
+// driver -- which checks the flag between assets -- closes the run at
+// the asset it just finished. Nothing happens when no run of the id
+// is in flight (the flag lands on a closed row harmlessly).
+func (q *Queries) RequestJobRunStop(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, requestJobRunStop, id)
+	return err
+}
+
+const setJobRunResumeFrom = `-- name: SetJobRunResumeFrom :exec
+UPDATE job_runs
+SET resume_from = $2, updated_at = now()
+WHERE id = $1
+`
+
+type SetJobRunResumeFromParams struct {
+	ID         pgtype.UUID `json:"id"`
+	ResumeFrom pgtype.UUID `json:"resume_from"`
+}
+
+// The rebuild walk's breakpoint write: the id of the last asset the
+// run finished, so a window edge or a pause re-enters past
+// everything already re-derived. Other kinds never write it.
+func (q *Queries) SetJobRunResumeFrom(ctx context.Context, arg SetJobRunResumeFromParams) error {
+	_, err := q.db.Exec(ctx, setJobRunResumeFrom, arg.ID, arg.ResumeFrom)
 	return err
 }
 

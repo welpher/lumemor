@@ -124,7 +124,7 @@ func TestPathHelpersPanicBeforeEnsureLayout(t *testing.T) {
 		name string
 		call func()
 	}{
-		{"ThumbPath", func() { ThumbPath("0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b", "tile") }},
+		{"ThumbPath", func() { ThumbPath("0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b", "tile", "avif") }},
 	}
 	for _, c := range calls {
 		t.Run(c.name, func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestThumbPath(t *testing.T) {
 	}
 
 	assetID := "0197a1b2-c3d4-4e5f-8a9b-0c1d2e3f4a5b"
-	got := ThumbPath(assetID, "tile")
+	got := ThumbPath(assetID, "tile", "avif")
 	want := filepath.Join(dataDir, "storage", "thumbs", assetID, "tile.avif")
 	if got != want {
 		t.Errorf("ThumbPath() = %q, want %q", got, want)

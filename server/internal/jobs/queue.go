@@ -29,10 +29,12 @@ import (
 )
 
 // maxWorkers caps the default queue's worker pool. The pipeline jobs
-// are subprocess- and IO-bound, not CPU-bound, so one worker per CPU
-// stops paying off quickly and more only adds contention on the shared
-// pool.
-const maxWorkers = 4
+// are subprocess- and IO-bound, not CPU-bound, so more workers add
+// contention on the shared pool; the run budget's dial decides how
+// many slots are actually open (its semaphore), and the pool is sized
+// to fit the dial's ceiling so a full-speed dial on a many-core NAS
+// is never silently short of workers.
+const maxWorkers = 8
 
 // MlQueue is the River queue of the per-asset ML jobs (face
 // detection, face recognition, CLIP embedding, OCR):
@@ -168,6 +170,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		logger = slog.Default()
 	}
 
+	// The background work's budget: the gate every pipeline worker
+	// consults at its start. The dial's concurrency lives here, so
+	// the queue's own worker pools are sized to the mapping's
+	// ceiling and the dial decides how many slots are actually open.
+	budget := NewBudget(cfg.Pool, logger)
+
 	// The shared registry: the caller's instance when it owns one, a
 	// fresh one over the pool otherwise.
 	registry := cfg.Registry
@@ -203,6 +211,8 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir: cfg.DataDir,
 		places:  cfg.Places,
 		logger:  logger,
+
+		budget: budget,
 	}
 	river.AddWorker(workers, metadataWorker)
 	thumbnailWorker := &ThumbnailWorker{
@@ -210,6 +220,8 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
+
+		budget: budget,
 	}
 	river.AddWorker(workers, thumbnailWorker)
 	transcodeWorker := &TranscodeWorker{
@@ -217,6 +229,8 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		bus:     cfg.Bus,
 		dataDir: cfg.DataDir,
 		logger:  logger,
+
+		budget: budget,
 	}
 	river.AddWorker(workers, transcodeWorker)
 	river.AddWorker(workers, &SweepWorker{
@@ -242,6 +256,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:   cfg.Pool,
 		bus:    cfg.Bus,
 		logger: logger,
+		budget: budget,
 	}
 	river.AddWorker(workers, mlRerunWorker)
 	river.AddWorker(workers, &PlacesRerunWorker{
@@ -249,6 +264,14 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		bus:    cfg.Bus,
 		places: cfg.Places,
 		logger: logger,
+		budget: budget,
+	})
+	river.AddWorker(workers, &RebuildWorker{
+		pool:    cfg.Pool,
+		bus:     cfg.Bus,
+		dataDir: cfg.DataDir,
+		logger:  logger,
+		budget:  budget,
 	})
 	rescanWorker := &AlbumRescanWorker{
 		pool:   cfg.Pool,
@@ -261,6 +284,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir:  cfg.DataDir,
 		registry: registry,
 		logger:   logger,
+		budget:   budget,
 	}
 	river.AddWorker(workers, faceDetectWorker)
 	recognizeWorker := &FaceRecognizeWorker{
@@ -269,6 +293,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		registry: registry,
 		bus:      cfg.Bus,
 		logger:   logger,
+		budget:   budget,
 	}
 	river.AddWorker(workers, recognizeWorker)
 	clipEmbedWorker := &ClipEmbedWorker{
@@ -277,6 +302,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		registry: registry,
 		bus:      cfg.Bus,
 		logger:   logger,
+		budget:   budget,
 	}
 	river.AddWorker(workers, clipEmbedWorker)
 	ocrWorker := &OcrWorker{
@@ -284,6 +310,7 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		dataDir:  cfg.DataDir,
 		registry: registry,
 		logger:   logger,
+		budget:   budget,
 	}
 	river.AddWorker(workers, ocrWorker)
 

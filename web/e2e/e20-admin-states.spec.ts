@@ -85,6 +85,19 @@ function checkState(overrides: Record<string, unknown> = {}): Record<string, unk
 	};
 }
 
+/**
+ * The settings cards are a collapsed index (E33): the scenes that
+ * read a card's content open it through its summary first.
+ */
+async function openCard(page: import('@playwright/test').Page, testId: string): Promise<void> {
+	const card = page.getByTestId(testId);
+	// Ensure-open, not a blind toggle: the remembered expanded set
+	// may already have opened this card, and a second click closes it.
+	if ((await card.getAttribute('open')) === null) {
+		await card.locator('summary').click();
+	}
+}
+
 /** The faces present on the page, by their marker. */
 async function facesOn(page: import('@playwright/test').Page): Promise<string[]> {
 	return page
@@ -135,6 +148,10 @@ test('scene 1: the administrator signs in and the sealed check shows its off fac
 	await expect(page).toHaveURL(/\/admin\/settings$/);
 	await expect(page).toHaveTitle('Settings · lumemor');
 
+	// The settings page is the collapsed index (E33): the release
+	// card's facts live inside its fold.
+	await openCard(page, 'admin-settings-update');
+
 	// The release card renders its own row of facts: the running
 	// version, the self-hosted badge, and the quiet face the sealed
 	// deployment answers (the check is switched off -- not a verdict).
@@ -158,6 +175,7 @@ test.describe('the administrator scenes', () => {
 		// at a time.
 		await page.route('**/api/v1/server/update-check', (route) => route.fulfill({ json: checkState() }));
 		await page.goto('/admin/settings');
+		await openCard(page, 'admin-settings-update');
 		await expect(page.locator('[data-update-face="latest"]')).toBeVisible();
 		await expect(page.locator('[data-update-face="latest"]')).toContainText('Up to date');
 		await expect(page.locator('[data-update-face="latest"]')).toContainText('Last checked');
@@ -168,6 +186,7 @@ test.describe('the administrator scenes', () => {
 			route.fulfill({ json: checkState({ status: 'update_available', latestVersion: 'v0.5.0' }) })
 		);
 		await page.goto('/admin/settings');
+		await openCard(page, 'admin-settings-update');
 		await expect(page.locator('[data-update-face="available"]')).toContainText('v0.5.0 available');
 		await expect(page.locator('[data-update-face="available"]')).toContainText(
 			'nothing is downloaded, installed or restarted for you'
@@ -187,6 +206,7 @@ test.describe('the administrator scenes', () => {
 			})
 		);
 		await page.goto('/admin/settings');
+		await openCard(page, 'admin-settings-update');
 		const failed = page.locator('[data-update-face="failed"]');
 		await expect(failed).toBeVisible();
 		await expect(failed).toContainText("couldn't reach the release feed");
@@ -210,6 +230,7 @@ test.describe('the administrator scenes', () => {
 			});
 		});
 		await page.goto('/admin/settings');
+		await openCard(page, 'admin-settings-update');
 		await expect(page.locator('[data-update-face="failed"]')).toContainText('Not checked yet');
 		await page.getByTestId('update-check-now').click();
 		await expect(page.getByTestId('update-check-now')).toContainText('Checking…');

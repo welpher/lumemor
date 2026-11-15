@@ -117,7 +117,7 @@ func deriveQuadrantViewFixture(t *testing.T, assetID uuid.UUID) {
 	if _, err := media.GenerateThumbnails(original, assetID.String()); err != nil {
 		t.Fatalf("derive quadrant view fixture of asset %s: %v", assetID, err)
 	}
-	width, height, err := media.ImageDimensions(storage.ThumbPath(assetID.String(), media.SizeView))
+	width, height, err := media.ImageDimensions(storage.ThumbPath(assetID.String(), media.SizeView, media.FormatAvif))
 	if err != nil {
 		t.Fatalf("decode quadrant view fixture: %v", err)
 	}

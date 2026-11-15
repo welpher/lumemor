@@ -214,7 +214,7 @@ func TestServeReadyAssetDetailAndThumbnail(t *testing.T) {
 	if got := thumbnail.Header().Get("Cache-Control"); got != "private, max-age=31536000, immutable" {
 		t.Errorf("thumbnail cache-control = %q, want the immutable private policy", got)
 	}
-	onDisk := readFileOf(t, storage.ThumbPath(asset.Id.String(), media.SizeTile))
+	onDisk := readFileOf(t, storage.ThumbPath(asset.Id.String(), media.SizeTile, media.FormatAvif))
 	if !bytes.Equal(thumbnail.Body.Bytes(), onDisk) {
 		t.Errorf("thumbnail body = %d bytes, want the %d bytes of the derived file",
 			thumbnail.Body.Len(), len(onDisk))
