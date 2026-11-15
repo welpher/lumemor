@@ -2,9 +2,11 @@
 	// Button variants: `primary` is the Blue 700 fill with white text
 	// (the one accent of the interface), `ghost` is the outlined
 	// quiet button, `danger` marks destructive actions through the
-	// Ember border while keeping AA-safe text. Destructive confirms
-	// may later add a filled form; the shell stays minimal here.
-	export type ButtonVariant = 'primary' | 'ghost' | 'danger';
+	// Ember border while keeping AA-safe text, and `danger-text` is
+	// the same border with the text in the danger tone -- the shape a
+	// destructive ROW action wears: a solid fill is too heavy beside
+	// the everyday controls, and the ember text carries the warning.
+	export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'danger-text';
 </script>
 
 <script lang="ts">
@@ -25,7 +27,9 @@
 	const variantUtilities: Record<ButtonVariant, string> = {
 		primary: 'bg-accent text-accent-on border-transparent hover:not-disabled:bg-accent-strong',
 		ghost: 'bg-transparent text-text border-border-strong hover:not-disabled:bg-accent-soft hover:not-disabled:text-accent-soft-text',
-		danger: 'bg-transparent text-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
+		danger: 'bg-transparent text-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]',
+		'danger-text':
+			'bg-transparent text-danger-text border-danger hover:not-disabled:bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
 	};
 </script>
 

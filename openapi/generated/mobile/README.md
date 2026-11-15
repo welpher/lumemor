@@ -90,6 +90,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**deleteModel**](doc/AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
+[*AdminApi*](doc/AdminApi.md) | [**deleteUser**](doc/AdminApi.md#deleteuser) | **DELETE** /admin/users/{id} | Delete one account, disposing of its content.
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [*AdminApi*](doc/AdminApi.md) | [**getDerivativesSummary**](doc/AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
 [*AdminApi*](doc/AdminApi.md) | [**getImageSettings**](doc/AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
@@ -193,6 +194,7 @@ Class | Method | HTTP request | Description
  - [AddAlbumItemsResponse](doc/AddAlbumItemsResponse.md)
  - [AddTagAssetsResponse](doc/AddTagAssetsResponse.md)
  - [AdminCreateUserRequest](doc/AdminCreateUserRequest.md)
+ - [AdminUserDeleteRequest](doc/AdminUserDeleteRequest.md)
  - [AdminUserListResponse](doc/AdminUserListResponse.md)
  - [AdminUserPatch](doc/AdminUserPatch.md)
  - [AdminUserResponse](doc/AdminUserResponse.md)

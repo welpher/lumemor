@@ -12,6 +12,7 @@ import 'package:built_collection/built_collection.dart';
 import 'package:built_value/json_object.dart';
 import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
+import 'package:lumemor_api/src/model/admin_user_delete_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
@@ -356,6 +357,86 @@ class AdminApi {
       statusMessage: _response.statusMessage,
       extra: _response.extra,
     );
+  }
+
+  /// Delete one account, disposing of its content.
+  /// The account disposal of the admin surface: an account leaves the instance, and everything it held -- photos, albums, memories and the labels it gave them -- is settled before the row goes. The account row goes immediately: there is no soft delete and no recovery window for the account itself. The whole settlement is ONE transaction that commits whole or rolls back whole, so a failure leaves the account and its content exactly as they were.  THE DISPOSITION is exactly one of two arms:  - &#x60;transferTo&#x60; names another account that receives everything   the departing account owned: its photos with their albums   and memories, their hidden and trash marks intact, and the   tags attached to them. The photos join the receiver&#39;s own   stream, so the family timeline continues without a gap, and   the albums the departing account shared keep their grantees.    COLLIDING CONTENT. The storage&#39;s uniqueness rule is   owner plus content checksum, and it is TOTAL: one account   holds at most one row of a given content whether that row is   live or in the trash. Content the receiver already holds --   in ANY of the four state pairs -- therefore cannot simply   change hands, and the disposal folds it instead:    - the LIVE copy wins a mixed pair, so content that arrives     live stays visible under the receiver&#39;s name, and a copy     the receiver had trashed earlier does not bind it (trash it     again to be rid of it) -- symmetrically, the receiver&#39;s     live copy survives a trashed departing one;   - a tie keeps the RECEIVER&#39;s own row: both live keeps its     copy, both trashed keeps it under the LATER of the two     deletion marks (the content stays recoverable as long as     either copy had left);   - the losing copy&#39;s album memberships, tags, favorites and     any album cover it pinned move onto the survivor, then the     losing row goes. A losing Live Photo takes its component     video row with it (the pair is one asset), and every losing     photo announces &#x60;asset.deleted&#x60;, so a client holding the id     lets it go.  - &#x60;dispose: \&quot;trash\&quot;&#x60; walks the departing account&#39;s photos into   the CALLING administrator&#39;s trash, where the instance&#39;s   retention window governs them -- restorable until it runs   out, permanently removed after. The departing account&#39;s own   albums and memories go with the account (a container whose   owner is gone has no reader), so the photos survive as   individual trash items; a directory album&#39;s source file is   moved into the server&#39;s trash area on this arm exactly like   any other trash move, and the rest of the family&#39;s source   files are never touched. The collision rule above applies   here too, onto the calling administrator: content they   already hold in any state folds rather than collides, and   their own live copy is never trashed by someone else&#39;s   disposal.  What dies with the account in BOTH arms: its sessions, API keys and pairing tokens (it can never authenticate again), its favorites, its per-album timeline preferences, the private names it gave shared face clusters (a cluster belongs to the family; the name a person gave it is theirs), and every album share granted TO it. A share the account granted on its own album rides the content: the album changes hands and its grantees keep their access. Authorship another member&#39;s album carries -- a membership the departing account added -- passes to the surviving owner instead of deleting the membership, so no photo leaves an album it sits in.  THE REFUSALS. The instance&#39;s last administrator cannot be deleted (409 USER_LAST_ADMIN): an instance without an administrator strands this surface, and while one administrator remains that account is necessarily the caller&#39;s own row. An administrator cannot delete their own account at all (400 VALIDATION_FAILED naming the id) -- the disposal hands the content to a survivor, and the caller is the one performing the handover. &#x60;transferTo&#x60; naming the departing account itself answers 409 USER_TRANSFER_TO_SELF, and an unknown receiver is a payload error (400 VALIDATION_FAILED naming the field). Account ids are enumerable through this surface&#39;s own listing, so an unknown path id answers 404 USER_NOT_FOUND without an anti-enumeration pairing.  The 204 carries no body: the account is gone, and the caller&#39;s own disposal target (the receiver&#39;s stream or the caller&#39;s trash) is where its content answers next. 
+  ///
+  /// Parameters:
+  /// * [id] - Identifier of the account to delete.
+  /// * [adminUserDeleteRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future]
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<void>> deleteUser({ 
+    required String id,
+    required AdminUserDeleteRequest adminUserDeleteRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/users/{id}'.replaceAll('{' r'id' '}', encodeQueryParameter(_serializers, id, const FullType(String)).toString());
+    final _options = Options(
+      method: r'DELETE',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(AdminUserDeleteRequest);
+      _bodyData = _serializers.serialize(adminUserDeleteRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    return _response;
   }
 
   /// Start the default model group&#39;s download.
@@ -1544,7 +1625,7 @@ class AdminApi {
   }
 
   /// List the instance&#39;s accounts.
-  /// The user management listing of the admin surface: every account of the instance with its role and its disabled switch, oldest first. The listing selects only the safe columns -- a password hash never appears in any admin response.  The list is small by construction (a family instance holds a handful of accounts) and grows only through this surface&#39;s own create endpoint, so it answers every account in one response: there is no pagination, no filtering and no ordering parameter. Account rows never disappear (deleting an account together with its data is a later disposal flow), so a refetch after any write reconciles the list completely.  The endpoint is admin-only: the session middleware authenticates the caller like every authed route, and a caller whose role is not &#x60;admin&#x60; answers 403 AUTH_FORBIDDEN -- a code distinct from the 401 family, because the caller is signed in, just not entitled to this surface. 
+  /// The user management listing of the admin surface: every account of the instance with its role and its disabled switch, oldest first. The listing selects only the safe columns -- a password hash never appears in any admin response.  The list is small by construction (a family instance holds a handful of accounts) and grows only through this surface&#39;s own create endpoint, so it answers every account in one response: there is no pagination, no filtering and no ordering parameter. Account rows disappear only through this surface&#39;s own delete endpoint, whose disposal moves the account&#39;s content to a surviving owner or into the trash before the row goes, so a refetch after any write reconciles the list completely.  The endpoint is admin-only: the session middleware authenticates the caller like every authed route, and a caller whose role is not &#x60;admin&#x60; answers 403 AUTH_FORBIDDEN -- a code distinct from the 401 family, because the caller is signed in, just not entitled to this surface. 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
