@@ -379,7 +379,7 @@
   "memories_bar_count": "{count, plural, other {# 本}}",
   "memories_own_section": "我的回忆",
   "memories_shared_section": "共享给我的",
-  "memories_photo_count": "{count, plural, other {# 张}}",
+  "memories_photo_count": "{count, plural, other {# 张照片}}",
   "memories_manual_badge": "手动",
   "shared_readonly_badge": "只读",
   "memories_new": "新建回忆",

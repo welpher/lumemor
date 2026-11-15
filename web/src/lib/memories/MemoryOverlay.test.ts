@@ -419,7 +419,7 @@ test('the removal ends references: the DELETE carries the picks, then the toast 
 				[`/api/v1/assets/timeline?albumId=${MEMORY_ID}&limit=100`]: () =>
 					jsonResponse(200, { items: removed ? walkItems.slice(0, 1) : walkItems }),
 				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
-					jsonResponse(200, ownerDetail({ itemCount: removed ? 1 : 3 })),
+					jsonResponse(200, ownerDetail({ itemCount: removed ? 1 : 3, photoCount: removed ? 1 : 3 })),
 				[`/api/v1/albums/${MEMORY_ID}/items`]: (init?: RequestInit) => {
 					expect(init?.method).toBe('DELETE');
 					expect(JSON.parse(String(init?.body))).toEqual({ assetIds: ['p1', 'p2'] });
@@ -482,7 +482,8 @@ test('an empty memory offers the state card with the play disabled', async () =>
 		stubFetch(
 			routes({
 				[`/api/v1/assets/timeline?albumId=${MEMORY_ID}&limit=100`]: () => jsonResponse(200, { items: [] }),
-				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () => jsonResponse(200, ownerDetail({ itemCount: 0 }))
+				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
+					jsonResponse(200, ownerDetail({ itemCount: 0, photoCount: 0 }))
 			})
 		)
 	);
@@ -669,7 +670,7 @@ test("the owner pins the memory band's six frames from the overlay bar", async (
 		stubFetch(
 			routes({
 				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
-					jsonResponse(200, ownerDetail({ itemCount: 6, coverAssetIds: [] })),
+					jsonResponse(200, ownerDetail({ itemCount: 6, photoCount: 6, coverAssetIds: [] })),
 				[`/api/v1/assets/timeline?albumId=${MEMORY_ID}&limit=100`]: () =>
 					jsonResponse(200, { items: sixItems }),
 				[`/api/v1/albums/${MEMORY_ID}`]: (init?: RequestInit) => {
