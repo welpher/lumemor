@@ -244,12 +244,25 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 	}
 
 	if row.LivePhotoVideoID.Valid {
-		component, err := s.queries.GetAssetByID(r.Context(), row.LivePhotoVideoID)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			s.internalError(w, r, "load Live Photo component for delete", err)
+		// THE LAST STILL KEEPS THE MOTION. A burst (or a duplicated
+		// pair) can leave two stills pointing at one motion; the motion
+		// goes with the last of them, never with the first. The photo
+		// row is already gone, so the remaining count is exactly "does
+		// anything else still need these bytes".
+		references, err := s.queries.CountLivePhotoReferences(r.Context(), row.LivePhotoVideoID)
+		if err != nil {
+			s.internalError(w, r, "count the Live Photo references", err)
 			return
 		}
-		if err == nil {
+		var component dbgen.Asset
+		if references == 0 {
+			component, err = s.queries.GetAssetByID(r.Context(), row.LivePhotoVideoID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				s.internalError(w, r, "load Live Photo component for delete", err)
+				return
+			}
+		}
+		if references == 0 && err == nil {
 			// The component is never the client-visible asset, so it
 			// purges without its own announcement; its file answers
 			// the same reference rule through the same helper.

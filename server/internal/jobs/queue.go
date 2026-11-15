@@ -237,6 +237,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:   cfg.Pool,
 		logger: logger,
 	})
+	river.AddWorker(workers, &LivePhotoSweepWorker{
+		pool:    cfg.Pool,
+		dataDir: cfg.DataDir,
+		bus:     cfg.Bus,
+		logger:  logger,
+	})
 	river.AddWorker(workers, &RetentionWorker{
 		pool:    cfg.Pool,
 		dataDir: cfg.DataDir,
