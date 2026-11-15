@@ -452,6 +452,10 @@ WHERE f.id = sqlc.arg('face_id')
 -- tiebreak.
 SELECT f.id,
        f.score,
+       f.bbox_x,
+       f.bbox_y,
+       f.bbox_w,
+       f.bbox_h,
        f.cluster_id,
        l.name AS label_name,
        fc.birth_date

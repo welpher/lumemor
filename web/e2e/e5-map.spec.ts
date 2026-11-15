@@ -298,7 +298,7 @@ test.describe('the signed-in scenes', () => {
 
 		// The coordinates are the file's own fact, printed to four
 		// decimals; the mini map draws the same stubbed tiles.
-		await expect(card.locator('.info__location-coords')).toHaveText(/^-?\d+\.\d{4}, -?\d+\.\d{4}$/);
+		await expect(card).toContainText(/-?\d+\.\d{4}, -?\d+\.\d{4}/);
 		await expect(card.locator('.maplibregl-canvas')).toBeVisible();
 		// The point's own marker: the map handle is not a signal, so
 		// this pins the overlay following the map's readiness (a

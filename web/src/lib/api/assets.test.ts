@@ -3,6 +3,8 @@ import {
 	assetOriginalUrl,
 	assetPlayUrl,
 	assetThumbnailUrl,
+	bboxIsPerMille,
+	createFace,
 	deleteAsset,
 	fetchAssetDetail,
 	patchAsset,
@@ -29,6 +31,7 @@ const detailBody = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAt: '2026-10-13T12:30:00Z',
 	takenAtSource: 'exif',
+	takenAtZone: '+08:00',
 	isTrashed: false,
 	isHidden: false,
 	description: 'Sunset over the lake.',
@@ -45,6 +48,7 @@ const detailBody = {
 			id: 'f1',
 			score: 0.95,
 			thumbnail: '/api/v1/faces/f1/thumbnail',
+			bbox: { x: 310, y: 120, w: 180, h: 185 },
 			clusterId: 'c1',
 			label: { name: 'Ada' },
 			birthDate: '1992-03-15'
@@ -53,6 +57,7 @@ const detailBody = {
 			id: 'f2',
 			score: 0.8,
 			thumbnail: '/api/v1/faces/f2/thumbnail',
+			bbox: { x: 640, y: 420, w: 140, h: 140 },
 			clusterId: null,
 			label: null,
 			birthDate: null
@@ -72,7 +77,9 @@ const detailBody = {
 		lon: 2.2945,
 		alt: 35,
 		tzOffset: '+05:30'
-	}
+	},
+	location: { lat: 48.8584, lon: 2.2945 },
+	path: 'originals/9f8a3c/2026/10/IMG_1234.jpg'
 };
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -376,4 +383,70 @@ test('the play probe sends a one-byte range and maps readiness', async () => {
 		ok: false,
 		errorKey: 'internal'
 	});
+});
+
+test('the bbox validator accepts exactly the drawn box shapes', () => {
+	// A real drawn box: four in-bounds per-mille integers.
+	expect(bboxIsPerMille({ x: 0, y: 0, w: 1000, h: 1000 })).toBe(true);
+	expect(bboxIsPerMille({ x: 260, y: 300, w: 150, h: 150 })).toBe(true);
+	// Half a box, out-of-bounds halves, zero extents, non-integers:
+	// none of these is a drawable face.
+	expect(bboxIsPerMille({ x: 100, y: 100, w: 0, h: 100 })).toBe(false);
+	expect(bboxIsPerMille({ x: 1001, y: 100, w: 50, h: 50 })).toBe(false);
+	expect(bboxIsPerMille({ x: -1, y: 100, w: 50, h: 50 })).toBe(false);
+	expect(bboxIsPerMille({ x: 10.5, y: 100, w: 50, h: 50 })).toBe(false);
+	expect(bboxIsPerMille(null)).toBe(false);
+});
+
+test('the manual face write posts the drawn box and maps the refusals', async () => {
+	let seen: { url: string; init: RequestInit | undefined } | undefined;
+	const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		seen = { url: String(input), init };
+		return jsonResponse(200, {
+			id: 'f9',
+			thumbnail: '/api/v1/faces/f9/thumbnail'
+		});
+	});
+	expect(await createFace('a1', { x: 260, y: 300, w: 150, h: 150 }, fetcher)).toEqual({
+		ok: true,
+		faceId: 'f9',
+		thumbnail: '/api/v1/faces/f9/thumbnail'
+	});
+	expect(seen?.url).toBe('/api/v1/faces');
+	expect(JSON.parse(String(seen?.init?.body))).toEqual({
+		assetId: 'a1',
+		bbox: { x: 260, y: 300, w: 150, h: 150 }
+	});
+	expect(seen?.init?.method).toBe('POST');
+
+	// The refusal family folds into one 404 code (anti-enumeration);
+	// a shape failure and a transport failure map like everywhere.
+	expect(
+		await createFace(
+			'a1',
+			{ x: 0, y: 0, w: 10, h: 10 },
+			vi.fn(async () => jsonResponse(404, { code: 'PERSON_NOT_FOUND' }))
+		)
+	).toEqual({ ok: false, errorKey: 'person_not_found' });
+	expect(
+		await createFace(
+			'a1',
+			{ x: 0, y: 0, w: 10, h: 10 },
+			vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' }))
+		)
+	).toEqual({ ok: false, errorKey: 'validation_failed' });
+	expect(
+		await createFace(
+			'a1',
+			{ x: 0, y: 0, w: 10, h: 10 },
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
+	).toEqual({ ok: false, errorKey: 'session_expired' });
+	expect(
+		await createFace(
+			'a1',
+			{ x: 0, y: 0, w: 10, h: 10 },
+			vi.fn(async () => Promise.reject(new Error('offline')))
+		)
+	).toEqual({ ok: false, errorKey: 'internal' });
 });

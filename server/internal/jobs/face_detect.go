@@ -232,7 +232,7 @@ func (w *FaceDetectWorker) work(ctx context.Context, job *river.Job[FaceDetectAr
 
 	if err := queries.DeleteFacesByAsset(ctx, dbgen.DeleteFacesByAssetParams{
 		AssetID: pgUUID(assetID),
-		ModelID: model.ID,
+		ModelID: pgtype.Text{String: model.ID, Valid: true},
 	}); err != nil {
 		return fmt.Errorf("replace the model's faces of asset %s: %w", assetID, err)
 	}
@@ -249,7 +249,7 @@ func (w *FaceDetectWorker) work(ctx context.Context, job *river.Job[FaceDetectAr
 			BboxW:   int32(face.BBox[2]),
 			BboxH:   int32(face.BBox[3]),
 			Score:   face.Score,
-			ModelID: model.ID,
+			ModelID: pgtype.Text{String: model.ID, Valid: true},
 		}); err != nil {
 			return fmt.Errorf("store a face of asset %s: %w", assetID, err)
 		}

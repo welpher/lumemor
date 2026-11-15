@@ -1,82 +1,48 @@
 <script lang="ts">
-	// The information panel of the asset viewer: METADATA ONLY (the
-	// viewer rework) -- the description editor (the PATCH endpoint; the
-	// drawer keeps the draft on failure so a retry never retypes
-	// anything, and through the same-id detail replacements of the
-	// optimistic curation flips and the SSE convergence), the People
-	// section (one face chip per face of the detail's faces array,
-	// the caller's label state per cluster, the click delegating to
-	// the page's assign dialog, and the owner's pencil opening the
-	// edit-people panel -- the face-level correction surface), the
-	// EXIF hot fields folded into
-	// collapsible groups, the file facts with the tags row (the
-	// caller's own tags as chips plus the assign affordance),
-	// the resolved place row with its deep link, and the
-	// capture-location card over the asset's own coordinates. The
-	// curation actions and the permanent delete are GONE from this
-	// surface: the action bar over the media carries the favorite
-	// and the trash/restore pair, and the permanent delete lives on
-	// the trash page alone.
+	// The information panel of the asset viewer: the FOUR SECTIONS the
+	// design pins -- the description (one line, click to edit), the
+	// people (the chips, the two-way linked ends of the on-photo face
+	// boxes, the owner's add-person icon and the edit pencil), the
+	// info rows (icon + content, one per line: the capture time with
+	// its zone, the size and file weight, the camera line, the tag
+	// chips with their remove buttons, the album links) -- and the
+	// location row (the plain place name, the 5:4 static mini map,
+	// the coordinates), the admin-only path row between the albums
+	// and the location.
 	//
-	// THE FORM: the same markup serves the two shapes the
-	// viewer composes it into -- the right DOCKED split region at lg+
-	// (the viewer's flex row) and the fixed overlay drawer below lg.
-	// Every class below is shared; the form lives in the aside's
-	// lg:* utilities alone.
+	// THE EDIT ARMS: every edit affordance in this panel delegates --
+	// the description edit is the panel's own (the onedit callback),
+	// while the dialogs (the date, the location, the add-tag) and the
+	// writes (the tag removal, the drawn face) belong to the page,
+	// which owns the network and the convergence. The pencil is the
+	// OWNER's arm: a viewer the owner shared to keeps every read and
+	// loses every owner-only write affordance, rendered as absence,
+	// never grayed out.
 	//
-	// THE VIEWER'S READ-ONLY DRAWER (the identity seam): a caller
-	// who does not own the asset (the owner shared it to them) keeps
-	// every READ and loses every owner-only write affordance -- the
-	// description's Edit button (the stored text renders) never
-	// renders for them. Read-only is visual, never grayed out (the
-	// visual read-only rule) -- the button simply never renders.
-	//
-	// THE ROW LANGUAGE: key-value rows -- the label column in
-	// the faint text tone, the value in the text tone, one hairline
-	// between the rows (divide-y), the grouped sections under the
-	// existing uppercase micro-heads, tightened vertical rhythm per
-	// the brand language (no heavy borders, feather shadows): the EXIF
-	// groups dropped their card borders for the same row rhythm.
-	//
-	// THE LOCATION CARD: the asset's own coordinates (its EXIF
-	// position) under the resolved city row -- the same map component
-	// the places tab uses, in its single-point form. The tile source
-	// is the instance's one configured source (the browser loads it);
-	// with no source, or an unreachable one, the card states the
-	// absence and keeps the coordinates, which are the fact the
-	// camera recorded.
-	//
-	// The drawer is presentation and edit-mode state only: the page
-	// owns the detail and every network call, through the
-	// onedit / onassignface callbacks. Escape does not close it from
-	// here -- the viewer owns the layered Escape rule (the page's
-	// dialog first, then this drawer, then the route) so the layers
-	// cannot race.
-	//
-	// THE DEEP-LINK ROWS (the approved L3 face): the drawer stays
-	// read-only except for its existing per-user writes, and the
-	// rows that name a browsable context become LINKS -- the tags
-	// chips into the tag-filtered browse, the camera rows into the
-	// camera-filtered browse (the facet's round-trip id), the named
-	// face chips into their person page, the resolved place into the
-	// place-filtered browse, and the albums array into each album's
-	// detail. The rows keep their labels; the affordance is link
-	// semantics under the icon-first rule (a leading decorative
-	// glyph per row type). Unnamed faces keep their assign flow: the
-	// naming write is the drawer's own, never a navigation.
+	// THE LINKAGE: the chips and the on-photo boxes share one signal
+	// (./face-link.svelte.ts) -- hovering or focusing either end
+	// highlights both, with the hide grace that lets the pointer
+	// travel between them.
 	import { locale, _ } from 'svelte-i18n';
 	import { formatAge } from '$lib/people/age';
-	import Button from '$lib/components/Button.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import { type AssetAlbumRef, type AssetDetail, type AssetFaceSummary, type AssetPlaceRef } from '$lib/api/assets';
+	import { linkFace, unlinkFace, isLinked } from './face-link.svelte';
+	import { formatTakenAt, zoneLabel } from './zone';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import MapView from '$lib/map/MapView.svelte';
 	import X from '@lucide/svelte/icons/x';
-	import Check from '@lucide/svelte/icons/check';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Folder from '@lucide/svelte/icons/folder';
 	import Tag from '@lucide/svelte/icons/tag';
 	import Camera from '@lucide/svelte/icons/camera';
+	import Calendar from '@lucide/svelte/icons/calendar';
+	import Ratio from '@lucide/svelte/icons/ratio';
 	import MapPin from '@lucide/svelte/icons/map-pin';
-	import MapView, { type MapState } from '$lib/map/MapView.svelte';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Copy from '@lucide/svelte/icons/copy';
+	import Plus from '@lucide/svelte/icons/plus';
+	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 
 	type Props = {
 		/** The current asset's detail (the page's local, optimistic copy). */
@@ -104,6 +70,8 @@
 		 * every viewer's, never the owner's alone.
 		 */
 		onassigntag: () => void;
+		/** Remove one of the caller's tags from this asset (the page owns the write). */
+		onremovetag: (tagId: string) => void;
 		/**
 		 * Open the edit-people panel (the page owns the panel's flow
 		 * and writes; the panel replaces this drawer in the viewer's
@@ -112,14 +80,48 @@
 		 * a viewer the owner shared to keeps the read-only drawer.
 		 */
 		oneditfaces: () => void;
+		/**
+		 * Start the drawn-face mode: the stage's drag layer arms (the
+		 * page owns the POST and the assign flow that follows). The
+		 * drawn face is the owner's curation, so the icon is the
+		 * owner's alone.
+		 */
+		onstartdraw: () => void;
+		/** Open the edit-date dialog (the page owns it and the write). */
+		onedittime: () => void;
+		/** Open the edit-location dialog (the page owns it and the write). */
+		oneditlocation: () => void;
 	};
 
-	let { detail, isOwner, onclose, onedit, onassignface, onassigntag, oneditfaces }: Props = $props();
+	let {
+		detail,
+		isOwner,
+		onclose,
+		onedit,
+		onassignface,
+		onassigntag,
+		onremovetag,
+		oneditfaces,
+		onstartdraw,
+		onedittime,
+		oneditlocation
+	}: Props = $props();
 
+	// The path row's open state (default collapsed; the row's
+	// existence IS the admin gate -- the detail serves the field to
+	// administrators alone).
+	let pathOpen = $state(false);
+
+	// THE DESCRIPTION: one line that becomes an input on click. Enter
+	// or blur saves (an unchanged value exits silently -- no request,
+	// no toast), Esc reverts. A failure keeps the edit mode and the
+	// draft (a retry never retypes), and the stored description never
+	// changed underneath it.
 	let editing = $state(false);
 	let draft = $state('');
 	let saving = $state(false);
 	let editErrorKey = $state('');
+	let editor: HTMLInputElement | undefined = $state();
 
 	// The asset id the current edit state belongs to. The page
 	// replaces the detail REFERENCE for the SAME asset (the
@@ -155,7 +157,13 @@
 	}
 
 	async function saveEdit(): Promise<void> {
-		if (saving) {
+		if (saving || !editing) {
+			return;
+		}
+		if (draft === detail.description) {
+			// The unchanged value: no request, no toast -- the exit is
+			// the whole story.
+			editing = false;
 			return;
 		}
 		saving = true;
@@ -165,11 +173,37 @@
 		if (outcome.ok) {
 			// The response is the fresh detail; the page adopted it.
 			editing = false;
+			toast($_('viewer_description_saved'), 'success');
 			return;
 		}
 		// The failure keeps the edit mode and the draft (a retry
 		// never retypes); the stored description never changed.
 		editErrorKey = outcome.errorKey;
+	}
+
+	// The edit input focuses and selects all on entry (the click that
+	// opened it aims at the whole line).
+	$effect(() => {
+		if (editing && editor) {
+			editor.focus();
+			editor.select();
+		}
+	});
+
+	function handleEditorKeydown(event: KeyboardEvent): void {
+		if (event.key === 'Escape') {
+			// Revert: the draft dies with the edit mode, the stored
+			// text stands.
+			event.preventDefault();
+			cancelEdit();
+			return;
+		}
+		if (event.key === 'Enter') {
+			// The single-line save; the input has no Shift+Enter to
+			// tell apart (the description is one line, never multi).
+			event.preventDefault();
+			void saveEdit();
+		}
 	}
 
 	// The shared unknown-code fallback (see $lib/i18n/errors): an
@@ -180,127 +214,11 @@
 		return resolveErrorText($_, key);
 	}
 
-	/** One label/value row of the read-only panels; nulls drop out. */
-	type FactRow = { label: string; value: string; href?: string; glyph?: typeof Camera };
-
-	function row(
-		label: string,
-		value: string | null | undefined,
-		link?: { href: string; glyph?: typeof Camera }
-	): FactRow | null {
-		if (value === null || value === undefined || value === '') {
-			return null;
-		}
-		return { label, value, href: link?.href, glyph: link?.glyph };
-	}
-
-	function rows(
-		entries: Array<{ label: string; value: string | null | undefined; href?: string; glyph?: typeof Camera }>
-	): FactRow[] {
-		return entries
-			.map((entry) =>
-				row(
-					entry.label,
-					entry.value,
-					entry.href !== undefined ? { href: entry.href, glyph: entry.glyph } : undefined
-				)
-			)
-			.filter((entry): entry is FactRow => entry !== null);
-	}
-
-	/** Render a nullable text field ('' and null both drop the row). */
-	function text(value: string | null | undefined): string | null {
-		return value === null || value === undefined || value === '' ? null : value;
-	}
-
-	/** Render a nullable numeric field with a prefix / suffix. */
-	function number(value: number | null | undefined, prefix: string, suffix: string): string | null {
-		return value === null || value === undefined ? null : `${prefix}${value}${suffix}`;
-	}
-
-	// The EXIF groups: the hot fields of the detail, each group
-	// showing its empty note while it has nothing to show (the
-	// pipeline has not written the extraction, or the file carries
-	// no such tag -- the two are indistinguishable on the wire).
-	const exif = $derived(detail.exif);
-	// The camera facet's round-trip filter id (`make|model`, empty
-	// where the EXIF row carries no value): the camera rows' deep
-	// link into the camera-filtered browse, present when at least
-	// one half exists.
-	const cameraHref = $derived.by(() => {
-		const make = (exif?.cameraMake ?? '').trim();
-		const model = (exif?.cameraModel ?? '').trim();
-		if (make === '' && model === '') {
-			return undefined;
-		}
-		return `/search?cameras=${encodeURIComponent(`${make}|${model}`)}`;
-	});
-	const cameraRows = $derived(
-		rows([
-			{
-				label: $_('viewer_exif_camera_make'),
-				value: text(exif?.cameraMake),
-				href: cameraHref,
-				glyph: cameraHref !== undefined ? Camera : undefined
-			},
-			{
-				label: $_('viewer_exif_camera_model'),
-				value: text(exif?.cameraModel),
-				href: cameraHref,
-				glyph: cameraHref !== undefined ? Camera : undefined
-			},
-			{ label: $_('viewer_exif_lens'), value: text(exif?.lens) }
-		])
-	);
-	const exposureRows = $derived(
-		rows([
-			{ label: $_('viewer_exif_iso'), value: number(exif?.iso, '', '') },
-			{ label: $_('viewer_exif_aperture'), value: number(exif?.aperture, 'f/', '') },
-			{ label: $_('viewer_exif_shutter'), value: text(exif?.shutter) },
-			{ label: $_('viewer_exif_focal'), value: number(exif?.focal, '', ' mm') }
-		])
-	);
-	const locationRows = $derived(
-		rows([
-			{ label: $_('viewer_exif_latitude'), value: number(exif?.lat, '', '') },
-			{ label: $_('viewer_exif_longitude'), value: number(exif?.lon, '', '') },
-			{ label: $_('viewer_exif_altitude'), value: number(exif?.alt, '', ' m') }
-		])
-	);
-
-	const activeLocale = $derived($locale ?? 'en');
-
-	/** Locale-aware capture time of the wire takenAt. */
-	const capturedLabel = $derived(
-		new Intl.DateTimeFormat(activeLocale, { dateStyle: 'medium', timeStyle: 'short' }).format(
-			new Date(detail.takenAt)
-		)
-	);
-
-	/** Locale-aware file size (decimal megabytes). */
-	const sizeLabel = $derived(
-		`${new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 1 }).format(detail.fileSize / 1_000_000)} MB`
-	);
-
-	/** Locale-aware playback duration; null for images. */
-	const durationLabel = $derived(
-		detail.durationMs === null
-			? null
-			: `${new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 1 }).format(detail.durationMs / 1000)} s`
-	);
-
-	const fileRows = $derived(
-		rows([
-			{ label: $_('viewer_file_name'), value: detail.originalFilename },
-			{ label: $_('viewer_file_captured'), value: capturedLabel },
-			{ label: $_('viewer_file_size'), value: sizeLabel },
-			{
-				label: $_('viewer_file_dimensions'),
-				value: detail.width === null || detail.height === null ? null : `${detail.width} × ${detail.height}`
-			},
-			{ label: $_('viewer_file_duration'), value: durationLabel }
-		])
-	);
+	// The panel's editable surfaces share one curation gate: the
+	// owner of a LIVE asset (a trashed or hidden asset's faces' crop
+	// endpoints answer 404, and the write arms refuse the same states
+	// server-side -- the affordances never render for them).
+	const canCurate = $derived(isOwner && !detail.isTrashed && !detail.isHidden);
 
 	/**
 	 * Whether the People section lists its faces (the chips' gate):
@@ -354,63 +272,114 @@
 		return album.type === 'sync' ? $_('album_all_photos') : album.title;
 	}
 
-	/** The resolved place's own page (the reader's language names it there). */
-	const placeHref = $derived(
-		detail.place === null ? undefined : `/places/${encodeURIComponent(String(detail.place.placeId))}`
+	const activeLocale = $derived($locale ?? 'en');
+
+	/** The capture time in its zone's wall clock, with the zone suffix. */
+	const takenLine = $derived(formatTakenAt(detail.takenAt, detail.takenAtZone, activeLocale));
+	const takenZone = $derived(detail.takenAtZone === null ? '' : zoneLabel(detail.takenAtZone));
+
+	/** Locale-aware file size (decimal megabytes). */
+	const sizeLabel = $derived(
+		`${new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 1 }).format(detail.fileSize / 1_000_000)} MB`
 	);
+
+	/** Locale-aware playback duration; null for images. */
+	const durationLabel = $derived(
+		detail.durationMs === null
+			? null
+			: `${new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 1 }).format(detail.durationMs / 1000)} s`
+	);
+
+	/** The size line: dimensions, weight, and (for videos) the length. */
+	const sizeLine = $derived.by(() => {
+		const parts: string[] = [];
+		if (detail.width !== null && detail.height !== null) {
+			parts.push(
+				`${new Intl.NumberFormat(activeLocale).format(detail.width)} × ${new Intl.NumberFormat(activeLocale).format(detail.height)}`
+			);
+		}
+		parts.push(sizeLabel);
+		if (durationLabel !== null) {
+			parts.push(durationLabel);
+		}
+		return parts.join(' · ');
+	});
+
+	/** The camera line's parts: camera, lens, focal, aperture, shutter, ISO. */
+	const cameraLine = $derived.by(() => {
+		const exif = detail.exif;
+		const parts: string[] = [];
+		const camera = [exif.cameraMake, exif.cameraModel]
+			.filter((part) => part !== null)
+			.join(' ')
+			.trim();
+		if (camera !== '') {
+			parts.push(camera);
+		}
+		const lens = (exif.lens ?? '').trim();
+		if (lens !== '') {
+			parts.push(lens);
+		}
+		if (exif.focal !== null) {
+			parts.push(`${$_('viewer_info_focal', { values: { value: exif.focal } })}`);
+		}
+		if (exif.aperture !== null) {
+			parts.push(`f/${exif.aperture}`);
+		}
+		if (exif.shutter !== null) {
+			parts.push($_('viewer_info_shutter_value', { values: { value: exif.shutter } }));
+		}
+		if (exif.iso !== null) {
+			parts.push($_('viewer_info_iso', { values: { value: exif.iso } }));
+		}
+		return parts.join(' · ');
+	});
+
 	const place: AssetPlaceRef | null = $derived(detail.place);
 
-	// The camera's own position, when the file carried one. A pair
-	// only counts when both halves are numbers: half a coordinate is
-	// no location.
-	const coordinates = $derived<{ lat: number; lon: number } | null>(
-		typeof detail.exif?.lat === 'number' && typeof detail.exif?.lon === 'number'
-			? { lat: detail.exif.lat, lon: detail.exif.lon }
-			: null
+	// The photo's own position: the manual edit when one landed, the
+	// camera's GPS otherwise (the detail's location face already
+	// made the choice).
+	const coordinates = $derived(detail.location);
+
+	/** The altitude line under the mini map (the camera's own fact). */
+	const altitudeLabel = $derived(
+		detail.exif.alt === null
+			? ''
+			: $_('viewer_info_altitude', {
+					values: {
+						value: new Intl.NumberFormat(activeLocale, { maximumFractionDigits: 0 }).format(detail.exif.alt)
+					}
+				})
 	);
-	/** The mini map's base-layer state (the component's own notice renders it). */
-	let locationState = $state<MapState>('loading');
+
+	/** The path row's copy: the clipboard write and its toast. */
+	async function copyPath(): Promise<void> {
+		if (detail.path === null) {
+			return;
+		}
+		try {
+			await navigator.clipboard.writeText(detail.path);
+			toast($_('viewer_path_copied'), 'success');
+		} catch {
+			toast(resolveErrorText($_, 'internal'), 'danger');
+		}
+	}
 </script>
 
-<!-- The shared fact-row language: the label column faint, the
-     value column text, one hairline between the rows. A row that
-     carries a deep link renders its value as a link under the
-     icon-first rule (a leading decorative glyph per row type). -->
-{#snippet factRow(entry: FactRow)}
-	<div class="info__fact flex justify-between gap-3 py-[7px]">
-		<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
-			{entry.label}
-		</dt>
-		<dd class="font-body font-medium text-[13px] leading-[1.4] text-text text-right [overflow-wrap:anywhere]">
-			{#if entry.href !== undefined}
-				<a
-					class="info__fact-link inline-flex items-center justify-end gap-1 text-accent no-underline hover:underline"
-					href={entry.href}
-				>
-					{#if entry.glyph}
-						{@const Glyph = entry.glyph}
-						<Glyph size={14} class="shrink-0" aria-hidden="true" />
-					{/if}
-					{entry.value}
-				</a>
-			{:else}
-				{entry.value}
-			{/if}
-		</dd>
-	</div>
-{/snippet}
-
-<!-- The docked split region: at lg+ the panel is STATIC in
+<!-- The docked split region: at sm+ (640) the panel is STATIC in
      the viewer's flex row -- it occupies layout space beside the
-     media column (the stage re-fits through the flow, the width is
-     the same min(360px,92vw) family, no floating shadow: the
-     border-l hairline separates it). Below lg the same element keeps
-     the overlay-drawer form: fixed, full-height over the right edge,
-     with the floating shadow the overlay language carries. -->
+     media column (the stage re-fits through the flow), the pinned
+     fixed 360px, no breakpoint above it. Below sm the same element
+     keeps the BOTTOM DRAWER form: fixed to the bottom edge, full
+     width, over a scrim (the one deviation the design pins -- 360
+     viewport against 360 sidebar would zero the stage). -->
 <aside
-	class="info fixed top-0 right-0 bottom-0 z-(--z-aside) flex flex-col w-[min(360px,92vw)] bg-card border-l border-border shadow-overlay lg:static lg:shrink-0 lg:shadow-none"
+	id="viewer-info"
+	class="info fixed inset-x-0 bottom-0 top-[14vh] z-(--z-modal) flex w-full flex-col rounded-t-overlay border-t border-border bg-card shadow-overlay sm:static sm:top-auto sm:bottom-auto sm:z-(--z-aside) sm:w-[360px] sm:shrink-0 sm:rounded-none sm:border-t-0 sm:border-l sm:shadow-none"
 	aria-label={$_('viewer_info_title')}
 >
+	<span class="mx-auto mt-2 mb-1 h-1 w-10 shrink-0 rounded-full bg-border-strong sm:hidden" aria-hidden="true"></span>
 	<header class="info__header flex items-center justify-between gap-2 px-4 py-3.5 border-b border-border">
 		<h2 class="info__filename font-body font-semibold text-[15px] leading-[1.4] [overflow-wrap:anywhere]">
 			{detail.originalFilename}
@@ -443,6 +412,9 @@
 			</p>
 		{/if}
 
+		<!-- THE DESCRIPTION: the first section, one line that becomes
+		     an input on click (the owner's edit arm; a shared viewer
+		     reads the stored text). -->
 		<section class="info__section mt-4">
 			<h3
 				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
@@ -453,231 +425,93 @@
 				<!-- The contract's 10,000-rune ceiling on the description,
 				     carried natively: the editor stops the typing where the
 				     server would refuse the write. -->
-				<textarea
-					class="info__editor w-full mb-2 px-3 py-[9px] font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-border-strong rounded-control resize-y"
+				<input
+					class="info__editor w-full px-2.5 py-1.5 font-body font-normal text-[14px] leading-[1.5] text-text bg-page border border-accent rounded-control"
+					type="text"
+					bind:this={editor}
 					bind:value={draft}
 					aria-label={$_('viewer_description_label')}
+					placeholder={$_('viewer_description_empty')}
 					maxlength={10000}
-					rows="4"
-					disabled={saving}></textarea>
+					disabled={saving}
+					onkeydown={handleEditorKeydown}
+					onblur={() => void saveEdit()}
+				/>
 				{#if editErrorKey !== ''}
 					<p
-						class="info__error mb-2 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+						class="info__error mt-2 m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
 						role="alert"
 					>
 						{errorText(editErrorKey)}
 					</p>
 				{/if}
-				<div class="info__row flex flex-wrap gap-2 mb-2">
-					<Button variant="primary" disabled={saving} onclick={() => void saveEdit()}>
-						<Check size={20} aria-hidden="true" />
-						{$_('viewer_description_save')}
-					</Button>
-					<Button variant="ghost" disabled={saving} onclick={cancelEdit}>
-						<X size={20} aria-hidden="true" />
-						{$_('common_cancel')}
-					</Button>
-				</div>
+			{:else if isOwner}
+				{#if detail.description !== ''}
+					<button
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text truncate cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						type="button"
+						title={detail.description}
+						onclick={startEdit}
+					>
+						{detail.description}
+					</button>
+				{:else}
+					<button
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text-faint cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						type="button"
+						onclick={startEdit}
+					>
+						{$_('viewer_description_empty')}
+					</button>
+				{/if}
 			{:else}
 				<p
-					class="info__description mb-2 font-body font-normal text-[14px] leading-[1.5] text-text whitespace-pre-wrap [overflow-wrap:anywhere]"
+					class="info__description m-0 py-1.5 font-body font-normal text-[14px] leading-[1.5] {detail.description !==
+					''
+						? 'text-text'
+						: 'text-text-faint'} truncate"
+					title={detail.description}
 				>
 					{detail.description !== '' ? detail.description : $_('viewer_description_empty')}
 				</p>
-				{#if isOwner}
-					<Button variant="ghost" onclick={startEdit}
-						><PenLine size={20} aria-hidden="true" />{$_('viewer_description_edit')}</Button
-					>
-				{/if}
 			{/if}
 		</section>
 
-		<!-- THE ALBUMS ROWS (the approved L3 face): each visible
-		     album holding this asset deep-links into its detail, and
-		     a memory row into the wall's playback overlay -- the sync
-		     card's internal label never renders (the localized display
-		     name keyed by the type). The section stands only while
-		     albums hold the asset. -->
-		{#if detail.albums.length > 0}
-			<section class="info__section mt-4">
-				<h3
-					class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
-				>
-					{$_('viewer_albums_section')}
-				</h3>
-				<ul class="info__albums m-0 p-0 list-none divide-y divide-border">
-					{#each detail.albums as album (album.id)}
-						<li>
-							<a
-								class="info__album flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
-								href={album.type === 'memory'
-									? `/memories?memory=${encodeURIComponent(album.id)}`
-									: `/albums/${encodeURIComponent(album.id)}`}
-								data-album-id={album.id}
-							>
-								<Folder size={14} class="shrink-0" aria-hidden="true" />
-								{albumTitle(album)}
-							</a>
-						</li>
-					{/each}
-				</ul>
-			</section>
-		{/if}
-
-		<!-- The key-value row language: one hairline between
-		     the rows, the label column faint, the value column text,
-		     the tightened section rhythm -- no card borders, the
-		     section's own spacing is the grouping. -->
+		<!-- THE PEOPLE: the chips are the panel's end of the two-way
+		     linkage -- hovering or focusing a chip highlights its box on
+		     the photo, and a box hover highlights the chip back. The
+		     heading row carries the owner's add-person icon (the drawn
+		     face) and the edit pencil. -->
 		<section class="info__section mt-4">
-			<h3
-				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
-			>
-				{$_('viewer_file_section')}
-			</h3>
-			<dl class="info__facts divide-y divide-border">
-				{#each fileRows as entry (entry.label)}
-					{@render factRow(entry)}
-				{/each}
-				<!-- The tags row: the CALLER's tags on the asset as
-				     chips, each chip a deep link into the tag-filtered
-				     browse (the caller's own vocabulary keys the facet),
-				     plus the assign affordance (the add-tag dialog
-				     the batch bar's flow reuses). Per-user state: the
-				     chips are the caller's own rows, the write is the
-				     caller's own, so the affordance is every viewer's. -->
-				<div class="info__tags flex items-center justify-between gap-3 py-[7px]">
-					<dt class="font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap">
-						{$_('viewer_tags_label')}
-					</dt>
-					<dd class="info__tag-values flex flex-wrap justify-end items-center gap-1.5 m-0">
-						{#if detail.tags.length === 0}
-							<span
-								class="info__tags-empty font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-								>{$_('viewer_tags_empty')}</span
-							>
-						{:else}
-							{#each detail.tags as tag (tag.id)}
-								<a
-									class="info__tag-chip inline-flex items-center gap-1 px-2 py-0.5 font-body font-medium text-[12px] leading-[1.4] text-text bg-transparent border border-border rounded-full whitespace-nowrap no-underline transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text"
-									href={`/search?tagIds=${encodeURIComponent(tag.id)}`}
-									data-tag-id={tag.id}
-								>
-									<Tag size={12} class="shrink-0" aria-hidden="true" />
-									{tag.name}
-								</a>
-							{/each}
-						{/if}
-						<button
-							class="info__tag-add inline-flex items-center gap-1 px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-soft bg-transparent border border-border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text"
-							type="button"
-							onclick={onassigntag}
-						>
-							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
-								<path
-									d="M12 5v14M5 12h14"
-									stroke="currentColor"
-									stroke-width="2"
-									stroke-linecap="round"
-								/>
-							</svg>
-							{$_('action_add_tag')}
-						</button>
-					</dd>
-				</div>
-			</dl>
-		</section>
-
-		<section class="info__section mt-4">
-			<h3
-				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
-			>
-				{$_('viewer_exif_heading')}
-			</h3>
-			<!-- The EXIF groups: collapsible summaries over the same
-			     hairline row rhythm (the card borders of the old
-			     presentation are gone -- the brand's no-heavy
-			     borders discipline). -->
-			<details class="info__group" open>
-				<summary
-					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
-					>{$_('viewer_exif_camera')}</summary
-				>
-				{#if cameraRows.length > 0}
-					<dl class="info__facts divide-y divide-border">
-						{#each cameraRows as entry (entry.label)}
-							{@render factRow(entry)}
-						{/each}
-					</dl>
-				{:else}
-					<p
-						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-					>
-						{$_('viewer_exif_none')}
-					</p>
-				{/if}
-			</details>
-			<details class="info__group">
-				<summary
-					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
-					>{$_('viewer_exif_exposure')}</summary
-				>
-				{#if exposureRows.length > 0}
-					<dl class="info__facts divide-y divide-border">
-						{#each exposureRows as entry (entry.label)}
-							{@render factRow(entry)}
-						{/each}
-					</dl>
-				{:else}
-					<p
-						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-					>
-						{$_('viewer_exif_none')}
-					</p>
-				{/if}
-			</details>
-			<details class="info__group">
-				<summary
-					class="info__group-summary py-[7px] font-body font-semibold text-[13px] leading-[1.4] text-text cursor-pointer"
-					>{$_('viewer_exif_location')}</summary
-				>
-				{#if locationRows.length > 0}
-					<dl class="info__facts divide-y divide-border">
-						{#each locationRows as entry (entry.label)}
-							{@render factRow(entry)}
-						{/each}
-					</dl>
-				{:else}
-					<p
-						class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint"
-					>
-						{$_('viewer_exif_none')}
-					</p>
-				{/if}
-			</details>
-		</section>
-
-		<section class="info__section mt-4">
-			<!-- The People section's heading row: the micro-head plus, for
-			     the owner on a face-listing photo, the pencil into the
-			     edit-people panel (the per-face reassign / detach /
-			     create-from-face surface -- the chips answer WHO is in
-			     this photo, the panel answers WHO this face belongs to). -->
 			<div class="info__heading-row flex items-center justify-between gap-2 mb-1">
 				<h3
 					class="info__heading m-0 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
 				>
 					{$_('nav_people')}
 				</h3>
-				{#if isOwner && facesListed}
-					<button
-						class="info__faces-edit inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text"
-						type="button"
-						aria-label={$_('people_edit_faces')}
-						title={$_('people_edit_faces')}
-						onclick={oneditfaces}
-					>
-						<PenLine size={18} />
-					</button>
+				{#if canCurate}
+					<div class="flex items-center gap-0.5">
+						<button
+							class="info__faces-add inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							type="button"
+							aria-label={$_('viewer_faces_add')}
+							title={$_('viewer_faces_add')}
+							onclick={onstartdraw}
+						>
+							<Plus size={18} />
+						</button>
+						{#if facesListed}
+							<button
+								class="info__faces-edit inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+								type="button"
+								aria-label={$_('people_edit_faces')}
+								title={$_('people_edit_faces')}
+								onclick={oneditfaces}
+							>
+								<PenLine size={18} />
+							</button>
+						{/if}
+					</div>
 				{/if}
 			</div>
 			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
@@ -702,9 +536,17 @@
 						<li>
 							{#if faceLinks(face)}
 								<a
-									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer no-underline transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
+									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border cursor-pointer no-underline transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text {isLinked(
+										face.id
+									)
+										? 'bg-accent-soft border-accent'
+										: 'border-border'}"
 									href={`/people/${encodeURIComponent(face.clusterId ?? '')}`}
 									data-face-id={face.id}
+									onmouseenter={() => linkFace(face.id)}
+									onmouseleave={() => unlinkFace(face.id)}
+									onfocus={() => linkFace(face.id)}
+									onblur={() => unlinkFace(face.id)}
 								>
 									<img
 										class="info__face-crop w-9 h-9 rounded-control object-cover bg-accent-soft"
@@ -727,9 +569,17 @@
 								</a>
 							{:else}
 								<button
-									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border border-border cursor-pointer transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text"
+									class="info__face flex items-center gap-2 py-1 pl-1 pr-2.5 rounded-control bg-transparent border cursor-pointer transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text focus-visible:bg-accent-soft focus-visible:border-accent-soft-text {isLinked(
+										face.id
+									)
+										? 'bg-accent-soft border-accent'
+										: 'border-border'}"
 									type="button"
 									data-face-id={face.id}
+									onmouseenter={() => linkFace(face.id)}
+									onmouseleave={() => unlinkFace(face.id)}
+									onfocus={() => linkFace(face.id)}
+									onblur={() => unlinkFace(face.id)}
 									onclick={() => onassignface(face)}
 								>
 									<img
@@ -741,8 +591,10 @@
 										draggable="false"
 									/>
 									<span
-										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate"
-										>{faceLabel(face)}</span
+										class="info__face-name max-w-[140px] font-body font-medium text-[13px] leading-[1.4] text-text truncate {face.label ===
+										null
+											? 'text-text-soft'
+											: ''}">{faceLabel(face)}</span
 									>
 									{#if faceAge(face) !== null}
 										<span
@@ -758,53 +610,227 @@
 			{/if}
 		</section>
 
+		<!-- THE INFO: icon + content, one row per line -- the capture
+		     time (its zone shown), the size and weight, the camera
+		     line, the tag chips, the album links, the admin-only path
+		     and the location with its mini map. No filename row (the
+		     panel header carries it), no key-value columns. -->
 		<section class="info__section mt-4">
 			<h3
 				class="info__heading mb-1 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-text-faint"
 			>
-				{$_('nav_places')}
+				{$_('viewer_info_section')}
 			</h3>
-			{#if place !== null && placeHref !== undefined}
-				<!-- The resolved city: the row deep-links into the place's own
-				     page (the place domain's wall, named in the reader's
-				     language). -->
-				<a
-					class="info__place flex items-center gap-1.5 py-[7px] font-body font-medium text-[13px] leading-[1.4] text-accent no-underline hover:underline"
-					href={placeHref}
-					data-place-id={place.placeId}
-				>
-					<MapPin size={14} class="shrink-0" aria-hidden="true" />
-					{place.name}
-				</a>
-			{:else}
-				<p class="info__placeholder py-[7px] font-body font-normal text-[13px] leading-[1.4] text-text-faint">
-					{$_('viewer_places_placeholder')}
-				</p>
-			{/if}
-
-			<!-- The capture location card: the small map over the
-			     coordinates the file recorded, the coordinates printed
-			     beneath (the fact survives any tile source's absence). -->
-			{#if coordinates !== null}
-				<div
-					class="info__location mt-1.5 overflow-hidden rounded-control border border-border bg-card"
-					data-testid="viewer-location"
-				>
-					<div class="relative h-[150px]">
-						<MapView
-							point={coordinates}
-							cluster={false}
-							label={$_('viewer_location_map_label')}
-							bind:tiles={locationState}
-						/>
-					</div>
-					<p
-						class="info__location-coords m-0 border-t border-border px-2.5 py-1.5 font-mono font-normal text-[11px] leading-[1.4] text-text-faint tabular-nums"
+			<ul class="info__facts m-0 p-0 list-none divide-y divide-border">
+				<li class="info__fact flex items-center gap-2 py-[7px]">
+					<Calendar size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+					<span
+						class="min-w-0 flex-1 [overflow-wrap:anywhere] font-body font-normal text-[13px] leading-[1.4] text-text"
 					>
-						{coordinates.lat.toFixed(4)}, {coordinates.lon.toFixed(4)}
-					</p>
-				</div>
-			{/if}
+						{takenLine}
+						{#if takenZone !== ''}
+							<span class="text-text-faint tabular-nums">· {takenZone}</span>
+						{/if}
+					</span>
+					{#if isOwner}
+						<button
+							class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							type="button"
+							aria-label={$_('viewer_edit_date_open')}
+							title={$_('viewer_edit_date_open')}
+							onclick={onedittime}
+						>
+							<PenLine size={14} />
+						</button>
+					{/if}
+				</li>
+				<li class="info__fact flex items-center gap-2 py-[7px]">
+					<Ratio size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+					<span
+						class="min-w-0 flex-1 [overflow-wrap:anywhere] font-body font-normal text-[13px] leading-[1.4] text-text"
+					>
+						{sizeLine}
+					</span>
+				</li>
+				{#if cameraLine !== ''}
+					<li class="info__fact flex items-center gap-2 py-[7px]">
+						<Camera size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+						<span
+							class="min-w-0 flex-1 [overflow-wrap:anywhere] font-body font-normal text-[13px] leading-[1.4] text-text"
+						>
+							{cameraLine}
+						</span>
+					</li>
+				{/if}
+				<li class="info__fact flex items-start gap-2 py-[7px]">
+					<Tag size={16} class="shrink-0 mt-0.5 text-text-faint" aria-hidden="true" />
+					<span class="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
+						{#if detail.tags.length === 0}
+							<span
+								class="info__tags-empty font-body font-normal text-[13px] leading-[1.4] text-text-faint"
+								>{$_('viewer_tags_empty')}</span
+							>
+						{:else}
+							{#each detail.tags as tag (tag.id)}
+								<!-- The chip is a span holding TWO independent
+								     controls: the name is the link into the
+								     tag-filtered browse, the × only removes --
+								     interactive elements never nest. -->
+								<span
+									class="info__tag-chip inline-flex items-center gap-0.5 ps-2 pe-0.5 py-0.5 border border-border rounded-full bg-transparent whitespace-nowrap transition-[background-color,border-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text"
+									data-tag-id={tag.id}
+								>
+									<a
+										class="font-body font-medium text-[12px] leading-[1.4] text-text no-underline transition-[color] duration-(--motion-fast) ease-standard hover:text-accent-soft-text"
+										href={`/search?tagIds=${encodeURIComponent(tag.id)}`}
+									>
+										{tag.name}
+									</a>
+									<button
+										class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-transparent border-0 text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-[color-mix(in_srgb,var(--color-danger)_18%,transparent)] hover:text-danger-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+										type="button"
+										aria-label={$_('viewer_tag_remove', { values: { name: tag.name } })}
+										onclick={() => onremovetag(tag.id)}
+									>
+										<X size={10} aria-hidden="true" />
+									</button>
+								</span>
+							{/each}
+						{/if}
+						<button
+							class="info__tag-add inline-flex items-center gap-1 px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-soft bg-transparent border border-border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							type="button"
+							onclick={onassigntag}
+						>
+							<svg viewBox="0 0 24 24" width="12" height="12" fill="none" aria-hidden="true">
+								<path
+									d="M12 5v14M5 12h14"
+									stroke="currentColor"
+									stroke-width="2"
+									stroke-linecap="round"
+								/>
+							</svg>
+							{$_('action_add_tag')}
+						</button>
+					</span>
+				</li>
+				{#if detail.albums.length > 0}
+					<!-- The albums row: the one road back from a photo to the
+					     albums that hold it -- and the viewer opens them in a
+					     NEW TAB, so the open photo survives the trip. -->
+					<li class="info__fact flex items-center gap-2 py-[7px]">
+						<Folder size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+						<span class="min-w-0 flex-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+							{#each detail.albums as album (album.id)}<a
+									class="info__album inline-flex items-center font-body font-medium text-[13px] leading-none text-accent no-underline hover:underline focus-visible:underline"
+									href={album.type === 'memory'
+										? `/memories?memory=${encodeURIComponent(album.id)}`
+										: `/albums/${encodeURIComponent(album.id)}`}
+									target="_blank"
+									rel="noopener"
+									data-album-id={album.id}
+								>
+									{albumTitle(album)}
+								</a>
+								{#if album !== detail.albums[detail.albums.length - 1]}
+									<span class="text-text-faint" aria-hidden="true">·</span>
+								{/if}
+							{/each}
+						</span>
+					</li>
+				{/if}
+				{#if detail.path !== null}
+					<!-- The path row: admin-only (the detail serves the field
+					     to administrators alone, so the row's existence IS the
+					     gate), default collapsed, the mono copy beside a copy
+					     button. -->
+					<li class="info__fact py-[7px]" data-testid="viewer-path">
+						<button
+							class="flex w-full items-center gap-2 border-0 bg-transparent p-0 text-left cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							type="button"
+							aria-expanded={pathOpen}
+							aria-controls="asset-path"
+							onclick={() => (pathOpen = !pathOpen)}
+						>
+							<HardDrive size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+							<span class="min-w-0 flex-1 font-body font-normal text-[13px] leading-[1.4] text-text-soft">
+								{$_('viewer_path_label')}
+							</span>
+							<ChevronDown
+								size={14}
+								class="shrink-0 text-text-faint transition-transform duration-(--motion-fast) ease-standard {pathOpen
+									? 'rotate-180'
+									: ''}"
+								aria-hidden="true"
+							/>
+						</button>
+						{#if pathOpen}
+							<div class="mt-1.5 flex items-start gap-2" id="asset-path">
+								<!-- Two lines at most: the path breaks at any
+								     character (the filename is the half worth
+								     reading, never the half cut off). -->
+								<span
+									class="info__path min-w-0 flex-1 line-clamp-2 break-all font-mono font-normal text-[12px] leading-[1.5] text-text-soft"
+									>{detail.path}</span
+								>
+								<button
+									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+									type="button"
+									aria-label={$_('viewer_path_copy')}
+									title={$_('viewer_path_copy')}
+									onclick={() => void copyPath()}
+								>
+									<Copy size={14} />
+								</button>
+							</div>
+						{/if}
+					</li>
+				{/if}
+				{#if coordinates !== null}
+					<!-- The location row: the LAST item of the info -- the
+					     plain place name (no link), the owner's pencil, the
+					     5:4 static mini map (display only: no drag, no zoom,
+					     no click) and the coordinates line. -->
+					<li class="info__fact py-[7px]" data-testid="viewer-location">
+						<div class="flex items-center gap-2">
+							<MapPin size={16} class="shrink-0 text-text-faint" aria-hidden="true" />
+							<span
+								class="min-w-0 flex-1 truncate font-body font-normal text-[13px] leading-[1.4] text-text"
+							>
+								{place !== null ? place.name : $_('viewer_location_unnamed')}
+							</span>
+							{#if isOwner}
+								<button
+									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+									type="button"
+									aria-label={$_('viewer_edit_location_open')}
+									title={$_('viewer_edit_location_open')}
+									onclick={oneditlocation}
+								>
+									<PenLine size={14} />
+								</button>
+							{/if}
+						</div>
+						<div class="relative mt-2 aspect-[5/4] overflow-hidden rounded-card border border-border">
+							<!-- The map's own notice states a missing base
+							     layer; the row's coordinates stand either way. -->
+							<MapView
+								point={coordinates}
+								cluster={false}
+								interactive={false}
+								label={$_('viewer_location_map_label')}
+							/>
+						</div>
+						<p
+							class="m-0 mt-1.5 font-body font-normal text-[12px] leading-[1.4] text-text-faint tabular-nums"
+						>
+							{coordinates.lat.toFixed(4)}, {coordinates.lon.toFixed(4)}{#if altitudeLabel !== ''}
+								· {altitudeLabel}
+							{/if}
+						</p>
+					</li>
+				{/if}
+			</ul>
 		</section>
 	</div>
 </aside>

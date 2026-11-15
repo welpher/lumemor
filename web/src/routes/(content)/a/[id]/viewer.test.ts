@@ -7,6 +7,14 @@ import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
 import Page from './+page.svelte';
 
+// The map double: the info panel's location row renders the same
+// MapView the places tab uses, and the real component loads MapLibre
+// lazily and needs a layout-capable host -- the row's shape is
+// exercised against this stand-in (one region div, the same props).
+vi.mock('$lib/map/MapView.svelte', async () => ({
+	default: (await import('./MapStub.svelte')).default
+}));
+
 // The asset viewer route: the navigation walk over the wall's
 // published sequence (clamp at both ends, inert off-sequence deep
 // links), the image / video / Live Photo stage, the not-ready wait
@@ -103,6 +111,9 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		description: 'Original caption.',
 		isHidden: false,
 		exif: {},
+		takenAtZone: '+08:00',
+		location: null,
+		path: null,
 		faces: [],
 		tags: [],
 		albums: [],
@@ -118,6 +129,7 @@ function faceSummary(id: string, overrides: Record<string, unknown> = {}): Recor
 		id,
 		score: 0.9,
 		thumbnail: `/api/v1/faces/${id}/thumbnail`,
+		bbox: { x: 200, y: 200, w: 300, h: 300 },
 		clusterId: `c-${id}`,
 		label: null,
 		birthDate: null,
@@ -270,6 +282,25 @@ function openDrawer(): void {
 	click(element('[aria-label="Photo information"]'));
 }
 
+/** Arm the description's edit input: the click-to-edit line. */
+function openDescriptionEdit(): void {
+	click(element('button.info__description'));
+}
+
+/** Submit the description's edit through the input's Enter arm. */
+function submitDescriptionEdit(): void {
+	const field = element('input.info__editor');
+	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+	flushSync();
+}
+
+/** Cancel the description's edit through the input's Escape arm. */
+function cancelDescriptionEdit(): void {
+	const field = element('input.info__editor');
+	field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+	flushSync();
+}
+
 /** One icon-only button of the viewer's action bar, addressed by its aria-label. */
 function barButton(label: string): HTMLButtonElement {
 	const found = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
@@ -280,9 +311,9 @@ function barButton(label: string): HTMLButtonElement {
 }
 
 function fillTextarea(selector: string, value: string): void {
-	const field = document.body.querySelector<HTMLTextAreaElement>(selector);
+	const field = document.body.querySelector<HTMLInputElement | HTMLTextAreaElement>(selector);
 	if (field === null) {
-		throw new Error(`missing textarea ${selector}`);
+		throw new Error(`missing field ${selector}`);
 	}
 	field.value = value;
 	field.dispatchEvent(new Event('input', { bubbles: true }));
@@ -438,8 +469,9 @@ test('a deep link off the sequence still loads the asset; arrows and filmstrip c
 	]);
 	await settle();
 
-	// The off-sequence detail renders.
-	expect(element('.viewer__title').textContent).toBe('OFF.jpg');
+	// The off-sequence detail renders (the bar carries no filename
+	// any more: the browser title is the name's one stage face).
+	expect(document.title).toBe('OFF.jpg · lumemor');
 	expect(
 		Array.from(document.body.querySelectorAll('img.viewer__image')).map((image) => image.getAttribute('src'))
 	).toContain('/api/v1/assets/zz/thumbnail?size=view');
@@ -487,9 +519,9 @@ test('the description edit sends the PATCH body and maps failures without touchi
 	openDrawer();
 	expect(element('.info__description').textContent).toBe('Original caption.');
 
-	click(buttonByText('Edit'));
-	fillTextarea('textarea.info__editor', 'My new caption.');
-	click(buttonByText('Save'));
+	openDescriptionEdit();
+	fillTextarea('input.info__editor', 'My new caption.');
+	submitDescriptionEdit();
 	await settle();
 
 	// The exact PATCH body of the contract.
@@ -499,14 +531,14 @@ test('the description edit sends the PATCH body and maps failures without touchi
 
 	// The failure keeps the edit mode (the draft stays for a retry)
 	// and shows the generic message, never the raw code.
-	expect(document.body.querySelector('textarea.info__editor')).not.toBeNull();
+	expect(document.body.querySelector('input.info__editor')).not.toBeNull();
 	const error = element('.info__error');
 	expect(error.getAttribute('role')).toBe('alert');
 	expect(error.textContent).toBe('Something went wrong. Please try again.');
 	expect(error.textContent).not.toContain('proxy_teapot');
 
 	// The stored text never changed: canceling shows the original.
-	click(buttonByText('Cancel'));
+	cancelDescriptionEdit();
 	expect(element('.info__description').textContent).toBe('Original caption.');
 	unmount(app);
 	flushSync();
@@ -522,13 +554,13 @@ test('a successful edit adopts the response description', async () => {
 	await settle();
 
 	openDrawer();
-	click(buttonByText('Edit'));
-	fillTextarea('textarea.info__editor', 'The saved caption.');
-	click(buttonByText('Save'));
+	openDescriptionEdit();
+	fillTextarea('input.info__editor', 'The saved caption.');
+	submitDescriptionEdit();
 	await settle();
 
 	// The response IS the fresh detail: the read view adopts it.
-	expect(document.body.querySelector('textarea.info__editor')).toBeNull();
+	expect(document.body.querySelector('input.info__editor')).toBeNull();
 	expect(element('.info__description').textContent).toBe('The saved caption.');
 	unmount(app);
 	flushSync();
@@ -736,9 +768,13 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 
 	// The owner-only writes never render (read-only is visual, never
 	// grayed out -- the pinned read-only rule): no trash in the bar,
-	// no edit in the drawer.
+	// no edit pencil in the drawer, and the description is a PLAIN
+	// line (a live edit control is an owner affordance alone).
 	expect(() => barButton('Trash')).toThrow();
-	expect(document.body.textContent).not.toContain('Edit');
+	expect(() => barButton('Edit date')).toThrow();
+	expect(() => barButton('Edit location')).toThrow();
+	const description = document.body.querySelector('.info__description');
+	expect(description?.tagName).toBe('P');
 	expect(() => barButton('Favorite')).not.toThrow();
 
 	// The per-user favorite still works for the viewer.
@@ -771,27 +807,26 @@ test('the action bar carries the curation icon actions; the permanent delete is 
 	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
 	expect(document.body.textContent).not.toContain('Delete permanently');
 
-	// With the info panel open, the action cluster keeps its overlay
-	// guard -- the left shift now serves only the <lg overlay
-	// fallback form (lg:me-0); at lg+ the split layout itself clears
-	// the cluster (the split composition test below).
+	// The floating bar: no left-shift guard any more (the panel is a
+	// static sibling from 640 up and a bottom drawer below -- neither
+	// covers the top bar), and no filename row in the middle.
 	const actions = () => document.body.querySelector('.viewer__bar-actions');
 	click(barButton('Photo information'));
-	expect(actions()?.className).toContain('me-[calc(min(360px,92vw)+1rem)]');
-	expect(actions()?.className).toContain('lg:me-0');
+	expect(actions()?.className).toContain('ms-auto');
+	expect(element('.viewer__bar').querySelector('.viewer__title')).toBeNull();
+	expect(element('.viewer__bar').querySelector('p')).toBeNull();
 	click(barButton('Photo information'));
-	expect(actions()?.className).not.toContain('me-[calc(min(360px,92vw)+1rem)]');
 	unmount(app);
 	flushSync();
 });
 
-test('the info panel docks as a right split region at lg and falls back to the overlay below it', async () => {
+test('the info panel docks as a right split region from 640 and falls back to the bottom drawer below it', async () => {
 	// The split composition: the viewer root is a flex ROW -- the media
 	// column flexes (flex-1 min-w-0, the bar and the stage live inside
 	// it) and the panel rides BESIDE it as a real flex sibling
-	// (lg:static: it occupies layout space, so the stage re-fits
-	// through the flow instead of being covered). Below lg the same
-	// panel keeps the fixed overlay-drawer form.
+	// (sm:static: it occupies layout space, so the stage re-fits
+	// through the flow instead of being covered). Below 640 the same
+	// panel keeps the bottom-drawer form over its scrim.
 	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 
@@ -804,7 +839,7 @@ test('the info panel docks as a right split region at lg and falls back to the o
 	expect(main.className).toContain('flex-1');
 	expect(main.className).toContain('min-w-0');
 	// The bar and the stage both render inside the media column (the
-	// panel can never cover them at lg+).
+	// panel can never cover them at 640+).
 	expect(main.contains(element('.viewer__bar'))).toBe(true);
 	expect(main.contains(element('.viewer__stage'))).toBe(true);
 
@@ -813,17 +848,19 @@ test('the info panel docks as a right split region at lg and falls back to the o
 	// The panel is INSIDE the viewer's row (a flex sibling of the
 	// media column), never a page-level overlay.
 	expect(root.contains(panel)).toBe(true);
-	// The docked form: static in the row, the same width family, no
-	// floating shadow. The overlay form (fixed, full-height, shadowed)
-	// rides the same element below lg.
-	expect(panel.className).toContain('lg:static');
-	expect(panel.className).toContain('lg:shrink-0');
-	expect(panel.className).toContain('lg:shadow-none');
-	expect(panel.className).toContain('w-[min(360px,92vw)]');
+	// The docked form: static in the row at sm+, the pinned fixed
+	// 360px, no floating shadow. The drawer form (fixed to the bottom
+	// edge, full width, shadowed) rides the same element below sm.
+	expect(panel.className).toContain('sm:static');
+	expect(panel.className).toContain('sm:shrink-0');
+	expect(panel.className).toContain('sm:shadow-none');
+	expect(panel.className).toContain('sm:w-[360px]');
 	expect(panel.className).toContain('fixed');
 	expect(panel.className).toContain('shadow-overlay');
-	// The zoom var the media transform rides (the engine drives it
-	// per frame; 1 at rest).
+	expect(panel.className).toContain('sm:border-l');
+	expect(panel.className).toContain('rounded-t-overlay');
+	// The zoom var the media box transform rides (the engine drives
+	// it per frame; 1 at rest).
 	expect(element('.viewer__stage').style.getPropertyValue('--viewer-zoom')).toBe('1');
 	unmount(app);
 	flushSync();
@@ -876,7 +913,7 @@ test('the open panel carries the load state before the record lands', async () =
 		})
 	);
 	pageState.params.id = 'a2';
-	localStorage.setItem('lumemor:viewer:info-panel', 'true');
+	localStorage.setItem('lumemor:viewer:info', 'true');
 	const app = mount(Page, { target: document.body });
 	flushSync();
 	await tick();
@@ -908,7 +945,7 @@ test('a failed record load keeps the open panel honest with its own retry', asyn
 		})
 	);
 	pageState.params.id = 'a2';
-	localStorage.setItem('lumemor:viewer:info-panel', 'true');
+	localStorage.setItem('lumemor:viewer:info', 'true');
 	const app = mount(Page, { target: document.body });
 	flushSync();
 	await settle();
@@ -937,7 +974,7 @@ test('the info panel open preference persists across viewer sessions', async () 
 	expect(document.body.querySelector('.info')).toBeNull();
 
 	openDrawer();
-	expect(localStorage.getItem('lumemor:viewer:info-panel')).toBe('true');
+	expect(localStorage.getItem('lumemor:viewer:info')).toBe('true');
 	unmount(first.app);
 	flushSync();
 
@@ -948,7 +985,7 @@ test('the info panel open preference persists across viewer sessions', async () 
 
 	// Closing it persists the closed preference for the next session.
 	click(barButton('Photo information'));
-	expect(localStorage.getItem('lumemor:viewer:info-panel')).toBe('false');
+	expect(localStorage.getItem('lumemor:viewer:info')).toBe('false');
 	unmount(second.app);
 	flushSync();
 
@@ -1033,7 +1070,7 @@ test("a Live Photo's double press is the press pair, never a zoom toggle", async
 	flushSync();
 });
 
-test('the info panel is metadata-only: key-value rows with hairline dividers, no actions section', async () => {
+test('the info panel is the four sections: icon rows, no actions, no key-value columns', async () => {
 	const { app } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
 	openDrawer();
@@ -1042,15 +1079,15 @@ test('the info panel is metadata-only: key-value rows with hairline dividers, no
 	// affordances live in the bar.
 	expect(element('.info').textContent).not.toContain('Actions');
 
-	// The file facts: label column faint, value column text, one
-	// hairline between the rows.
+	// The info rows: one line per fact (icon + content), one
+	// hairline between the rows, no key-value columns.
 	const facts = element('.info__facts');
 	expect(facts.className).toContain('divide-y');
-	const term = facts.querySelector('dt');
-	const value = facts.querySelector('dd');
-	expect(term?.className).toContain('text-text-faint');
-	expect(value?.className).toContain('text-text');
-	expect(value?.className).not.toContain('text-text-faint');
+	expect(facts.querySelector('dt')).toBeNull();
+	expect(facts.querySelector('dd')).toBeNull();
+	// The icon-first row language: every fact row leads with a
+	// decorative glyph.
+	expect(facts.querySelector('li')?.querySelector('svg')).not.toBeNull();
 	unmount(app);
 	flushSync();
 });
@@ -1104,8 +1141,8 @@ test('the i key toggles the drawer and typing never reaches the viewer keys', as
 
 	// Typing in the description editor: the arrows stay in the field.
 	pressKey('i');
-	click(buttonByText('Edit'));
-	const field = document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor');
+	openDescriptionEdit();
+	const field = document.body.querySelector<HTMLInputElement>('input.info__editor');
 	if (field === null) {
 		throw new Error('missing editor');
 	}
@@ -1318,8 +1355,8 @@ test('an in-progress description draft survives same-id detail replacements', as
 	await settle();
 
 	openDrawer();
-	click(buttonByText('Edit'));
-	fillTextarea('textarea.info__editor', 'My work in progress.');
+	openDescriptionEdit();
+	fillTextarea('input.info__editor', 'My work in progress.');
 
 	// The optimistic trash flip replaces the detail object (same
 	// id): the flip is observable (the trashed banner) and the draft
@@ -1327,18 +1364,14 @@ test('an in-progress description draft survives same-id detail replacements', as
 	click(barButton('Trash'));
 	await new Promise((resolve) => setTimeout(resolve, 0));
 	expect(element('.info').textContent).toContain('This photo is in the trash.');
-	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
-		'My work in progress.'
-	);
+	expect(document.body.querySelector<HTMLInputElement>('input.info__editor')?.value).toBe('My work in progress.');
 
 	// The SSE convergence refetch replaces it again (same id): the
 	// draft survives that replacement too.
 	handlers[0]?.({ id: 14, name: 'asset.updated', assetId: 'a2', kind: 'image' });
 	await settle();
 	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/assets/a2?locale=en')).toHaveLength(2);
-	expect(document.body.querySelector<HTMLTextAreaElement>('textarea.info__editor')?.value).toBe(
-		'My work in progress.'
-	);
+	expect(document.body.querySelector<HTMLInputElement>('input.info__editor')?.value).toBe('My work in progress.');
 
 	release?.(jsonResponse(200, { affected: 1, missing: [] }));
 	await settle();
@@ -1357,7 +1390,7 @@ test('an in-progress description draft survives same-id detail replacements', as
 		)
 	]);
 	await settle();
-	expect(document.body.querySelector('textarea.info__editor')).toBeNull();
+	expect(document.body.querySelector('input.info__editor')).toBeNull();
 	expect(element('.info__description').textContent).toBe('The neighbor caption.');
 	unmount(neighbor.app);
 	flushSync();
@@ -1540,10 +1573,14 @@ test('a named chip carries the capture-time age when the person has a birth date
 	flushSync();
 });
 
-test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, place", async () => {
+test("the drawer's browsable rows deep-link: albums, tags, named faces; the place row stays plain", async () => {
 	// The approved L3 face: the rows that name a browsable context
 	// render as links (the icon-first rule's leading glyph rides the
-	// row types), the drawer stays read-only otherwise.
+	// row types), the drawer stays read-only otherwise. The location
+	// row is the one deliberate exception: the place name is PLAIN
+	// text (the design's pin -- the geographic name does not carry
+	// the reader away), and the album links open in a NEW TAB (the
+	// open photo survives the trip).
 	const detail = detailBodyOf(sequence[1]!, {
 		exif: { cameraMake: 'Apple', cameraModel: 'iPhone 15' },
 		tags: [{ id: 't1', name: 'Beach' }],
@@ -1553,46 +1590,47 @@ test("the drawer's browsable rows deep-link: albums, tags, camera, named faces, 
 			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner' }
 		],
 		place: { placeId: 2988507, name: 'Paris' },
+		location: { lat: 48.8584, lon: 2.2945 },
 		faces: [faceSummary('f1', { label: { name: 'Ada' } })]
 	});
 	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detail))]);
 	await settle();
 	openDrawer();
 
-	// The albums rows: one link per visible album, the sync card's
-	// localized display name keyed by the type -- and a memory row
-	// deep-links into the memory wall's playback overlay (the
-	// reference set's face), never the album detail's.
+	// The albums row: one link per visible album, the sync card's
+	// localized display name keyed by the type -- every link a NEW
+	// TAB (target="_blank" rel="noopener").
 	const albumLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__album'));
 	expect(albumLinks.map((link) => link.getAttribute('href'))).toEqual([
 		'/albums/al-1',
 		'/memories?memory=mem-1',
 		'/albums/al-2'
 	]);
+	expect(albumLinks.map((link) => link.getAttribute('target'))).toEqual(['_blank', '_blank', '_blank']);
+	expect(albumLinks.map((link) => link.getAttribute('rel'))).toEqual(['noopener', 'noopener', 'noopener']);
 	expect(albumLinks[1]?.textContent?.trim()).toBe('Paris trip');
 	expect(albumLinks[2]?.textContent?.trim()).toBe('My photos');
 
-	// The tag chips: deep links into the tag-filtered browse.
-	const tagLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__tag-chip'));
+	// The tag chips: deep links into the tag-filtered browse, each
+	// beside its own remove button (the × never nests in the link).
+	const tagLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__tag-chip a'));
 	expect(tagLinks.map((link) => link.getAttribute('href'))).toEqual(['/search?tagIds=t1']);
 	expect(tagLinks[0]?.textContent?.trim()).toBe('Beach');
+	expect(tagLinks[0]?.closest('.info__tag-chip')?.querySelector('button')).not.toBeNull();
 
-	// The camera rows: the facet's round-trip id (`make|model`).
-	const cameraLinks = Array.from(document.body.querySelectorAll<HTMLAnchorElement>('.info__fact-link'));
-	expect(cameraLinks.map((link) => link.getAttribute('href'))).toEqual([
-		'/search?cameras=Apple%7CiPhone%2015',
-		'/search?cameras=Apple%7CiPhone%2015'
-	]);
+	// The camera line: one plain line (no deep link any more -- the
+	// fact row reads, it does not navigate).
+	expect(element('.info__facts').textContent).toContain('Apple iPhone 15');
 
 	// The named face: the person page link; the unnamed arm keeps the
 	// assign flow (its own test).
 	const faceLink = document.body.querySelector<HTMLAnchorElement>('[data-face-id="f1"]');
 	expect(faceLink?.getAttribute('href')).toBe('/people/c-f1');
 
-	// The resolved place: the place's own page link.
-	const placeLink = document.body.querySelector<HTMLAnchorElement>('.info__place');
-	expect(placeLink?.getAttribute('href')).toBe('/places/2988507');
-	expect(placeLink?.textContent?.trim()).toBe('Paris');
+	// The resolved place: plain text, never a link.
+	expect(document.body.querySelector('.info__place')).toBeNull();
+	expect(element('[data-testid="viewer-location"]').textContent).toContain('Paris');
+	expect(document.body.querySelector('[data-testid="viewer-location"]')?.querySelector('a')).toBeNull();
 
 	unmount(app);
 	flushSync();
@@ -1861,7 +1899,7 @@ test("the drawer's file section renders the tags row: the caller's chips, the em
 
 	// The first part left the panel's open preference behind:
 	// drop it so the bare mount starts from the default (closed).
-	localStorage.removeItem('lumemor:viewer:info-panel');
+	localStorage.removeItem('lumemor:viewer:info');
 	// No tag yet: the honest empty note, the affordance still there.
 	const { app: bare } = mountViewer('a2', viewerRoutes('a2'));
 	await settle();
@@ -1987,7 +2025,14 @@ test("the tags row's assign affordance is every viewer's own write (per-user sta
 
 	openDrawer();
 	const info = element('.info');
-	expect(info.textContent).not.toContain('Edit');
+	// The read-only drawer: the description carries the shared text
+	// as a plain line (never a live edit control), the pencils are
+	// absent by their accessible names, and the per-user tag entry
+	// stays.
+	const description = info.querySelector('.info__description');
+	expect(description?.tagName).toBe('P');
+	expect(description?.textContent?.trim()).toBe('Original caption.');
+	expect(info.querySelectorAll('button[aria-label="Edit date"], button[aria-label="Edit location"]')).toHaveLength(0);
 	expect(info.querySelector('.info__tag-chip')?.textContent?.trim()).toBe('Sunrise');
 	expect(scopedButtonByText(info, 'Add tag')).toBeTruthy();
 
@@ -2445,6 +2490,534 @@ test('the face creation and detach events of other sessions converge the detail'
 	firePersonEvent({ id: 3, name: 'person.face_detached', faceId: 'f9', clusterId: 'c9', userId: 'u9' });
 	await settle();
 	expect(fetches()).toBe(base + 2);
+	unmount(app);
+	flushSync();
+});
+
+// --- The stage and the panel's edit arms (the viewer's final form) ---------
+
+// A controllable ResizeObserver: the stage's refit input. jsdom has
+// none, so the contain rule's geometry is driven through this fake --
+// one measurement in, one media-box size out.
+class FakeResizeObserver {
+	static live: FakeResizeObserver[] = [];
+	callback: (entries: Array<{ contentRect: { width: number; height: number } }>) => void;
+	constructor(callback: FakeResizeObserver['callback']) {
+		this.callback = callback;
+		FakeResizeObserver.live.push(this);
+	}
+	observe(): void {}
+	unobserve(): void {}
+	disconnect(): void {}
+	/** Deliver one stage measurement (the test's own stage size). */
+	measure(width: number, height: number): void {
+		this.callback([{ contentRect: { width, height } }]);
+		flushSync();
+	}
+}
+
+/** The last stage observer (the viewer mounts one per stage). */
+function stageObserver(): FakeResizeObserver {
+	const found = FakeResizeObserver.live.at(-1);
+	if (found === undefined) {
+		throw new Error('no stage observer registered');
+	}
+	return found;
+}
+
+/** Deliver the media's DECODED pixel size (the contain rule's ratio input). */
+function decodeStage(width: number, height: number): void {
+	const image = document.body.querySelector<HTMLImageElement>('img.viewer__image');
+	if (image === null) {
+		throw new Error('missing the media image');
+	}
+	Object.defineProperty(image, 'naturalWidth', { value: width, configurable: true });
+	Object.defineProperty(image, 'naturalHeight', { value: height, configurable: true });
+	image.dispatchEvent(new Event('load'));
+	flushSync();
+}
+
+/** The media box's rendered size, as the contain rule computed it. */
+function mediaBoxSize(): { width: number; height: number } {
+	const media = element('.viewer__media');
+	return { width: Number.parseFloat(media.style.width), height: Number.parseFloat(media.style.height) };
+}
+
+test('the stage fits the media to one dimension: the box refits when the stage does', async () => {
+	vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+	FakeResizeObserver.live.length = 0;
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// The decoded 3:2 landscape, on a 1280x720 stage: the height is
+	// the short dimension, so the box fills it and the width follows
+	// the ratio (not a percentage inset of the stage).
+	decodeStage(1200, 800);
+	stageObserver().measure(1280, 720);
+	expect(mediaBoxSize()).toEqual({ width: 1080, height: 720 });
+
+	// A 4:3 stage at the same width: the width is now the short
+	// dimension, so the box fills the width instead.
+	stageObserver().measure(1280, 1000);
+	const wide = mediaBoxSize();
+	expect(wide.width).toBe(1280);
+	expect(wide.height).toBeCloseTo(853.33, 1);
+
+	// A portrait photo (3:4) on the same stage: the height fills it
+	// and the width follows -- as large as the stage allows, never
+	// the old fixed inset.
+	decodeStage(900, 1200);
+	stageObserver().measure(1280, 1000);
+	const tall = mediaBoxSize();
+	expect(tall.height).toBeCloseTo(1000, 0);
+	expect(tall.width).toBeCloseTo(750, 0);
+	unmount(app);
+	flushSync();
+});
+
+test('the live layers ride inside the media box: the face boxes, the drag layer, the zoom', async () => {
+	vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+	FakeResizeObserver.live.length = 0;
+	const faces = [faceSummary('f1', { bbox: { x: 260, y: 120, w: 150, h: 150 } })];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+	]);
+	await settle();
+	decodeStage(1200, 800);
+	stageObserver().measure(1280, 720);
+
+	// THE REGRESSION PIN: the boxes are descendants of the media box,
+	// so their percentage geometry follows the box through every
+	// refit -- never siblings of it, never stage-relative.
+	const media = element('.viewer__media');
+	const layer = media.querySelector('[data-face-layer]');
+	expect(layer).not.toBeNull();
+	const box = media.querySelector<HTMLElement>('[data-face-box="f1"]');
+	expect(box).not.toBeNull();
+	// A square by construction: one width, the height follows.
+	expect(box?.className).toContain('aspect-square');
+	expect(box?.style.left).toBe('26%');
+	expect(box?.style.top).toBe('12%');
+	expect(box?.style.width).toBe('15%');
+	// The box's own height is never set (the aspect does it).
+	expect(box?.style.height).toBe('');
+
+	// The zoom scales the box that carries the layers, so the photo
+	// and its boxes enlarge together.
+	expect(element('.viewer__stage').style.getPropertyValue('--viewer-zoom')).toBe('1');
+
+	// The drag layer arms inside the same box.
+	openDrawer();
+	click(element('[aria-label="Add person"]'));
+	expect(media.querySelector('[data-face-draw]')).not.toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test('one box at a time: a chip lights its own box, the shadow dims the rest, the plate flips', async () => {
+	vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+	FakeResizeObserver.live.length = 0;
+	vi.useFakeTimers({ shouldAdvanceTime: true });
+	const faces = [
+		faceSummary('f1', { bbox: { x: 260, y: 300, w: 150, h: 150 }, label: { name: 'Ada' } }),
+		// A box 20 per-mille from the photo's top edge: too close to
+		// hold a name plate above it, so its plate flips below.
+		faceSummary('f2', { bbox: { x: 600, y: 20, w: 140, h: 140 } })
+	];
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces })))
+	]);
+	await settle();
+	decodeStage(1200, 800);
+	stageObserver().measure(1280, 720);
+	openDrawer();
+
+	const boxOf = (id: string) => document.body.querySelector<HTMLElement>(`[data-face-box="${id}"]`);
+	// At rest every box is transparent and untouchable (the watching
+	// view, never the debug view).
+	expect(boxOf('f1')?.className).toContain('opacity-0');
+	expect(boxOf('f2')?.className).toContain('opacity-0');
+
+	// Pointing at a chip lights THAT box alone -- the box outside it
+	// stays dark, and the linked one carries the huge-spread shadow
+	// that dims everything outside it (the interior untouched).
+	element('[data-face-id="f1"]').dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+	flushSync();
+	expect(boxOf('f1')?.className).toContain('opacity-100');
+	expect(boxOf('f1')?.className).toContain('border-accent');
+	expect(boxOf('f1')?.className).toContain('0_0_0_9999px');
+	expect(boxOf('f2')?.className).toContain('opacity-0');
+	// The chip lights back (the same state, both ends).
+	expect(element('[data-face-id="f1"]').className).toContain('bg-accent-soft');
+	// The name plate: white ground, dark text, above the box.
+	const plate = boxOf('f1')?.querySelector('[data-face-label]');
+	expect(plate?.textContent?.trim()).toBe('Ada');
+	expect(plate?.className).toContain('bg-card/95');
+	expect(plate?.className).toContain('text-text');
+	expect(plate?.className).toContain('-top-7');
+
+	// The near-top box flips its plate below the box instead.
+	element('[data-face-id="f2"]').dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+	flushSync();
+	expect(boxOf('f2')?.className).toContain('opacity-100');
+	expect(boxOf('f1')?.className).toContain('opacity-0');
+	expect(boxOf('f2')?.querySelector('[data-face-label]')?.className).toContain('-bottom-7');
+
+	// The grace: leaving the chip does not drop the highlight at
+	// once -- the pointer may be travelling toward the box.
+	element('[data-face-id="f2"]').dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+	flushSync();
+	expect(boxOf('f2')?.className).toContain('opacity-100');
+	vi.advanceTimersByTime(240);
+	flushSync();
+	expect(boxOf('f2')?.className).toContain('opacity-0');
+	vi.useRealTimers();
+	unmount(app);
+	flushSync();
+});
+
+test('the drawn face: a square anchored at the start, per-mille on the wire, a miss under 24px', async () => {
+	vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+	FakeResizeObserver.live.length = 0;
+	let created = false;
+	const facesNow = () =>
+		created ? [faceSummary('f9', { clusterId: null, bbox: { x: 125, y: 167, w: 250, h: 333 } })] : [];
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { faces: facesNow() }))),
+		post('/api/v1/faces', () => {
+			created = true;
+			return jsonResponse(200, { id: 'f9', thumbnail: '/api/v1/faces/f9/thumbnail' });
+		}),
+		get('/api/v1/people', () => jsonResponse(200, [])),
+		get('/api/v1/people/unnamed?limit=60', () => jsonResponse(200, { items: [], totalCount: 0 }))
+	]);
+	await settle();
+	decodeStage(1200, 800);
+	stageObserver().measure(1280, 720);
+	openDrawer();
+
+	// Arm the drag layer through the panel's add-person icon.
+	click(element('[aria-label="Add person"]'));
+	const layer = element('[data-face-draw]');
+	expect(layer.textContent).toContain('Draw a box around the face');
+	// The layer's geometry is its own rect (the media box's on-screen
+	// area): jsdom has no layout, so the test states it.
+	layer.getBoundingClientRect = () =>
+		({ left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600, x: 0, y: 0 }) as DOMRect;
+	Object.defineProperty(layer, 'setPointerCapture', { value: () => undefined, configurable: true });
+
+	// One pointer event of the drag stream (jsdom has no PointerEvent:
+	// a mouse event with the pointer type and id rides the same
+	// handlers).
+	const drag = (target: HTMLElement, type: string, x: number, y: number): void => {
+		const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0 });
+		Object.defineProperty(event, 'pointerId', { value: 1 });
+		target.dispatchEvent(event);
+		flushSync();
+	};
+
+	// The layer's handlers attach one microtask after the element
+	// lands (the library defers pointer listeners): let the arm settle
+	// before the pointer stream arrives.
+	await settle();
+
+	// A miss: ten pixels is not a face -- the square tracks the
+	// pointer, then the release throws it away (no dialog, no write).
+	drag(layer, 'pointerdown', 100, 100);
+	drag(layer, 'pointermove', 110, 110);
+	expect(document.body.querySelector('[data-face-rect]')).not.toBeNull();
+	drag(layer, 'pointerup', 110, 110);
+	expect(document.body.querySelector('[data-face-draw]')).toBeNull();
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	expect(requestOf(fetchMock, 'POST', '/api/v1/faces')).toBeUndefined();
+
+	// A real box: 200px square (the long edge sets the side), anchored
+	// at the start and converted to the contract's per-mille units.
+	await settle();
+	click(element('[aria-label="Add person"]'));
+	const layer2 = element('[data-face-draw]');
+	layer2.getBoundingClientRect = layer.getBoundingClientRect;
+	Object.defineProperty(layer2, 'setPointerCapture', { value: () => undefined, configurable: true });
+	await settle();
+	drag(layer2, 'pointerdown', 100, 100);
+	drag(layer2, 'pointermove', 300, 260);
+	drag(layer2, 'pointerup', 300, 260);
+	await settle();
+	const body = requestOf(fetchMock, 'POST', '/api/v1/faces')?.body;
+	expect(JSON.parse(String(body))).toEqual({
+		assetId: 'a2',
+		bbox: { x: 125, y: 167, w: 250, h: 333 }
+	});
+	// The drawn face joins the same layer, the same linkage, and the
+	// assign flow opens over it (the next step is who it is).
+	expect(document.body.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe('Assign person');
+	expect(document.body.querySelector('[data-face-box="f9"]')).not.toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test('the panel is one switch: default off, remembered, the bar the close mark and the i key', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// Default off (the pinned preference): the photo gets the stage.
+	expect(document.body.querySelector('.info')).toBeNull();
+	const toggle = barButton('Photo information');
+	expect(toggle.getAttribute('aria-pressed')).toBe('false');
+	expect(toggle.getAttribute('aria-controls')).toBe('viewer-info');
+
+	// The bar's button: pressed state synced, the panel named.
+	click(toggle);
+	expect(element('.info').getAttribute('id')).toBe('viewer-info');
+	expect(barButton('Photo information').getAttribute('aria-pressed')).toBe('true');
+	expect(localStorage.getItem('lumemor:viewer:info')).toBe('true');
+
+	// The panel's own close mark is the same path.
+	click(element('.info__close'));
+	expect(document.body.querySelector('.info')).toBeNull();
+	expect(localStorage.getItem('lumemor:viewer:info')).toBe('false');
+
+	// The i key is the third door.
+	pressKey('i');
+	expect(document.body.querySelector('.info')).not.toBeNull();
+	unmount(app);
+	flushSync();
+});
+
+test('the filmstrip floats card-less with translucent thumbs; the arrows rest at 45%', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// No card around the strip: no ground, no radius, no border, no
+	// blur -- the THUMBS are the translucent part.
+	const strip = element('.viewer__filmstrip');
+	expect(strip.className).toContain('max-w-[min(56%,560px)]');
+	expect(strip.className).toContain('mask-image');
+	expect(strip.className).not.toContain('rounded');
+	expect(strip.className).not.toContain('border');
+	expect(strip.className).not.toContain('backdrop-blur');
+	// The current thumb reads 100% with the accent edge; its
+	// neighbors rest translucent so the photo shows through.
+	const thumbs = Array.from(document.body.querySelectorAll<HTMLElement>('.viewer__thumb'));
+	expect(thumbs[1]?.className).toContain('opacity-100');
+	expect(thumbs[1]?.className).toContain('border-accent');
+	expect(thumbs[0]?.className).toContain('opacity-65');
+
+	// The three-step arrows: 45% at rest, 100% on hover and keyboard
+	// focus, 90% where there is no hover to lift them.
+	const arrow = element('.viewer__arrow--left');
+	expect(arrow.className).toContain('opacity-45');
+	expect(arrow.className).toContain('hover:opacity-100');
+	expect(arrow.className).toContain('focus-visible:opacity-100');
+	expect(arrow.className).toContain('[@media(hover:none)]:opacity-90');
+	unmount(app);
+	flushSync();
+});
+
+test('the floating bar carries no filename and draws over the photo', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+
+	// Back on the left, the actions on the right, the middle open --
+	// the name lives in the panel's header and the browser title alone.
+	const bar = element('.viewer__bar');
+	expect(bar.textContent).not.toContain('IMG_2.jpg');
+	expect(bar.className).toContain('absolute');
+	expect(bar.className).toContain('from-night/70');
+	expect(bar.querySelector('.viewer__bar-actions')?.contains(barButton('Photo information'))).toBe(true);
+	expect(document.title).toBe('IMG_2.jpg · lumemor');
+	unmount(app);
+	flushSync();
+});
+
+test('the info rows: the capture time with its zone, the size, the camera line, no filename row', async () => {
+	const detail = detailBodyOf(sequence[1]!, {
+		exif: { cameraMake: 'Apple', cameraModel: 'iPhone 15', focal: 24, aperture: 1.8, shutter: '0.008', iso: 100 }
+	});
+	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detail))]);
+	await settle();
+	openDrawer();
+
+	// The capture time renders in its zone's wall clock with the zone
+	// beside it (the pin: the zone must be visible).
+	const facts = element('.info__facts');
+	expect(facts.textContent).toContain('UTC+8');
+	expect(facts.textContent).toContain('5:00');
+	// The size and weight line, then the camera line (one line, the
+	// six EXIF facts pressed together, never a fold).
+	expect(facts.textContent).toContain('4,000 × 3,000');
+	expect(facts.textContent).toContain('4.8 MB');
+	expect(facts.textContent).toContain('Apple iPhone 15');
+	expect(facts.textContent).toContain('24 mm');
+	expect(facts.textContent).toContain('f/1.8');
+	expect(facts.textContent).toContain('ISO 100');
+	// No filename row: the header already names the file.
+	expect(facts.textContent).not.toContain('IMG_2.jpg');
+	expect(element('.info__filename').textContent).toContain('IMG_2.jpg');
+	// The rows are icon-led, one per line, hairline-separated.
+	expect(facts.className).toContain('divide-y');
+	expect(facts.querySelectorAll('li').length).toBeGreaterThanOrEqual(4);
+	unmount(app);
+	flushSync();
+});
+
+test('the admin path row: collapsed until asked, one click to copy, absent for a member', async () => {
+	const writeText = vi.fn(async () => undefined);
+	Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+	const detail = detailBodyOf(sequence[1]!, { path: 'originals/9f8a3c/2026/11/IMG_0002.jpg' });
+	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detail))]);
+	await settle();
+	openDrawer();
+
+	// One line, collapsed: the machine location is there when asked
+	// for and out of the way otherwise.
+	const row = element('[data-testid="viewer-path"]');
+	const toggle = row.querySelector('button');
+	expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+	expect(row.textContent).toContain('Path');
+	expect(row.textContent).not.toContain('originals/');
+	click(toggle as HTMLElement);
+	expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+	expect(row.textContent).toContain('originals/9f8a3c/2026/11/IMG_0002.jpg');
+
+	// The copy arm: the clipboard write and its own confirmation.
+	click(row.querySelector('[aria-label="Copy path"]') as HTMLElement);
+	await settle();
+	expect(writeText).toHaveBeenCalledWith('originals/9f8a3c/2026/11/IMG_0002.jpg');
+	expect(toasts().map((entry) => entry.text)).toContain('Path copied.');
+	unmount(app);
+	flushSync();
+
+	// A member's detail carries no path at all: the row never exists
+	// (the gate is the field's presence, not a disabled state).
+	const member = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!)))
+	]);
+	await settle();
+	openDrawer();
+	expect(document.body.querySelector('[data-testid="viewer-path"]')).toBeNull();
+	unmount(member.app);
+	flushSync();
+});
+
+test('the date row writes the wall clock and its zone as one value', async () => {
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { takenAt: '2026-08-12T10:42:00Z', takenAtZone: '+08:00' }))
+		),
+		patch('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { takenAt: '2026-08-12T10:42:00Z', takenAtZone: '+08:00' }))
+		)
+	]);
+	await settle();
+	openDrawer();
+
+	// The pencil opens the dialog seeded from the stored truth: the
+	// wall clock in its zone, the zone selected.
+	click(element('[aria-label="Edit date"]'));
+	const dialog = element('[role="dialog"]');
+	expect(dialog.getAttribute('aria-label')).toBe('Edit date');
+	const field = dialog.querySelector<HTMLInputElement>('#viewer-edit-date-value');
+	expect(field?.value).toBe('2026-08-12T18:42');
+	const zone = dialog.querySelector<HTMLSelectElement>('#viewer-edit-date-zone');
+	expect(zone?.value).toBe('+08:00');
+
+	// A save composes the pair into the one RFC 3339 value the
+	// contract wants: the wall clock plus the offset that wrote it.
+	fillInput(field as HTMLInputElement, '2026-08-12T18:42');
+	click(buttonByText('Save'));
+	await settle();
+	const body = JSON.parse(String(requestOf(fetchMock, 'PATCH', '/api/v1/assets/a2?locale=en')?.body));
+	expect(body).toEqual({ takenAt: '2026-08-12T18:42:00+08:00' });
+	expect(toasts().map((entry) => entry.text)).toContain('Date updated.');
+	unmount(app);
+	flushSync();
+});
+
+test('the location row: the static mini map, the coordinates, and nothing without a location', async () => {
+	const located = detailBodyOf(sequence[1]!, {
+		location: { lat: 36.0671, lon: 120.3826 },
+		place: { placeId: 1816670, name: 'Qingdao' },
+		exif: { alt: 12 }
+	});
+	const { app } = mountViewer('a2', [get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, located))]);
+	await settle();
+	openDrawer();
+
+	// The last row of the info: the plain place name, the pencil, the
+	// mini map (a static display -- it answers no gesture) and the
+	// coordinates line with the camera's altitude.
+	const row = element('[data-testid="viewer-location"]');
+	expect(row.textContent).toContain('Qingdao');
+	expect(row.querySelector('a')).toBeNull();
+	expect(row.querySelector('[aria-label="Edit location"]')).not.toBeNull();
+	const map = row.querySelector<HTMLElement>('.map');
+	expect(map?.getAttribute('aria-label')).toBe('Location of this photo');
+	expect(map?.getAttribute('data-interactive')).toBe('false');
+	expect(map?.getAttribute('data-point')).toBe(JSON.stringify({ lat: 36.0671, lon: 120.3826 }));
+	expect(row.textContent).toContain('36.0671, 120.3826');
+	expect(row.textContent).toContain('Altitude 12 m');
+	unmount(app);
+	flushSync();
+
+	// No GPS and no manual pin: the whole row stays unrendered (no
+	// empty heading, no blank map).
+	const blank = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!)))
+	]);
+	await settle();
+	openDrawer();
+	expect(document.body.querySelector('[data-testid="viewer-location"]')).toBeNull();
+	unmount(blank.app);
+	flushSync();
+});
+
+test("a tag chip's × removes that one assignment and the row converges", async () => {
+	let removed = false;
+	const tagsNow = () => (removed ? [] : [{ id: 't1', name: 'Beach' }]);
+	const { app, fetchMock } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { tags: tagsNow() }))),
+		del('/api/v1/tags/t1/assets', () => {
+			removed = true;
+			return jsonResponse(200, { removed: 1, skipped: 0 });
+		})
+	]);
+	await settle();
+	openDrawer();
+
+	// The × is its own button beside the name link (interactive
+	// elements never nest): the name navigates, the × only removes.
+	const chip = element('[data-tag-id="t1"]');
+	const remove = chip.querySelector<HTMLButtonElement>('button[aria-label="Remove tag Beach"]');
+	expect(remove).not.toBeNull();
+	expect(chip.querySelector('a')?.getAttribute('href')).toBe('/search?tagIds=t1');
+	click(remove as HTMLElement);
+	await settle();
+
+	// The write is the caller's own untag over this one id; the row
+	// converges through the detail refetch (the tags array is the
+	// truth) and the confirmation says what happened.
+	const body = JSON.parse(String(requestOf(fetchMock, 'DELETE', '/api/v1/tags/t1/assets')?.body));
+	expect(body).toEqual({ assetIds: ['a2'] });
+	expect(toasts().map((entry) => entry.text)).toEqual(['Tag removed.']);
+	expect(document.body.querySelector('[data-tag-id="t1"]')).toBeNull();
+	expect(element('.info__tags-empty').textContent).toBe('No tags yet.');
+	unmount(app);
+	flushSync();
+});
+
+test('the description edit is a no-op when nothing changed: no request, no toast', async () => {
+	const { app } = mountViewer('a2', viewerRoutes('a2'));
+	await settle();
+	openDrawer();
+
+	// Enter on an untouched draft closes the editor silently: nothing
+	// changed, so nothing is written and nothing is confirmed.
+	openDescriptionEdit();
+	submitDescriptionEdit();
+	await settle();
+	expect(element('.info__description').textContent).toBe('Original caption.');
+	expect(toasts()).toEqual([]);
 	unmount(app);
 	flushSync();
 });

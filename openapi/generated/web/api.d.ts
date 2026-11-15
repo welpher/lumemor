@@ -731,9 +731,10 @@ export interface paths {
          * @description The asset detail: the identity and storage fields of the upload
          *     response plus the refinements the pipeline produced afterwards
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
-         *     readiness -- the two owner-level editable attributes
-         *     (`description`, `isHidden`), which the asset detail view
-         *     renders and the `PATCH` endpoint edits, the asset's faces
+         *     readiness -- the owner-level editable attributes
+         *     (`description`, `isHidden`, and the `takenAt` / `latitude` /
+         *     `longitude` edits `PATCH` writes), which the asset detail view
+         *     renders, the asset's faces
          *     with the caller's own label of each face's cluster (`faces`),
          *     which the detail view's people section renders and the people
          *     write endpoints maintain, and the caller's own tags on the
@@ -807,26 +808,27 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Edit the description or hidden switch of one asset.
-         * @description The partial edit of the two owner-level attributes of an
-         *     asset: `description`, the free text the detail panel renders,
-         *     and `isHidden`, the owner-level visibility switch that keeps
-         *     the asset out of every live view until it returns. Both body
-         *     fields are optional but at least one must be present (a field
-         *     set to JSON null counts as absent, so a body of nulls is the
-         *     empty patch); a request that carries neither answers 400
-         *     `VALIDATION_FAILED`. Only the fields the request carries
-         *     update -- the rest keep their values -- and the response is
-         *     the full asset detail after the edit, the same shape `GET
-         *     /assets/{id}` serves.
+         * Edit the owner-level attributes of one asset.
+         * @description The partial edit of the owner-level attributes of an asset:
+         *     `description`, the free text the detail panel renders,
+         *     `isHidden`, the owner-level visibility switch that keeps
+         *     the asset out of every live view until it returns, `takenAt`,
+         *     the manual capture-time edit, and the `latitude` / `longitude`
+         *     pair, the manual location edit. All body fields are optional
+         *     but at least one must be present (a field set to JSON null
+         *     counts as absent, so a body of nulls is the empty patch); a
+         *     request that carries none answers 400 `VALIDATION_FAILED`.
+         *     Only the fields the request carries update -- the rest keep
+         *     their values -- and the response is the full asset detail
+         *     after the edit, the same shape `GET /assets/{id}` serves.
          *
          *     The edit follows set semantics: patching a field with the
          *     value the row already carries is the idempotent no-op -- the
          *     answer stays the 200 success with the row's current state,
          *     nothing is written (not even `updated_at`), and NO
          *     `asset.updated` event fires. A patch that actually changes
-         *     either field publishes exactly ONE `asset.updated` event
-         *     (the asset id and kind, after the commit): both fields are
+         *     any field publishes exactly ONE `asset.updated` event
+         *     (the asset id and kind, after the commit): every field is
          *     owner-level asset state, so the same announcement refreshes
          *     every viewer of the shared timeline and the detail panel.
          *     The description alone has no timeline effect -- it is
@@ -852,6 +854,31 @@ export interface paths {
          *     (runes); above that the request answers 400
          *     `VALIDATION_FAILED`. The value replaces the stored text
          *     wholesale -- an empty string is a valid patch and clears it.
+         *
+         *     `takenAt` replaces the stored capture time wholesale. The
+         *     timestamp MUST carry a UTC offset (RFC 3339's `Z` or
+         *     `+hh:mm` designator): the offset is the capture zone the
+         *     info panel displays beside the time, so a zone-less value is
+         *     ambiguous and answers 400 `VALIDATION_FAILED` -- the same
+         *     value decides where the photo sits on the timeline (the
+         *     instant) and which offset renders beside it (the offset).
+         *     The stored `takenAtSource` keeps its value; the value itself
+         *     carries the edit. The same patch publishes the one
+         *     `asset.updated` event when the instant or the zone changed.
+         *
+         *     `latitude` and `longitude` are the manual location edit, and
+         *     they ride together: the pair replaces the asset's location
+         *     wholesale (carrying one alone answers 400
+         *     `VALIDATION_FAILED` -- half a coordinate is no location).
+         *     The written pair is what the info panel renders (`location`)
+         *     and what the place resolution runs on: the resolved city
+         *     follows the pin (the nearest city within the resolution
+         *     threshold, or no place at all when the point sits beyond
+         *     one -- the honest absence). The camera-recorded GPS in
+         *     `exif` keeps the file's own reading and is not touched. A
+         *     deployment without the baked place data keeps the resolved
+         *     place whatever it held: the coordinates still stand, the
+         *     city join stays out of the edit.
          */
         patch: operations["patchAsset"];
         trace?: never;
@@ -2316,6 +2343,51 @@ export interface paths {
          *     `mergedClusterIds`, and the acting user's id.
          */
         post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/faces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add one hand-drawn face to an asset.
+         * @description The manual face: the owner draws a box around a face the
+         *     detector missed and the drawn box becomes a face row of that
+         *     asset -- the same rows detection writes, minus a detector
+         *     (the row's model is null, its score 1.0 -- the caller's own
+         *     certainty) and minus an embedding (the recognition never saw
+         *     it, so the face joins no cluster until the caller assigns
+         *     one). The box rides in the FaceBbox per-mille units; the
+         *     width and height halves must be at least 1 (a zero-extent box
+         *     is nothing drawn).
+         *
+         *     The refusal discipline is the face writes' own: the face must
+         *     sit on an asset the caller OWNS and that is live -- any other
+         *     state (unknown asset, another account's asset, an asset shared
+         *     to the caller but not owned, a trashed, hidden or Live Photo
+         *     component asset) answers the same byte-identical 404
+         *     `PERSON_NOT_FOUND` (anti-enumeration). A bbox value outside
+         *     the 0..1000 bounds, a missing half, or a body that fails to
+         *     decode answers 400 `VALIDATION_FAILED`.
+         *
+         *     The write inserts the row and answers it; it publishes NO
+         *     event: a face with no cluster announces no person change, and
+         *     the caller's own session converges through the response (the
+         *     same silence a fresh detection's rows keep until recognition
+         *     names them). The caller's next step is the assign flow --
+         *     `POST /faces/{faceId}/move` or the from-face creation -- which
+         *     is where the drawn face becomes someone.
+         */
+        post: operations["createFace"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5587,8 +5659,9 @@ export interface components {
         /**
          * @description One asset as the detail endpoint returns it: the upload
          *     response's identity and storage fields, the pipeline's
-         *     refinements, the two owner-level attributes the PATCH
-         *     endpoint edits (`description`, `isHidden`), the asset's
+         *     refinements, the owner-level attributes the PATCH
+         *     endpoint edits (`description`, `isHidden`, and the
+         *     `takenAt` / `latitude` / `longitude` edits), the asset's
          *     faces as the calling user sees them (`faces`), and the
          *     CALLER's tags on the asset (`tags`). The caller-visible
          *     album memberships surface as `albums` (the info panel's
@@ -5651,7 +5724,8 @@ export interface components {
              * @description Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or
              *     the upload time when absent) and refined from EXIF by the
              *     metadata pipeline; the response renders the best value the
-             *     server has at answer time.
+             *     server has at answer time. The owner's manual edit rides
+             *     `PATCH /assets/{id}`, which replaces the value wholesale.
              */
             takenAt: string;
             /**
@@ -5663,6 +5737,16 @@ export interface components {
              * @enum {string}
              */
             takenAtSource: "exif" | "file" | "import";
+            /**
+             * @description The zone the displayed capture time resolves in, EXIF
+             *     offset notation (`+05:30`): the owner's choice when the
+             *     capture time was last written through `PATCH /assets/{id}`,
+             *     the EXIF resolution chain's offset (the OffsetTime tags,
+             *     else the upload's device zone) when the metadata job
+             *     refined it, and null when neither resolved a zone -- the
+             *     client renders the time without a zone suffix.
+             */
+            takenAtZone: string | null;
             /** @description True when the asset sits in the trash. */
             isTrashed: boolean;
             /**
@@ -5727,6 +5811,29 @@ export interface components {
              */
             exif: components["schemas"]["ExifSummary"];
             /**
+             * @description The coordinates the info panel renders -- the photo's
+             *     current location. The owner's manual pair when a location
+             *     edit wrote one (`PATCH /assets/{id}`'s `latitude` /
+             *     `longitude`), the camera-recorded GPS otherwise (the
+             *     `exif` fields' own values). Null when the asset carries
+             *     neither -- no GPS and no manual edit -- and the whole
+             *     location row stays unrendered. The PATCH response serves
+             *     the same face, exactly as the GET serves it.
+             */
+            location: components["schemas"]["AssetCoordinates"] | null;
+            /**
+             * @description The storage-relative path of the original file (the
+             *     `assets.file_path` render), as the administrator's info
+             *     panel shows it -- the copyable machine location. Populated
+             *     ONLY when the caller is an administrator: every other
+             *     caller reads null and the field stays out of their panel
+             *     entirely (the instance's internal layout is machine
+             *     information, not content). An external asset (a directory
+             *     album's source file) carries the file's real absolute
+             *     path instead of the storage layout's relative form.
+             */
+            path: string | null;
+            /**
              * @description The asset's faces as the calling user sees them, strongest
              *     score first with the face id as the tiebreak. The array is
              *     caller-scoped: the asset being visible to the caller
@@ -5789,7 +5896,8 @@ export interface components {
         };
         /**
          * @description One face of the asset detail's `faces` array: the crop's
-         *     identity, the detection score, the face's cluster, the
+         *     identity, the detection score, the face's bounding box (the
+         *     on-photo face-box layer's geometry), the face's cluster, the
          *     CALLER's label of that cluster and the person entity's birth
          *     date. The label is per-user state: another account's label of
          *     the same global cluster never shows here; the birth date is
@@ -5807,7 +5915,8 @@ export interface components {
             id: string;
             /**
              * Format: float
-             * @description The detector's confidence for this face.
+             * @description The detector's confidence for this face; a hand-drawn face
+             *     (the caller's own certainty) carries 1.0.
              */
             score: number;
             /**
@@ -5818,6 +5927,7 @@ export interface components {
              * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
              */
             thumbnail: string;
+            bbox: components["schemas"]["FaceBbox"];
             /**
              * Format: uuid
              * @description Identifier of the face's cluster, or null before the
@@ -5840,6 +5950,36 @@ export interface components {
              *     birthday memories.
              */
             birthDate: string | null;
+        };
+        /**
+         * @description A face's bounding box in per-mille units of the asset's view
+         *     derivative (the pixels the crop endpoint addresses and the
+         *     on-photo face-box layer renders): `x`/`y` the top-left
+         *     corner, `w`/`h` the box's extents, each an integer 0..1000.
+         *     A detected face's box is the detector's own; a hand-drawn
+         *     face (POST /faces) carries the drawn box as-is.
+         */
+        FaceBbox: {
+            /**
+             * @description Per-mille of the derivative's width where the box starts.
+             * @example 312
+             */
+            x: number;
+            /**
+             * @description Per-mille of the derivative's height where the box starts.
+             * @example 118
+             */
+            y: number;
+            /**
+             * @description The box's width, in per-mille of the derivative's width.
+             * @example 187
+             */
+            w: number;
+            /**
+             * @description The box's height, in per-mille of the derivative's height.
+             * @example 190
+             */
+            h: number;
         };
         /**
          * @description One entry of the asset detail's `tags` array: the caller's
@@ -5913,6 +6053,25 @@ export interface components {
              * @example 巴黎
              */
             name: string;
+        };
+        /**
+         * @description One geographic position in degrees: the pair the info panel's
+         *     mini map and coordinate line render. Both halves always
+         *     present -- half a coordinate is no location.
+         */
+        AssetCoordinates: {
+            /**
+             * Format: double
+             * @description Latitude in degrees (-90..90).
+             * @example 48.8584
+             */
+            lat: number;
+            /**
+             * Format: double
+             * @description Longitude in degrees (-180..180).
+             * @example 2.2945
+             */
+            lon: number;
         };
         /**
          * @description The EXIF hot fields of an asset, flattened from the raw
@@ -6308,10 +6467,10 @@ export interface components {
         };
         /**
          * @description The partial edit of one asset: every field is optional, at
-         *     least one must be present (a body that carries neither -- null
+         *     least one must be present (a body that carries none -- null
          *     values count as absent -- is a client bug and answers 400),
          *     and only the fields the request carries update; the rest keep
-         *     their values. Both fields are owner-level asset state, so a
+         *     their values. Every field is owner-level asset state, so a
          *     patch that actually changes one of them publishes a single
          *     `asset.updated` event; a patch that repeats the stored values
          *     is the idempotent no-op and publishes nothing.
@@ -6333,6 +6492,40 @@ export interface components {
              *     the batch `hide` / `unhide` actions flip.
              */
             isHidden?: boolean;
+            /**
+             * Format: date-time
+             * @description The owner's manual capture-time edit: the value replaces
+             *     the stored instant wholesale. The timestamp MUST carry a
+             *     UTC offset (RFC 3339's `Z` or `+hh:mm` designator) -- the
+             *     offset is the capture zone the info panel displays beside
+             *     the time, so a zone-less value is ambiguous and answers
+             *     400 `VALIDATION_FAILED`. The same value decides where the
+             *     photo sits on the timeline (the instant) and which offset
+             *     renders beside it (the offset).
+             * @example 2026-08-12T18:42:00+08:00
+             */
+            takenAt?: string;
+            /**
+             * Format: double
+             * @description The manual location edit's latitude, in degrees
+             *     (-90..90). It rides with `longitude` (the pair is the
+             *     location; one half alone answers 400
+             *     `VALIDATION_FAILED`). Writing the pair replaces the
+             *     asset's location: the info panel renders these
+             *     coordinates and the resolved place follows the pin. The
+             *     camera-recorded GPS in `exif` keeps the file's own
+             *     reading and is not touched.
+             * @example 36.0671
+             */
+            latitude?: number;
+            /**
+             * Format: double
+             * @description The manual location edit's longitude, in degrees
+             *     (-180..180). It rides with `latitude` (see there for the
+             *     pair's semantics).
+             * @example 120.3826
+             */
+            longitude?: number;
         };
         /**
          * @description One named person of the caller's people list: a global face
@@ -6679,6 +6872,43 @@ export interface components {
              * @description The cluster the face occupies after the move.
              */
             clusterId: string;
+        };
+        /**
+         * @description One hand-drawn face: the asset it sits on and the drawn box,
+         *     in the FaceBbox per-mille units. The drawn box is the face
+         *     row's bounding box as-is; the crop endpoint and the on-photo
+         *     face-box layer render from it.
+         */
+        FaceCreateRequest: {
+            /**
+             * Format: uuid
+             * @description The asset the drawn face sits on. It must be the caller's
+             *     own live asset (the face writes' gate).
+             * @example 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70
+             */
+            assetId: string;
+            bbox: components["schemas"]["FaceBbox"];
+        };
+        /**
+         * @description One committed manual face: its identity and the crop URL. The
+         *     face carries no cluster yet -- the assign flow (the move or
+         *     the from-face creation) is the caller's next step, and that
+         *     is where the drawn face becomes someone.
+         */
+        FaceCreated: {
+            /**
+             * Format: uuid
+             * @description Identifier of the new face row.
+             * @example 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74
+             */
+            id: string;
+            /**
+             * @description URL of the new face's crop: the face crop endpoint with
+             *     the new face's id (the same shape the detail's faces
+             *     carry).
+             * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74/thumbnail
+             */
+            thumbnail: string;
         };
         /**
          * @description One city group of the caller's places list: a GeoNames place
@@ -9065,7 +9295,9 @@ export interface operations {
              *     converged state, so no event needs to. `albums` is
              *     always present, the caller-visible albums holding the
              *     asset; `place` is the locale-joined city face (null
-             *     when nothing resolved).
+             *     when nothing resolved); `location` is the coordinates
+             *     the panel renders -- the manual edit when one landed,
+             *     the camera's GPS otherwise, null when neither exists.
              */
             200: {
                 headers: {
@@ -9215,9 +9447,10 @@ export interface operations {
             };
             /**
              * @description The patch is not well-formed: the body is not valid JSON
-             *     (a field of the wrong type included), carries neither
-             *     field, or the description exceeds the 10,000-character
-             *     bound.
+             *     (a field of the wrong type included), carries no field,
+             *     the description exceeds the 10,000-character bound, the
+             *     `takenAt` value carries no UTC offset, or the location
+             *     edit carries exactly one of the two coordinate halves.
              */
             400: {
                 headers: {
@@ -11358,6 +11591,77 @@ export interface operations {
              * @description No such merge for this caller: a source or the target is
              *     unknown or invisible to the caller, or the target sits
              *     among the sources -- indistinguishable by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createFace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description The face row is stored; the response carries its identity and crop URL. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceCreated"];
+                };
+            };
+            /**
+             * @description The request is invalid: the body is not valid JSON, a
+             *     bbox half is missing or outside the 0..1000 bounds, or a
+             *     drawn box carries a zero width or height.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such drawable asset for this caller: the asset id is
+             *     unknown, or it is not the caller's own live asset --
+             *     indistinguishable by design.
              */
             404: {
                 headers: {

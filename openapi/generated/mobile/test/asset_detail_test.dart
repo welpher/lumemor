@@ -55,7 +55,7 @@ void main() {
       // TODO
     });
 
-    // Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. 
+    // Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the response renders the best value the server has at answer time. The owner's manual edit rides `PATCH /assets/{id}`, which replaces the value wholesale. 
     // DateTime takenAt
     test('to test the property `takenAt`', () async {
       // TODO
@@ -64,6 +64,12 @@ void main() {
     // Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
     // String takenAtSource
     test('to test the property `takenAtSource`', () async {
+      // TODO
+    });
+
+    // The zone the displayed capture time resolves in, EXIF offset notation (`+05:30`): the owner's choice when the capture time was last written through `PATCH /assets/{id}`, the EXIF resolution chain's offset (the OffsetTime tags, else the upload's device zone) when the metadata job refined it, and null when neither resolved a zone -- the client renders the time without a zone suffix. 
+    // String takenAtZone
+    test('to test the property `takenAtZone`', () async {
       // TODO
     });
 
@@ -124,6 +130,18 @@ void main() {
     // The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
     // ExifSummary exif
     test('to test the property `exif`', () async {
+      // TODO
+    });
+
+    // The coordinates the info panel renders -- the photo's current location. The owner's manual pair when a location edit wrote one (`PATCH /assets/{id}`'s `latitude` / `longitude`), the camera-recorded GPS otherwise (the `exif` fields' own values). Null when the asset carries neither -- no GPS and no manual edit -- and the whole location row stays unrendered. The PATCH response serves the same face, exactly as the GET serves it. 
+    // AssetCoordinates location
+    test('to test the property `location`', () async {
+      // TODO
+    });
+
+    // The storage-relative path of the original file (the `assets.file_path` render), as the administrator's info panel shows it -- the copyable machine location. Populated ONLY when the caller is an administrator: every other caller reads null and the field stays out of their panel entirely (the instance's internal layout is machine information, not content). An external asset (a directory album's source file) carries the file's real absolute path instead of the storage layout's relative form. 
+    // String path
+    test('to test the property `path`', () async {
       // TODO
     });
 

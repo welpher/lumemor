@@ -27,14 +27,17 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/geodata"
 )
 
 const (
@@ -45,6 +48,24 @@ const (
 	// against each other, so they cannot drift apart).
 	placesRerunJobKind = "places_rerun"
 )
+
+// resolveManualPlace resolves the manual location edit's place: the
+// grid's nearest city within the threshold, or NULL (the honest
+// absence -- the point sits beyond every city). No grid (a
+// deployment without the baked place data) answers the invalid
+// value, which leaves the resolved place whatever the asset already
+// carried -- the metadata step's own feature-off discipline: a
+// data-less boot never destroys a resolution a data-carrying boot
+// produced.
+func (s *server) resolveManualPlace(ctx context.Context, lat, lon float64) pgtype.Int4 {
+	if s.places == nil {
+		return pgtype.Int4{}
+	}
+	if id, _, ok := s.places.NearestWithin(lat, lon, geodata.ResolutionRadiusKm); ok {
+		return pgtype.Int4{Int32: id, Valid: true}
+	}
+	return pgtype.Int4{}
+}
 
 // ListPlaces implements GET /api/v1/places: the caller's city
 // grouping -- every place holding at least one caller-visible live
