@@ -484,6 +484,7 @@ type Asset struct {
 	TakenAtZone      pgtype.Text        `json:"taken_at_zone"`
 	LocationLat      pgtype.Float8      `json:"location_lat"`
 	LocationLon      pgtype.Float8      `json:"location_lon"`
+	MotionExtracted  bool               `json:"motion_extracted"`
 }
 
 type AssetTag struct {

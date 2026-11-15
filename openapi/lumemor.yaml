@@ -2641,6 +2641,26 @@ paths:
         uploaded content-addressed file itself, not a pipeline
         product.
 
+        A LIVE PHOTO ANSWERS AS ONE ARCHIVE. The still alone is not
+        what the family kept -- the pair is -- so this endpoint answers
+        `application/zip` holding the still and its motion (the stored
+        originals themselves: nothing is re-encoded). The archive is
+        named after the still's stem (`IMG_1234.zip`), and a display
+        name both files share is suffixed rather than overwritten.
+
+        WHICH MOTION RIDES: one that arrived as a file of its own --
+        the paired upload's video, or a later half matched by content
+        identifier -- is part of the pair and always rides along. One
+        the server extracted from the still's own bytes (a single-file
+        "motion photo") already sits inside the still, so it rides only
+        when the caller's `downloadIncludeEmbeddedVideos` preference is
+        on (default `false`); with the switch off the archive holds the
+        still alone. A motion deleted since the pair formed, or one
+        whose bytes are missing, likewise leaves the still alone: a
+        broken pair degrades to a plain photo, never to an error.
+
+        Every other asset keeps the plain original branch below.
+
         The download is always an attachment: `Content-Disposition:
         attachment; filename*=UTF-8''...` with the original file name
         escaped per RFC 5987 -- every byte outside the attribute
@@ -2677,33 +2697,43 @@ paths:
       responses:
         '200':
           description: |
-            The original file. The `Content-Type` header carries the
-            asset's stored MIME type (the media type below is the
-            generic documentation placeholder).
+            The original file, or -- for a Live Photo -- the one archive
+            of the pair. The `Content-Type` header carries the asset's
+            stored MIME type, or `application/zip` on the archive arm.
+            The `ETag` and `Cache-Control` validators describe the plain
+            branch; the archive arm answers `Cache-Control: no-store`
+            and no entity tag, because its entry set depends on the
+            caller's preference.
           headers:
             ETag:
               description: |
                 Strong entity tag: the first 16 hex characters of the
-                asset's checksum, quoted.
+                asset's checksum, quoted. Absent on the archive arm.
               schema:
                 type: string
               example: '"9f86d081884c7d65"'
             Cache-Control:
               description: |
                 The original bytes are content-addressed and therefore
-                immutable; the download is private to the owner.
+                immutable; the download is private to the owner. The
+                archive arm answers `no-store` instead.
               schema:
                 type: string
               example: private, max-age=31536000, immutable
             Content-Disposition:
               description: |
-                Always `attachment` with the RFC 5987 escaped original
-                file name, so browsers download instead of rendering.
+                Always `attachment` with the RFC 5987 escaped name: the
+                original file name on the plain branch, the still's
+                stem with the zip extension on the archive arm.
               schema:
                 type: string
               example: attachment; filename*=UTF-8''IMG_1234.jpg
           content:
             application/octet-stream:
+              schema:
+                type: string
+                format: binary
+            application/zip:
               schema:
                 type: string
                 format: binary
