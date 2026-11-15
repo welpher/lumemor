@@ -21,7 +21,7 @@
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import MapView, { type MapState } from '$lib/map/MapView.svelte';
+	import MapView from '$lib/map/MapView.svelte';
 	import { listPlaces, type PlaceSummary } from '$lib/api/places';
 	import { currentLocale } from '$lib/i18n';
 	import Search from '@lucide/svelte/icons/search';
@@ -50,8 +50,6 @@
 	let query = $state('');
 	let places = $state<PlaceSummary[]>([]);
 	let placesLoading = $state(false);
-	/** The base layer's state (the map's notice renders it). */
-	let tiles = $state<MapState>('loading');
 
 	// Each open seeds the pin from the stored coordinates and fetches
 	// the vocabulary fresh (the fetched answer owns the options, the
@@ -178,7 +176,6 @@
 				label={$_('viewer_location_map_label')}
 				onpick={pickPoint}
 				describedBy="viewer-location-map-hint"
-				bind:tiles
 			/>
 		</div>
 		<p

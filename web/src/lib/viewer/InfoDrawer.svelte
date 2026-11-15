@@ -30,7 +30,7 @@
 	import { linkFace, unlinkFace, isLinked } from './face-link.svelte';
 	import { formatTakenAt, zoneLabel } from './zone';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import MapView, { type MapState } from '$lib/map/MapView.svelte';
+	import MapView from '$lib/map/MapView.svelte';
 	import X from '@lucide/svelte/icons/x';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import Folder from '@lucide/svelte/icons/folder';
@@ -341,8 +341,6 @@
 	// camera's GPS otherwise (the detail's location face already
 	// made the choice).
 	const coordinates = $derived(detail.location);
-	/** The mini map's base-layer state (the component's own notice renders it). */
-	let locationState = $state<MapState>('loading');
 
 	/** The altitude line under the mini map (the camera's own fact). */
 	const altitudeLabel = $derived(
@@ -805,12 +803,13 @@
 							{/if}
 						</div>
 						<div class="relative mt-2 aspect-[5/4] overflow-hidden rounded-card border border-border">
+							<!-- The map's own notice states a missing base
+							     layer; the row's coordinates stand either way. -->
 							<MapView
 								point={coordinates}
 								cluster={false}
 								interactive={false}
 								label={$_('viewer_location_map_label')}
-								bind:tiles={locationState}
 							/>
 						</div>
 						<p
