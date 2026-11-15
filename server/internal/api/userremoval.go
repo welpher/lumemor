@@ -251,9 +251,9 @@ func (s *server) userDisposal(w http.ResponseWriter, request apigen.AdminUserDel
 }
 
 // removeUser runs the disposal's ONE transaction: the locks (the
-// departing row, the receiving one on the transfer arm, and the
-// instance's administrator rows), the guards the locks make race-free,
-// the arm's settlement, and the account row's deletion. The trash arm's
+// instance's administrator set, the departing row, and the receiving
+// one on the transfer arm), the guards the locks make race-free, the
+// arm's settlement, and the account row's deletion. The trash arm's
 // external file moves run inside it (ahead of the row writes they
 // describe) and escape it as the compensation's input: every failure
 // after the first move -- an arm write, the account row's delete, the
@@ -272,11 +272,23 @@ func (s *server) removeUser(r *http.Request, actor, target uuid.UUID, disposal u
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := dbgen.New(tx)
 
-	// The rows this disposal decides on are locked in one canonical id
+	// The lock order, two canonical steps. The instance's administrator
+	// set comes FIRST, as one statement ordered by id: every disposal
+	// takes it, and taken second it would deadlock the crossed case --
+	// two administrators each disposing the other would hold their
+	// target row and then queue for the set in opposite order. Taken
+	// first, the two disposals queue at the same entrance, and the one
+	// that gets in second counts the set the first left behind (which
+	// is also what makes the last-administrator guard race-free).
+	admins, err := queries.LockAdministratorIDs(ctx)
+	if err != nil {
+		return outcome, fmt.Errorf("lock the instance's administrators: %w", err)
+	}
+
+	// Then the rows this disposal decides on, in one canonical id
 	// order: the departing account and, on the transfer arm, the
-	// receiving one. Two crossed disposals -- each account handing its
-	// content to the other -- then queue behind one lock order instead
-	// of deadlocking on each other.
+	// receiving one. Two disposals over overlapping pairs then queue
+	// behind one lock order instead of deadlocking on each other.
 	locked := make([]uuid.UUID, 0, 2)
 	locked = append(locked, target)
 	if !disposal.trash {
@@ -284,29 +296,25 @@ func (s *server) removeUser(r *http.Request, actor, target uuid.UUID, disposal u
 	}
 	sort.Slice(locked, func(i, j int) bool { return locked[i].String() < locked[j].String() })
 	for _, id := range locked {
-		row, err := queries.LockUserForRemoval(ctx, pgUUID(id))
-		if errors.Is(err, pgx.ErrNoRows) {
+		// The read is the lock: the row's existence is what the guards
+		// and the settlement need, and a missing row is the same answer
+		// whoever asks for it.
+		if _, err := queries.LockUserForRemoval(ctx, pgUUID(id)); errors.Is(err, pgx.ErrNoRows) {
 			if id == target {
 				return outcome, errRemovalUserGone
 			}
 			return outcome, errRemovalUnknownTarget
-		}
-		if err != nil {
+		} else if err != nil {
 			return outcome, fmt.Errorf("lock account %s: %w", id, err)
 		}
-		if id == target && row.Role == dbgen.UserRoleAdmin {
-			// The last-administrator guard reads the administrator rows
-			// under the same lock, so two concurrent disposals cannot
-			// both see a survivor: the second waits for the first and
-			// then counts the reduced set. One administrator is the
-			// line.
-			admins, err := queries.LockAdministratorIDs(ctx)
-			if err != nil {
-				return outcome, fmt.Errorf("lock the instance's administrators: %w", err)
-			}
-			if len(admins) <= 1 {
-				return outcome, errRemovalLastAdmin
-			}
+	}
+
+	// The last-administrator guard reads the set locked above: one
+	// administrator is the line, and the account being deleted must be
+	// in that set for the rule to have anything to say.
+	for _, admin := range admins {
+		if uuid.UUID(admin.Bytes) == target && len(admins) <= 1 {
+			return outcome, errRemovalLastAdmin
 		}
 	}
 
