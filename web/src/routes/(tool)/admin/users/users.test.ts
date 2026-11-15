@@ -3,18 +3,23 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 
-// The admin user management page (the 2026-11-09 modal pin): the
-// listing renders the accounts with their role and disabled badges,
-// a non-admin caller sees the mapped auth_forbidden message (the
-// page's own listing is the probe -- the session contract carries
-// no role), the create flow rides the page-header row's "New user"
-// button (UserPlus + text) into a MODAL whose fields and failure
-// surface are the inline form's own -- success closes it with the
-// listing converging, a failure keeps it open with the mapped error
-// inside -- and the disable toggle confirms first, adopts the PATCH
-// response, and surfaces the server's self-disable refusal as the
-// mapped message.
+// The admin user management page (the 2026-11-09 modal pin, the
+// alignment and disposal update): the listing renders the accounts
+// with their role and disabled badges, a non-admin caller sees the
+// mapped auth_forbidden message (the page's own listing is the probe
+// -- the session contract carries no role), the create flow rides the
+// page-header row's "New user" button (UserPlus + text) into a MODAL
+// whose fields and failure surface are the inline form's own --
+// success closes it with the listing converging, a failure keeps it
+// open with the mapped error inside -- and the disable toggle
+// confirms first, adopts the PATCH response, and surfaces the
+// server's self-disable refusal as the mapped message. The geometry
+// is the admin column's (the 760 bound, the table's own scroll card),
+// and the disposal is two steps: the destination of the photos, then
+// the irreversible confirmation, with every refusal staying in the
+// second dialog.
 
 const adminDefaults = {
 	name: 'Ada Lovelace',
@@ -51,6 +56,7 @@ type FetchRoute = Record<string, () => Response>;
 function usersRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
 		'/api/v1/admin/users': () => jsonResponse(200, { items: [adminUser, grace] }),
+		'/api/v1/admin/settings/trash': () => jsonResponse(200, { retentionDays: 30 }),
 		...overrides
 	};
 }
@@ -124,6 +130,23 @@ function rowAction(email: string): HTMLButtonElement {
 	return button;
 }
 
+/** The disposal entry of the row naming one account's email. */
+function deleteButton(email: string): HTMLButtonElement {
+	const row = rows().find((tr) => (tr.textContent ?? '').includes(email));
+	const buttons = Array.from(row?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+	const found = buttons.find((button) => button.textContent?.trim() === 'Delete');
+	if (found === undefined) {
+		throw new Error(`missing delete button of the row of ${email}`);
+	}
+	return found;
+}
+
+/** Click one element the way the browser does. */
+function click(element: Element): void {
+	element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+}
+
 /** A button of the open modal's panel (the confirm surface). */
 function modalButton(text: string): HTMLButtonElement {
 	const panel = document.body.querySelector<HTMLElement>('.modal__panel');
@@ -151,6 +174,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+	clearToasts();
 	vi.unstubAllGlobals();
 });
 
@@ -497,6 +521,229 @@ test('a stale row (404) reconciles through a refetch', async () => {
 	// nothing left to confirm against a row the listing no longer
 	// carries.
 	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
+test('the column is the 760 one and the table scrolls inside its own card', async () => {
+	vi.stubGlobal('fetch', stubFetch(usersRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// The admin content column's bound (the reading/form surfaces'
+	// shared width) and its centering.
+	const column = document.body.querySelector<HTMLElement>('.users');
+	expect(column?.className).toContain('max-w-[760px]');
+	expect(column?.className).toContain('mx-auto');
+	expect(column?.className).toContain('gap-6');
+
+	// The card moved off the table and onto the scroll shell: a narrow
+	// viewport scrolls the table inside the card instead of pushing
+	// the page sideways.
+	const shell = document.body.querySelector<HTMLElement>('.users__table-shell');
+	expect(shell?.className).toContain('relative');
+	expect(shell?.className).toContain('overflow-x-auto');
+	expect(shell?.className).toContain('rounded-card');
+	expect(shell?.className).toContain('border');
+	expect(shell?.className).toContain('shadow-card');
+	const table = shell?.querySelector<HTMLElement>('table.users__table');
+	expect(table).not.toBeNull();
+	expect(table?.className).not.toContain('shadow-card');
+	expect(table?.className).not.toContain('rounded-card');
+
+	unmount(page);
+	flushSync();
+});
+
+test('the disposal asks twice, then hands the photos to the chosen member', async () => {
+	const deletes: Array<{ url: string; body: unknown }> = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'DELETE') {
+				deletes.push({ url, body: JSON.parse(String(init.body)) });
+				return new Response(null, { status: 204 });
+			}
+			const answer = usersRoutes()[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer();
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	// The row's disposal entry is a text button in the danger tone
+	// (red border and red text, transparent ground) -- never a solid
+	// fill, which beside Disable would read like an everyday action.
+	const entry = deleteButton('grace@example.com');
+	expect(entry.className).toContain('btn--danger-text');
+	expect(entry.querySelector('svg.lucide-user-minus')).not.toBeNull();
+	expect(entry.disabled).toBe(false);
+	click(entry);
+
+	// Step one: the title names the account, both destinations stand
+	// side by side, and the trash arm's subline carries the instance's
+	// own retention window (read when the dialog opens).
+	const panel = document.body.querySelector<HTMLElement>('.modal__panel');
+	expect(panel?.getAttribute('aria-label')).toBe('Delete Grace Hopper');
+	expect(document.body.textContent).toContain('Transfer the photos to another member');
+	expect(document.body.textContent).toContain('Move the photos to the trash');
+	await settle();
+	expect(document.body.querySelector('.users__delete-retention')?.textContent).toContain('after 30 days');
+	// The receiver picker lists the OTHER accounts only.
+	const select = document.body.querySelector<HTMLSelectElement>('#user-delete-transfer');
+	expect(Array.from(select?.options ?? []).map((option) => option.textContent)).toEqual(['Ada Lovelace']);
+	// Nothing has been written yet.
+	expect(deletes).toEqual([]);
+
+	click(modalButton('Continue'));
+
+	// Step two: the irreversible confirmation, still without a write.
+	expect(document.body.querySelector('.modal__panel')?.getAttribute('aria-label')).toBe('Confirm deletion');
+	expect(document.body.textContent).toContain('Grace Hopper');
+	expect(document.body.textContent).toContain('This cannot be undone.');
+	expect(deletes).toEqual([]);
+
+	click(modalButton('Delete permanently'));
+	await settle();
+
+	expect(deletes).toEqual([{ url: `/api/v1/admin/users/${grace.id}`, body: { transferTo: adminUser.id } }]);
+	// The row left the listing and the dialog closed; the danger toast
+	// carries the acknowledgment.
+	expect(rows()).toHaveLength(1);
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+	const live = toasts();
+	expect(live.at(-1)?.text).toBe('The account has been deleted.');
+	expect(live.at(-1)?.tone).toBe('danger');
+
+	unmount(page);
+	flushSync();
+});
+
+test('the trash arm posts the disposal and drops the receiver picker', async () => {
+	const deletes: Array<{ url: string; body: unknown }> = [];
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'DELETE') {
+				deletes.push({ url, body: JSON.parse(String(init.body)) });
+				return new Response(null, { status: 204 });
+			}
+			const answer = usersRoutes()[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer();
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	click(deleteButton('grace@example.com'));
+	const trashRadio = document.body.querySelector<HTMLInputElement>('input[value="trash"]');
+	expect(trashRadio).not.toBeNull();
+	trashRadio!.checked = true;
+	trashRadio!.dispatchEvent(new Event('change', { bubbles: true }));
+	flushSync();
+
+	// The receiver picker belongs to the transfer arm alone.
+	expect(document.body.querySelector('#user-delete-transfer')).toBeNull();
+
+	click(modalButton('Continue'));
+	click(modalButton('Delete permanently'));
+	await settle();
+
+	expect(deletes).toEqual([{ url: `/api/v1/admin/users/${grace.id}`, body: { dispose: 'trash' } }]);
+	expect(rows()).toHaveLength(1);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a refused disposal stays in the dialog with its mapped reason', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'DELETE') {
+				return jsonResponse(409, {
+					code: 'USER_LAST_ADMIN',
+					message: 'the last administrator cannot be deleted'
+				});
+			}
+			const answer = usersRoutes()[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer();
+		})
+	);
+	const page = mountPage();
+	await settle();
+
+	// The entry is offered on every row: the guard is the server's,
+	// and the interface never fakes a disabled button for a rule it
+	// cannot see.
+	const entry = deleteButton('ada@example.com');
+	expect(entry.disabled).toBe(false);
+	click(entry);
+	click(modalButton('Continue'));
+	click(modalButton('Delete permanently'));
+	await settle();
+
+	const panel = document.body.querySelector<HTMLElement>('.modal__panel');
+	expect(panel).not.toBeNull();
+	expect(panel?.querySelector('[role="alert"]')?.textContent).toContain(
+		"The instance's last administrator cannot be deleted."
+	);
+	// The row survives and no toast claims a deletion.
+	expect(rows()).toHaveLength(2);
+	expect(toasts()).toHaveLength(0);
+
+	unmount(page);
+	flushSync();
+});
+
+test('a row another administrator removed reconciles through the listing', async () => {
+	let listed = 0;
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (init?.method === 'DELETE') {
+				return jsonResponse(404, { code: 'USER_NOT_FOUND', message: 'no account' });
+			}
+			if (url === '/api/v1/admin/users') {
+				listed += 1;
+				return jsonResponse(200, { items: listed === 1 ? [adminUser, grace] : [adminUser] });
+			}
+			const answer = usersRoutes()[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer();
+		})
+	);
+	const page = mountPage();
+	await settle();
+	expect(listed).toBe(1);
+
+	click(deleteButton('grace@example.com'));
+	click(modalButton('Continue'));
+	click(modalButton('Delete permanently'));
+	await settle();
+
+	// The already-gone reading: the listing reconciles and the dialog
+	// closes -- there is nothing left to confirm against.
+	expect(listed).toBe(2);
+	expect(rows()).toHaveLength(1);
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+	expect(toasts()).toHaveLength(0);
 
 	unmount(page);
 	flushSync();
