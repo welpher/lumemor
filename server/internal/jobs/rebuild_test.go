@@ -175,7 +175,10 @@ func TestRebuildMissingDerivesAbsent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the golden fixture: %v", err)
 	}
-	id := e.insertAsset(t, "originals/rebuild/three.jpg", content, time.Now(), `{}`)
+	// A completed pipeline whose serving files are absent (the
+	// encoding-changed case): the missing scope OWNS this one -- an
+	// in-flight pipeline would be its own business.
+	id := e.insertAssetKind(t, "originals/rebuild/three.jpg", content, time.Now(), `{}`, dbgen.MediaKindImage, "image/jpeg", 0)
 
 	runID, err := e.queue.EnqueueDerivativesRebuild(t.Context(), RebuildScopeMissing)
 	if err != nil {
@@ -256,7 +259,9 @@ func TestRebuildHonorsPause(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read the golden fixture: %v", err)
 	}
-	id := e.insertAsset(t, "originals/rebuild/paused.jpg", content, time.Now(), `{}`)
+	// Pending zero: the walk owns this asset, so the un-pause
+	// derives it (an in-flight pipeline would be its own business).
+	id := e.insertAssetKind(t, "originals/rebuild/paused.jpg", content, time.Now(), `{}`, dbgen.MediaKindImage, "image/jpeg", 0)
 
 	runID, err := e.queue.EnqueueDerivativesRebuild(t.Context(), RebuildScopeMissing)
 	if err != nil {
@@ -307,4 +312,107 @@ func TestRebuildHonorsPause(t *testing.T) {
 		t.Errorf("rebuild done after the un-pause = %d, want the one derived asset", done)
 	}
 	requireJobThumbDimensions(t, id, media.SizeTile, media.FormatAvif, 64, 64)
+}
+
+// TestRebuildHonorsWindow pins the window hold: the rebuild is one of
+// the heavy three, so a nightly window that does not contain now
+// snoozes the walk at its gate -- nothing derives while the window
+// is closed, and opening it (a window that contains now) lets the
+// walk through.
+func TestRebuildHonorsWindow(t *testing.T) {
+	requireThumbnails(t)
+	e := newEnv(t)
+
+	// A window one to two hours ahead: whatever the wall clock reads,
+	// now sits outside it.
+	ahead := func(hours int) string {
+		return time.Now().Add(time.Duration(hours) * time.Hour).Format("15:04")
+	}
+	if err := db.SaveRunBudget(t.Context(), e.queries, db.RunBudget{
+		ConcurrencyPreset: "standard",
+		NightlyEnabled:    true,
+		NightlyStart:      ahead(1),
+		NightlyEnd:        ahead(2),
+	}); err != nil {
+		t.Fatalf("save the closed window: %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join("testdata", "golden.jpg"))
+	if err != nil {
+		t.Fatalf("read the golden fixture: %v", err)
+	}
+	id := e.insertAssetKind(t, "originals/rebuild/windowed.jpg", content, time.Now(), `{}`, dbgen.MediaKindImage, "image/jpeg", 0)
+
+	runID, err := e.queue.EnqueueDerivativesRebuild(t.Context(), RebuildScopeAll)
+	if err != nil {
+		t.Fatalf("enqueue the rebuild: %v", err)
+	}
+	// While the window is closed, the run does not start deriving.
+	time.Sleep(3 * time.Second)
+	if state, _, _ := rebuildRunRow(t, e, runID); state == "succeeded" || state == "failed" {
+		t.Fatalf("rebuild run outside the window state = %s, want it still held", state)
+	}
+	tile := storage.ThumbPath(id.String(), media.SizeTile, media.FormatAvif)
+	if _, err := os.Stat(tile); !os.IsNotExist(err) {
+		t.Fatalf("windowed walk derived %s, want nothing while held", tile)
+	}
+
+	// The window opens: a span that contains now lets the snoozed
+	// walk through within the wake granularity.
+	if err := db.SaveRunBudget(t.Context(), e.queries, db.RunBudget{
+		ConcurrencyPreset: "standard",
+		NightlyEnabled:    true,
+		NightlyStart:      time.Now().Add(-time.Hour).Format("15:04"),
+		NightlyEnd:        ahead(1),
+	}); err != nil {
+		t.Fatalf("open the window: %v", err)
+	}
+	// The snooze before the window opened carries the wake cap
+	// (a minute), so the convergence here tolerates it.
+	var state string
+	var done int32
+	eventually(t, 90*time.Second, "the opened-window rebuild run to converge", func() bool {
+		state, _, done = rebuildRunRow(t, e, runID)
+		return state == "succeeded" || state == "failed"
+	})
+	if state != "succeeded" {
+		t.Fatalf("opened-window rebuild run state = %s, want succeeded", state)
+	}
+	if done != 1 {
+		t.Errorf("opened-window rebuild done = %d, want the one visited asset", done)
+	}
+}
+
+// TestRebuildMissingSkipsInFlight pins the missing scope's in-flight
+// arm: an asset whose pipeline has not finished (pending jobs above
+// zero) belongs to the pipeline, not the rebuild -- the walk skips
+// it without deriving, so it never double-pays or races the
+// pipeline's half-written file set.
+func TestRebuildMissingSkipsInFlight(t *testing.T) {
+	requireThumbnails(t)
+	e := newEnv(t)
+
+	content, err := os.ReadFile(filepath.Join("testdata", "golden.jpg"))
+	if err != nil {
+		t.Fatalf("read the golden fixture: %v", err)
+	}
+	// The default insert seeds one pending job: the pipeline is in
+	// flight for this asset.
+	id := e.insertAsset(t, "originals/rebuild/inflight.jpg", content, time.Now(), `{}`)
+
+	runID, err := e.queue.EnqueueDerivativesRebuild(t.Context(), RebuildScopeMissing)
+	if err != nil {
+		t.Fatalf("enqueue the rebuild: %v", err)
+	}
+	state, _, done := waitRebuildConverged(t, e, runID)
+	if state != "succeeded" {
+		t.Fatalf("rebuild run state = %s, want succeeded", state)
+	}
+	if done != 1 {
+		t.Errorf("rebuild done = %d, want the one visited (and skipped) asset", done)
+	}
+	tile := storage.ThumbPath(id.String(), media.SizeTile, media.FormatAvif)
+	if _, err := os.Stat(tile); !os.IsNotExist(err) {
+		t.Fatalf("the in-flight asset's tile = %s, want nothing derived (the pipeline owns it)", tile)
+	}
 }
