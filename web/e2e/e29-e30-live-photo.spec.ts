@@ -31,7 +31,7 @@ import { copyFile, mkdir, mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -122,12 +122,12 @@ async function buildPixelMotionPhoto(video: Buffer): Promise<Buffer> {
 }
 
 /** Wait until the asset detail answers a Live Photo's motion id. */
-async function waitForPair(page: Page, assetId: string): Promise<string> {
+async function waitForPair(api: APIRequestContext, assetId: string): Promise<string> {
 	let motionId = '';
 	await expect
 		.poll(
 			async () => {
-				const detail = await page.request.get(`/api/v1/assets/${assetId}`);
+				const detail = await api.get(`/api/v1/assets/${assetId}`);
 				if (detail.status() !== 200) {
 					return '';
 				}
@@ -147,7 +147,13 @@ test.beforeAll(async ({ playwright }) => {
 	await copyFile(PLAIN_SOURCE, plain);
 	await mkdir(path.dirname(authStatePath), { recursive: true });
 
-	const api = await playwright.request.newContext({ baseURL: BASE_URL });
+	// An EMPTY state on purpose: the request context inherits the file's
+	// use options, and the file this bootstrap is about to write does not
+	// exist yet.
+	const api = await playwright.request.newContext({
+		baseURL: BASE_URL,
+		storageState: { cookies: [], origins: [] }
+	});
 	const setup = await api.post('/api/v1/server/setup/admin', {
 		data: { name: 'Live E2E', email: ADMIN_EMAIL, password: ADMIN_PASSWORD }
 	});
@@ -209,161 +215,166 @@ test.beforeAll(async ({ playwright }) => {
 	await api.dispose();
 });
 
-test.use({ storageState: authStatePath });
+// The signed-in scenes: every one replays the session the bootstrap
+// saved (the worker fixture resolves the state file per test, after the
+// bootstrap wrote it).
+test.describe('the live photo story', () => {
+	test.use({ storageState: authStatePath });
 
-test('scene 1: the wall marks a live photo and leaves a plain photo bare', async ({ page }) => {
-	await page.goto('/timeline');
-	await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
-	await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
-	await expect(tile(page, PLAIN_NAME)).toBeVisible({ timeout: 60_000 });
+	test('scene 1: the wall marks a live photo and leaves a plain photo bare', async ({ page }) => {
+		await page.goto('/timeline');
+		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
+		await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
+		await expect(tile(page, PLAIN_NAME)).toBeVisible({ timeout: 60_000 });
 
-	// The type mark: a bare glyph at the tile's top-right, named for the
-	// screen reader through the tile's own accessible name.
-	await expect(liveMark(page, LIVE_PHOTO_NAME)).toBeVisible();
-	await expect(liveMark(page, MOTION_PHOTO_NAME)).toBeVisible();
-	await expect(tile(page, PLAIN_NAME).locator('.tile__live')).toHaveCount(0);
-	await expect(tile(page, LIVE_PHOTO_NAME)).toHaveAttribute('aria-label', `${LIVE_PHOTO_NAME} · Live Photo`);
+		// The type mark: a bare glyph at the tile's top-right, named for the
+		// screen reader through the tile's own accessible name.
+		await expect(liveMark(page, LIVE_PHOTO_NAME)).toBeVisible();
+		await expect(liveMark(page, MOTION_PHOTO_NAME)).toBeVisible();
+		await expect(tile(page, PLAIN_NAME).locator('.tile__live')).toHaveCount(0);
+		await expect(tile(page, LIVE_PHOTO_NAME)).toHaveAttribute('aria-label', `${LIVE_PHOTO_NAME} · Live Photo`);
 
-	// ONE TILE per photo: the hidden motion never becomes a tile of its
-	// own, and the count counts the photo once.
-	const tiles = page.locator('a.tile__link');
-	await expect(tiles.filter({ has: page.locator(`[aria-label^="${LIVE_VIDEO_NAME}"]`) })).toHaveCount(0);
-	expect(await tileCount(page)).toBe(3);
-});
-
-test('scene 2: hovering the live tile plays the moment and flips the mark', async ({ page }) => {
-	await page.goto('/timeline');
-	await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
-
-	// At rest: no stream mounted (the motion costs no byte until asked).
-	await expect(page.locator('video.tile__motion')).toHaveCount(0);
-
-	// The component's play stream answers once its transcode drained;
-	// the hover's own element then mounts against that stream.
-	await expect
-		.poll(
-			async () => {
-				const probe = await page.request.get(`/api/v1/assets/${liveVideoId}/play`, {
-					headers: { Range: 'bytes=0-0' }
-				});
-				return probe.status();
-			},
-			{ timeout: 90_000 }
-		)
-		.toBe(206);
-
-	await tile(page, LIVE_PHOTO_NAME).hover();
-	const motion = page.locator(`video.tile__motion[src="/api/v1/assets/${liveVideoId}/play"]`);
-	await expect(motion).toHaveCount(1);
-	// Playback flags are element properties, not attributes.
-	await expect(motion).toHaveJSProperty('muted', true);
-	await expect(motion).toHaveJSProperty('loop', true);
-	await expect(motion).toHaveJSProperty('controls', false);
-	// The mark flips to the pause pair once the stream actually plays,
-	// and the still takes its slow push.
-	await expect(liveMark(page, LIVE_PHOTO_NAME).locator('path')).toHaveCount(1, { timeout: 30_000 });
-
-	// Leaving drops the stream and restores the type glyph.
-	await page.mouse.move(0, 0);
-	await expect(page.locator('video.tile__motion')).toHaveCount(0);
-	await expect(liveMark(page, LIVE_PHOTO_NAME).locator('circle')).toHaveCount(2);
-	// The plain tile never asks for a stream.
-	await tile(page, PLAIN_NAME).hover();
-	await expect(page.locator('video.tile__motion')).toHaveCount(0);
-	await expect(liveMark(page, PLAIN_NAME)).toHaveCount(0);
-});
-
-test('scene 3: the viewer plays the motion in place and returns the still', async ({ page }) => {
-	await page.goto('/timeline');
-	await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
-	await tile(page, LIVE_PHOTO_NAME).click();
-	await expect(page).toHaveTitle(`${LIVE_PHOTO_NAME} · lumemor`);
-
-	// The action row's FIRST button is the Live Photo's toggle: the
-	// play arm at rest, named and unpressed.
-	const toggle = liveToggle(page);
-	await expect(toggle).toHaveAttribute('aria-label', 'Play the Live Photo');
-	await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.locator('video.viewer__live')).toHaveCount(0);
-
-	// One press plays the component's stream inside the still's box.
-	await toggle.click();
-	const motion = page.locator('video.viewer__live');
-	await expect(motion).toBeVisible();
-	await expect(motion).toHaveAttribute('src', `/api/v1/assets/${liveVideoId}/play`);
-	await expect(liveToggle(page)).toHaveAttribute('aria-pressed', 'true');
-	await expect(liveToggle(page)).toHaveAttribute('aria-label', 'Stop the Live Photo');
-
-	// The clip ends by itself and the still comes back -- no second
-	// press, no error surfaced.
-	await expect(page.locator('video.viewer__live')).toHaveCount(0, { timeout: 30_000 });
-	await expect(liveToggle(page)).toHaveAttribute('aria-pressed', 'false');
-	await expect(page.locator('[role="alert"]')).toHaveCount(0);
-
-	// Click-click: the second press stops it early.
-	await liveToggle(page).click();
-	await expect(page.locator('video.viewer__live')).toBeVisible();
-	await liveToggle(page).click();
-	await expect(page.locator('video.viewer__live')).toHaveCount(0);
-
-	// A plain photo's action row carries no toggle at all.
-	await page.keyboard.press('Escape');
-	await expect(page).toHaveURL(/\/timeline$/);
-	await tile(page, PLAIN_NAME).click();
-	await expect(page).toHaveTitle(`${PLAIN_NAME} · lumemor`);
-	await expect(page.locator('.viewer__live-toggle')).toHaveCount(0);
-});
-
-test('scene 4: the download hands over one archive of the pair', async ({ page }) => {
-	await page.goto('/timeline');
-
-	// The pair's motion arrived as its own file, so it always rides
-	// along: the archive holds both originals under their own names.
-	const download = await page.request.get(`/api/v1/assets/${livePhotoId}/original`);
-	expect(download.status()).toBe(200);
-	expect(download.headers()['content-type']).toBe('application/zip');
-	expect(download.headers()['content-disposition']).toContain('LIVE_0003.zip');
-	const archive = await download.body();
-	expect(archive.includes(Buffer.from(LIVE_PHOTO_NAME, 'latin1'))).toBe(true);
-	expect(archive.includes(Buffer.from(LIVE_VIDEO_NAME, 'latin1'))).toBe(true);
-
-	// The same request on the single-file motion photo: its extracted
-	// motion is a copy of bytes the still already carries, so the
-	// archive holds the still alone until the account asks for it.
-	const embeddedOff = await page.request.get(`/api/v1/assets/${motionPhotoId}/original`);
-	expect(embeddedOff.status()).toBe(200);
-	const rest = await embeddedOff.body();
-	expect(rest.includes(Buffer.from(MOTION_PHOTO_NAME, 'latin1'))).toBe(true);
-	expect(rest.includes(Buffer.from(`${MOTION_PHOTO_NAME.replace('.jpg', '')}.mp4`, 'latin1'))).toBe(false);
-
-	// The preference flips it on: the extracted video joins the archive.
-	const patch = await page.request.patch('/api/v1/users/me', {
-		data: { downloadIncludeEmbeddedVideos: true }
+		// ONE TILE per photo: the hidden motion never becomes a tile of its
+		// own, and the count counts the photo once.
+		const tiles = page.locator('a.tile__link');
+		await expect(tiles.filter({ has: page.locator(`[aria-label^="${LIVE_VIDEO_NAME}"]`) })).toHaveCount(0);
+		expect(await tileCount(page)).toBe(3);
 	});
-	expect(patch.status()).toBe(200);
-	const embeddedOn = await (await page.request.get(`/api/v1/assets/${motionPhotoId}/original`)).body();
-	expect(embeddedOn.includes(Buffer.from(`MOTION_0001.mp4`, 'latin1'))).toBe(true);
-	await page.request.patch('/api/v1/users/me', { data: { downloadIncludeEmbeddedVideos: false } });
 
-	// A plain photo keeps its plain original.
-	const plain = await page.request.get(`/api/v1/assets/${plainId}/original`);
-	expect(plain.status()).toBe(200);
-	expect(plain.headers()['content-type']).toBe('image/jpeg');
-});
+	test('scene 2: hovering the live tile plays the moment and flips the mark', async ({ page }) => {
+		await page.goto('/timeline');
+		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
 
-test('scene 5: deleting the motion degrades the tile without an error', async ({ page }) => {
-	await page.goto('/timeline');
-	await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
-	await expect(liveMark(page, MOTION_PHOTO_NAME)).toBeVisible();
+		// At rest: no stream mounted (the motion costs no byte until asked).
+		await expect(page.locator('video.tile__motion')).toHaveCount(0);
 
-	// The motion's row is deleted for good: the still's link nulls out
-	// through the schema, and the type mark goes with it.
-	const deleted = await page.request.delete(`/api/v1/assets/${motionPhotoVideoId}`);
-	expect(deleted.status()).toBe(204);
+		// The component's play stream answers once its transcode drained;
+		// the hover's own element then mounts against that stream.
+		await expect
+			.poll(
+				async () => {
+					const probe = await page.request.get(`/api/v1/assets/${liveVideoId}/play`, {
+						headers: { Range: 'bytes=0-0' }
+					});
+					return probe.status();
+				},
+				{ timeout: 90_000 }
+			)
+			.toBe(206);
 
-	await expect(liveMark(page, MOTION_PHOTO_NAME)).toHaveCount(0, { timeout: 60_000 });
-	// The still is still one tile, still openable, and nothing shouts.
-	await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible();
-	expect(await tileCount(page)).toBe(3);
-	await expect(page.locator('[role="alert"]')).toHaveCount(0);
+		await tile(page, LIVE_PHOTO_NAME).hover();
+		const motion = page.locator(`video.tile__motion[src="/api/v1/assets/${liveVideoId}/play"]`);
+		await expect(motion).toHaveCount(1);
+		// Playback flags are element properties, not attributes.
+		await expect(motion).toHaveJSProperty('muted', true);
+		await expect(motion).toHaveJSProperty('loop', true);
+		await expect(motion).toHaveJSProperty('controls', false);
+		// The mark flips to the pause pair once the stream actually plays,
+		// and the still takes its slow push.
+		await expect(liveMark(page, LIVE_PHOTO_NAME).locator('path')).toHaveCount(1, { timeout: 30_000 });
+
+		// Leaving drops the stream and restores the type glyph.
+		await page.mouse.move(0, 0);
+		await expect(page.locator('video.tile__motion')).toHaveCount(0);
+		await expect(liveMark(page, LIVE_PHOTO_NAME).locator('circle')).toHaveCount(2);
+		// The plain tile never asks for a stream.
+		await tile(page, PLAIN_NAME).hover();
+		await expect(page.locator('video.tile__motion')).toHaveCount(0);
+		await expect(liveMark(page, PLAIN_NAME)).toHaveCount(0);
+	});
+
+	test('scene 3: the viewer plays the motion in place and returns the still', async ({ page }) => {
+		await page.goto('/timeline');
+		await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
+		await tile(page, LIVE_PHOTO_NAME).click();
+		await expect(page).toHaveTitle(`${LIVE_PHOTO_NAME} · lumemor`);
+
+		// The action row's FIRST button is the Live Photo's toggle: the
+		// play arm at rest, named and unpressed.
+		const toggle = liveToggle(page);
+		await expect(toggle).toHaveAttribute('aria-label', 'Play the Live Photo');
+		await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+		await expect(page.locator('video.viewer__live')).toHaveCount(0);
+
+		// One press plays the component's stream inside the still's box.
+		await toggle.click();
+		const motion = page.locator('video.viewer__live');
+		await expect(motion).toBeVisible();
+		await expect(motion).toHaveAttribute('src', `/api/v1/assets/${liveVideoId}/play`);
+		await expect(liveToggle(page)).toHaveAttribute('aria-pressed', 'true');
+		await expect(liveToggle(page)).toHaveAttribute('aria-label', 'Stop the Live Photo');
+
+		// The clip ends by itself and the still comes back -- no second
+		// press, no error surfaced.
+		await expect(page.locator('video.viewer__live')).toHaveCount(0, { timeout: 30_000 });
+		await expect(liveToggle(page)).toHaveAttribute('aria-pressed', 'false');
+		await expect(page.locator('[role="alert"]')).toHaveCount(0);
+
+		// Click-click: the second press stops it early.
+		await liveToggle(page).click();
+		await expect(page.locator('video.viewer__live')).toBeVisible();
+		await liveToggle(page).click();
+		await expect(page.locator('video.viewer__live')).toHaveCount(0);
+
+		// A plain photo's action row carries no toggle at all.
+		await page.keyboard.press('Escape');
+		await expect(page).toHaveURL(/\/timeline$/);
+		await tile(page, PLAIN_NAME).click();
+		await expect(page).toHaveTitle(`${PLAIN_NAME} · lumemor`);
+		await expect(page.locator('.viewer__live-toggle')).toHaveCount(0);
+	});
+
+	test('scene 4: the download hands over one archive of the pair', async ({ page }) => {
+		await page.goto('/timeline');
+
+		// The pair's motion arrived as its own file, so it always rides
+		// along: the archive holds both originals under their own names.
+		const download = await page.request.get(`/api/v1/assets/${livePhotoId}/original`);
+		expect(download.status()).toBe(200);
+		expect(download.headers()['content-type']).toBe('application/zip');
+		expect(download.headers()['content-disposition']).toContain('LIVE_0003.zip');
+		const archive = await download.body();
+		expect(archive.includes(Buffer.from(LIVE_PHOTO_NAME, 'latin1'))).toBe(true);
+		expect(archive.includes(Buffer.from(LIVE_VIDEO_NAME, 'latin1'))).toBe(true);
+
+		// The same request on the single-file motion photo: its extracted
+		// motion is a copy of bytes the still already carries, so the
+		// archive holds the still alone until the account asks for it.
+		const embeddedOff = await page.request.get(`/api/v1/assets/${motionPhotoId}/original`);
+		expect(embeddedOff.status()).toBe(200);
+		const rest = await embeddedOff.body();
+		expect(rest.includes(Buffer.from(MOTION_PHOTO_NAME, 'latin1'))).toBe(true);
+		expect(rest.includes(Buffer.from(`${MOTION_PHOTO_NAME.replace('.jpg', '')}.mp4`, 'latin1'))).toBe(false);
+
+		// The preference flips it on: the extracted video joins the archive.
+		const patch = await page.request.patch('/api/v1/users/me', {
+			data: { downloadIncludeEmbeddedVideos: true }
+		});
+		expect(patch.status()).toBe(200);
+		const embeddedOn = await (await page.request.get(`/api/v1/assets/${motionPhotoId}/original`)).body();
+		expect(embeddedOn.includes(Buffer.from(`MOTION_0001.mp4`, 'latin1'))).toBe(true);
+		await page.request.patch('/api/v1/users/me', { data: { downloadIncludeEmbeddedVideos: false } });
+
+		// A plain photo keeps its plain original.
+		const plain = await page.request.get(`/api/v1/assets/${plainId}/original`);
+		expect(plain.status()).toBe(200);
+		expect(plain.headers()['content-type']).toBe('image/jpeg');
+	});
+
+	test('scene 5: deleting the motion degrades the tile without an error', async ({ page }) => {
+		await page.goto('/timeline');
+		await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
+		await expect(liveMark(page, MOTION_PHOTO_NAME)).toBeVisible();
+
+		// The motion's row is deleted for good: the still's link nulls out
+		// through the schema, and the type mark goes with it.
+		const deleted = await page.request.delete(`/api/v1/assets/${motionPhotoVideoId}`);
+		expect(deleted.status()).toBe(204);
+
+		await expect(liveMark(page, MOTION_PHOTO_NAME)).toHaveCount(0, { timeout: 60_000 });
+		// The still is still one tile, still openable, and nothing shouts.
+		await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible();
+		expect(await tileCount(page)).toBe(3);
+		await expect(page.locator('[role="alert"]')).toHaveCount(0);
+	});
 });
