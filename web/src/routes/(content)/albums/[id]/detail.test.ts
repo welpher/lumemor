@@ -100,7 +100,7 @@ let detailState: AlbumDetail = {
 	id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 	title: 'Road trip 2026',
 	type: 'directory',
-	coverAssetId: null,
+	coverAssetIds: [],
 	rootPath: '/Volumes/Photos/family',
 	sourceWritable: false,
 	callerRole: 'owner',
@@ -248,7 +248,7 @@ beforeEach(async () => {
 		id: '0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071',
 		title: 'Road trip 2026',
 		type: 'directory',
-		coverAssetId: null,
+		coverAssetIds: [],
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: false,
 		callerRole: 'owner',
@@ -308,19 +308,10 @@ test('the owner detail renders the contextual bar, the count and the items grid'
 	// navigation). The share action and the add-photos handoff are
 	// GONE with the curation removal and the share dialog's
 	// fold-in: the audience is an album property.
-	for (const label of ['Properties', 'Rescan', 'Remove album']) {
+	for (const label of ['Properties', 'Set cover', 'Rescan', 'Remove album']) {
 		expect(() => buttonByLabel(label), label).not.toThrow();
 	}
-	for (const label of [
-		'Share…',
-		'Add photos',
-		'Rename',
-		'Set cover…',
-		'Delete album',
-		'Leave album',
-		'Lock',
-		'Unlock'
-	]) {
+	for (const label of ['Share…', 'Add photos', 'Rename', 'Delete album', 'Leave album', 'Lock', 'Unlock']) {
 		expect(() => buttonByLabel(label), label).toThrow();
 	}
 
@@ -472,6 +463,60 @@ test("a viewer's wall curates their own favorites: no trash, no hide on another 
 	flushSync();
 });
 
+test("the owner pins the album card's four covers from the bar", async () => {
+	// The picker's pool walks the album narrow at its own page size;
+	// the stored pin starts empty (the automatic group).
+	detailState = { ...detailState, coverAssetIds: [], itemCount: 4 };
+	const poolItems = [
+		item('c1', '2026-11-02T10:00:00Z'),
+		item('c2', '2026-11-01T10:00:00Z'),
+		item('c3', '2026-10-31T10:00:00Z'),
+		item('c4', '2026-10-30T10:00:00Z')
+	];
+	let written: unknown = null;
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071&limit=200': () =>
+				jsonResponse(200, { items: poolItems }),
+			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
+				expect(init?.method).toBe('PATCH');
+				written = JSON.parse(String(init?.body));
+				return jsonResponse(200, summary({ coverAssetIds: ['c3', 'c1', 'c4', 'c2'] }));
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The bar's cover arm opens the dialog over the WALKED collection.
+	buttonByLabel('Set cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const dialog = modal();
+	expect(dialog?.getAttribute('aria-label')).toBe('Set the cover');
+	const options = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('.cover-option') ?? []);
+	expect(options).toHaveLength(4);
+	expect(dialog?.querySelector('.cover-picker__count')?.textContent).toContain('Automatic');
+
+	// Four picks in click order: the numbers and the enabled save.
+	for (const id of ['c3', 'c1', 'c4', 'c2']) {
+		const option = options.find((entry) => entry.querySelector('img')?.getAttribute('src')?.includes(`/${id}/`));
+		option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	}
+	flushSync();
+	expect(dialog?.querySelectorAll('.cover-option__badge')).toHaveLength(4);
+	buttonByText('Save cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The write carries the pick order; the dialog closes on the 200
+	// and the detail adopts the stored order.
+	expect(written).toEqual({ coverAssetIds: ['c3', 'c1', 'c4', 'c2'] });
+	expect(modal()).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
 test('the directory detail: the edit dialog, the autonomy faces and the live rescan trigger', async () => {
 	detailState = {
 		...detailState,
@@ -538,7 +583,7 @@ test('the sync album detail: the localized title, the grid, and zero write affor
 		...detailState,
 		title: 'Sync',
 		type: 'sync',
-		coverAssetId: null,
+		coverAssetIds: [],
 		shares: []
 	};
 	vi.stubGlobal('fetch', stubFetch(detailRoutes()));

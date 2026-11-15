@@ -470,7 +470,9 @@ test('three covers fall to the 2+1 collage: two cells, then one spanning both', 
 	expect(cover?.classList.contains('album-card__cover--duo-plus-one')).toBe(true);
 	expect(cover?.querySelectorAll('img')).toHaveLength(3);
 	const cells = Array.from(cover?.querySelectorAll<HTMLElement>('.album-card__cell') ?? []);
-	expect(cells[2]?.classList.contains('album-card__cell--wide')).toBe(true);
+	// The third frame spans both columns (the duo-plus-one fall's wide
+	// cell).
+	expect(cells[2]?.className).toContain('col-span-2');
 	unmount(page);
 	flushSync();
 });

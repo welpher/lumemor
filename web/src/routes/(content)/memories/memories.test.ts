@@ -314,12 +314,14 @@ test('the wall keeps the memory rows alone in ONE list, newest first', async () 
 	expect(section?.className).toContain('w-full');
 	expect(section?.className).not.toContain('max-w-[1200px]');
 
-	// The cover is a 3:1 band: one frame fills it, two split it, and
-	// five fill the 3x2 strip in order -- never a 2x2 collage.
+	// The cover is a 3:1 band: four frames make the 2x2 fall, three
+	// sit in one row -- the band's own degradation ladder, never a
+	// letterboxed strip.
 	expect(own?.querySelector('.memory-card__cover')?.className).toContain('aspect-[3/1]');
 	expect(own?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(4);
-	expect(own?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-3');
+	expect(own?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-2');
 	expect(shared?.querySelectorAll('.memory-card__frames > .memory-card__frame')).toHaveLength(3);
+	expect(shared?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-3');
 
 	// The caption is ONE row: the title truncating on the left, the
 	// count and the badges sharing the right end.
@@ -344,7 +346,7 @@ test('the cover degrades by frame count: one fills, two split, six caps the stri
 		}),
 		summary('mem-six', {
 			title: 'Six',
-			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7'],
+			coverAssetIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'],
 			updatedAt: '2026-11-05T10:00:00Z'
 		})
 	];
@@ -365,10 +367,12 @@ test('the cover degrades by frame count: one fills, two split, six caps the stri
 	expect(cards()[1]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-1');
 	expect(frames('Two')).toHaveLength(2);
 	expect(cards()[2]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-2');
-	// Fewer than six frames fill that many cells of the 3x2 strip;
-	// a seventh cover id is dropped (the strip is six frames).
+	// Fewer than six frames fill that many cells of the band; six are
+	// the 3-across 2-down strip itself (the card's full count).
 	expect(frames('Five')).toHaveLength(5);
+	expect(cards()[3]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-6');
 	expect(frames('Six')).toHaveLength(6);
+	expect(cards()[4]?.querySelector('.memory-card__frames')?.className).toContain('grid-cols-3');
 
 	unmount(page);
 	flushSync();
@@ -660,7 +664,7 @@ test('a ?memory= deep link opens the playback overlay over the wall', async () =
 						id,
 						title: 'Deep link memory',
 						type: 'memory',
-						coverAssetId: null,
+						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 2,
 						items: [],
@@ -770,7 +774,7 @@ test('a mode=grid deep link opens the overlay on its management face', async () 
 						id,
 						title: 'Grid link memory',
 						type: 'memory',
-						coverAssetId: null,
+						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 2,
 						items: [],
@@ -817,7 +821,7 @@ test('a deep link closes by replacing its address, never by stepping history bac
 						id,
 						title: 'Link memory',
 						type: 'memory',
-						coverAssetId: null,
+						coverAssetIds: [],
 						callerRole: 'owner',
 						itemCount: 1,
 						items: [],

@@ -101,7 +101,7 @@ function ownerDetail(overrides: Partial<AlbumDetail> = {}): AlbumDetail {
 		id: MEMORY_ID,
 		title: 'Late summer 2026',
 		type: 'memory',
-		coverAssetId: null,
+		coverAssetIds: [],
 		callerRole: 'owner',
 		itemCount: 3,
 		items: [],
@@ -649,6 +649,63 @@ test('Escape closes the overlay and Tab stays inside it', async () => {
 	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
 	expect(grid.onclose).toHaveBeenCalledTimes(1);
 	unmount(grid.app);
+	flushSync();
+});
+
+test("the owner pins the memory band's six frames from the overlay bar", async () => {
+	const sixItems = [
+		item('q1', 'IMG_1001.jpg', '2026-09-10T12:00:00Z'),
+		item('q2', 'IMG_1002.jpg', '2026-09-09T12:00:00Z'),
+		item('q3', 'IMG_1003.jpg', '2026-09-08T12:00:00Z'),
+		item('q4', 'IMG_1004.jpg', '2026-09-07T12:00:00Z'),
+		item('q5', 'IMG_1005.jpg', '2026-09-06T12:00:00Z'),
+		item('q6', 'IMG_1006.jpg', '2026-09-05T12:00:00Z')
+	];
+	let written: unknown = null;
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			routes({
+				[`/api/v1/albums/${MEMORY_ID}?limit=1`]: () =>
+					jsonResponse(200, ownerDetail({ itemCount: 6, coverAssetIds: [] })),
+				[`/api/v1/assets/timeline?albumId=${MEMORY_ID}&limit=100`]: () =>
+					jsonResponse(200, { items: sixItems }),
+				[`/api/v1/albums/${MEMORY_ID}`]: (init?: RequestInit) => {
+					expect(init?.method).toBe('PATCH');
+					written = JSON.parse(String(init?.body));
+					return jsonResponse(200, ownerCard);
+				}
+			})
+		)
+	);
+	const { app } = mountOverlay();
+	await settle();
+
+	buttonByLabel('Change cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const panel = document.body.querySelector<HTMLElement>('.modal__panel');
+	expect(panel?.getAttribute('aria-label')).toBe('Set the cover');
+	// The automatic state seeds no pick: the count line says so.
+	expect(panel?.querySelector('.cover-picker__count')?.textContent).toContain('Automatic');
+
+	const options = Array.from(panel?.querySelectorAll<HTMLButtonElement>('.cover-option') ?? []);
+	expect(options).toHaveLength(6);
+	for (const id of ['q6', 'q2', 'q4', 'q1', 'q5', 'q3']) {
+		const option = options.find((entry) => entry.querySelector('img')?.getAttribute('src')?.includes(`/${id}/`));
+		option?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	}
+	flushSync();
+	expect(panel?.querySelectorAll('.cover-option__badge')).toHaveLength(6);
+	buttonByText('Save cover').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The write carries the six-frame pick order, and the saved toast
+	// confirms it.
+	expect(written).toEqual({ coverAssetIds: ['q6', 'q2', 'q4', 'q1', 'q5', 'q3'] });
+	expect(toasts().map((entry) => entry.text)).toContain('Cover updated.');
+	expect(document.body.querySelector('.modal__panel')).toBeNull();
+
+	unmount(app);
 	flushSync();
 });
 

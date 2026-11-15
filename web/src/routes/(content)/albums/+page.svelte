@@ -43,6 +43,7 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
+	import { albumCoverCell, albumCoverGrid } from '$lib/albums/cover-layout';
 	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -355,7 +356,11 @@
 			class="album-card__cover {coverClass(
 				album.coverAssetIds.length
 			)} relative block aspect-[4/3] bg-accent-soft"
-			aria-hidden="true"
+			role={album.coverAssetIds.length > 0 ? 'img' : undefined}
+			aria-label={album.coverAssetIds.length > 0
+				? $_('cover_collage_label', { values: { count: album.coverAssetIds.length } })
+				: undefined}
+			aria-hidden={album.coverAssetIds.length === 0 ? 'true' : undefined}
 		>
 			{#if album.coverAssetIds.length === 1}
 				<img
@@ -368,13 +373,12 @@
 				/>
 			{:else if album.coverAssetIds.length > 1}
 				<!-- The collage cells: the 2+1 fall's third cell spans both
-				     columns, the quad fills the 2x2 grid. -->
-				<span class="album-card__cells grid grid-cols-2 absolute inset-0">
+				     columns, the quad fills the 2x2 grid (the cover's
+				     degradation ladder, see lib/albums/cover-layout). -->
+				<span class="album-card__cells absolute inset-0 {albumCoverGrid(album.coverAssetIds.length)}">
 					{#each album.coverAssetIds.slice(0, 4) as coverId, index (coverId)}
 						<span
-							class="album-card__cell {album.coverAssetIds.length === 3 && index === 2
-								? 'album-card__cell--wide col-span-2'
-								: ''} overflow-hidden"
+							class="album-card__cell {albumCoverCell(album.coverAssetIds.length, index)} overflow-hidden"
 						>
 							<img
 								class="w-full h-full object-cover"
