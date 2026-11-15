@@ -948,6 +948,26 @@ export interface paths {
          *     uploaded content-addressed file itself, not a pipeline
          *     product.
          *
+         *     A LIVE PHOTO ANSWERS AS ONE ARCHIVE. The still alone is not
+         *     what the family kept -- the pair is -- so this endpoint answers
+         *     `application/zip` holding the still and its motion (the stored
+         *     originals themselves: nothing is re-encoded). The archive is
+         *     named after the still's stem (`IMG_1234.zip`), and a display
+         *     name both files share is suffixed rather than overwritten.
+         *
+         *     WHICH MOTION RIDES: one that arrived as a file of its own --
+         *     the paired upload's video, or a later half matched by content
+         *     identifier -- is part of the pair and always rides along. One
+         *     the server extracted from the still's own bytes (a single-file
+         *     "motion photo") already sits inside the still, so it rides only
+         *     when the caller's `downloadIncludeEmbeddedVideos` preference is
+         *     on (default `false`); with the switch off the archive holds the
+         *     still alone. A motion deleted since the pair formed, or one
+         *     whose bytes are missing, likewise leaves the still alone: a
+         *     broken pair degrades to a plain photo, never to an error.
+         *
+         *     Every other asset keeps the plain original branch below.
+         *
          *     The download is always an attachment: `Content-Disposition:
          *     attachment; filename*=UTF-8''...` with the original file name
          *     escaped per RFC 5987 -- every byte outside the attribute
@@ -3088,14 +3108,15 @@ export interface paths {
          *     app flips its `.dark` class and reloads its i18n store on
          *     the response, not on a re-login).
          *
-         *     THE DOWNLOAD PREFERENCES ARE DECLARATIVE: the batch and
-         *     whole-album download endpoints do not exist yet (they arrive with a later
-         *     surface); the preferences persist here so
-         *     those flows will read the account's default packaging when
-         *     they arrive -- a stored preference is never silently
-         *     dropped, it is simply not consumed yet. This is documented
-         *     honestly: nothing in the current download-less pipeline
-         *     reads these fields.
+         *     THE DOWNLOAD PREFERENCES split honestly in two. The
+         *     embedded-motion switch is consumed today: the single-asset
+         *     download reads it when it assembles a Live Photo's archive.
+         *     The format, videos and sidecars switches stay declarative --
+         *     the batch and whole-album download endpoints do not exist
+         *     yet (they arrive with a later surface), and those flows will
+         *     read the account's default packaging when they arrive: a
+         *     stored preference is never silently dropped, it is simply
+         *     not consumed yet.
          */
         patch: operations["updateUserSelf"];
         trace?: never;
@@ -4862,6 +4883,15 @@ export interface components {
              *     sidecar files (`.xmp`) beside the media.
              */
             downloadIncludeSidecars: boolean;
+            /**
+             * @description Whether a download adds the motion a single-file "motion
+             *     photo" embeds as a separate video file. Default `false`:
+             *     the still's original already carries that motion, so the
+             *     extra copy is a duplicate unless the account asks for it.
+             *     A paired Live Photo's own motion file always rides along
+             *     and this switch never removes it.
+             */
+            downloadIncludeEmbeddedVideos: boolean;
         };
         /**
          * @description Payload of `PATCH /users/me`. Every field is optional: an
@@ -4888,6 +4918,12 @@ export interface components {
             downloadIncludeVideos?: boolean;
             /** @description The download packaging's sidecar switch. */
             downloadIncludeSidecars?: boolean;
+            /**
+             * @description The download packaging's embedded-motion switch (default
+             *     false: the single-file motion photo's original already
+             *     carries its motion).
+             */
+            downloadIncludeEmbeddedVideos?: boolean;
         };
         /** @description Payload of `PUT /users/me/password`. */
         PasswordChangeRequest: {
@@ -9789,27 +9825,33 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description The original file. The `Content-Type` header carries the
-             *     asset's stored MIME type (the media type below is the
-             *     generic documentation placeholder).
+             * @description The original file, or -- for a Live Photo -- the one archive
+             *     of the pair. The `Content-Type` header carries the asset's
+             *     stored MIME type, or `application/zip` on the archive arm.
+             *     The `ETag` and `Cache-Control` validators describe the plain
+             *     branch; the archive arm answers `Cache-Control: no-store`
+             *     and no entity tag, because its entry set depends on the
+             *     caller's preference.
              */
             200: {
                 headers: {
                     /**
                      * @description Strong entity tag: the first 16 hex characters of the
-                     *     asset's checksum, quoted.
+                     *     asset's checksum, quoted. Absent on the archive arm.
                      * @example "9f86d081884c7d65"
                      */
                     ETag?: string;
                     /**
                      * @description The original bytes are content-addressed and therefore
-                     *     immutable; the download is private to the owner.
+                     *     immutable; the download is private to the owner. The
+                     *     archive arm answers `no-store` instead.
                      * @example private, max-age=31536000, immutable
                      */
                     "Cache-Control"?: string;
                     /**
-                     * @description Always `attachment` with the RFC 5987 escaped original
-                     *     file name, so browsers download instead of rendering.
+                     * @description Always `attachment` with the RFC 5987 escaped name: the
+                     *     original file name on the plain branch, the still's
+                     *     stem with the zip extension on the archive arm.
                      * @example attachment; filename*=UTF-8''IMG_1234.jpg
                      */
                     "Content-Disposition"?: string;
@@ -9817,6 +9859,7 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": string;
+                    "application/zip": string;
                 };
             };
             /**
@@ -12300,6 +12343,19 @@ export interface operations {
                  *     filter (tags are per-user state).
                  */
                 tagIds?: string[];
+                /**
+                 * @description Restrict the results to Live Photos (`true`) or to
+                 *     everything else (`false`): an asset counts as a Live Photo
+                 *     exactly when it carries a motion. THE INTERFACE LEAVES
+                 *     THIS SLOT UNEXPOSED for now -- the search surface's
+                 *     filter bar does not render it and the web client never
+                 *     sends it; the parameter exists so the backend can answer
+                 *     the question when a surface asks, without a second
+                 *     contract revision. It is not a facet: the facet counts
+                 *     ignore it.
+                 * @example true
+                 */
+                isMotion?: boolean;
                 /**
                  * @description The display locale of the places facet's names, exactly
                  *     the `GET /places` locale join. Absent means `en`. A value

@@ -50,6 +50,10 @@ func userSelfResponse(row dbgen.GetUserSelfRow) apigen.UserSelfResponse {
 		DownloadFormat:          apigen.DownloadFormat(row.DownloadFormat),
 		DownloadIncludeVideos:   row.DownloadIncludeVideos,
 		DownloadIncludeSidecars: row.DownloadIncludeSidecars,
+		// The embedded-motion switch lands false on the column default
+		// (see the migration): the single-file motion photo's original
+		// already carries its motion, so the extra copy is opt-in.
+		DownloadIncludeEmbeddedVideos: row.DownloadIncludeEmbeddedVideos,
 	}
 }
 
@@ -357,6 +361,9 @@ func normalizeUserSelfPatch(req apigen.UserSelfPatch) (dbgen.UpdateUserSelfParam
 	}
 	if req.DownloadIncludeSidecars != nil {
 		params.DownloadIncludeSidecars = pgtype.Bool{Bool: *req.DownloadIncludeSidecars, Valid: true}
+	}
+	if req.DownloadIncludeEmbeddedVideos != nil {
+		params.DownloadIncludeEmbeddedVideos = pgtype.Bool{Bool: *req.DownloadIncludeEmbeddedVideos, Valid: true}
 	}
 	return params, invalid
 }

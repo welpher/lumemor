@@ -91,6 +91,16 @@ func (s *scope) addFilters(filters Filters, exclude dimension) {
 		s.clause("EXISTS (SELECT 1 FROM album_items ai WHERE ai.asset_id = a.id AND ai.album_id = ANY(%s::uuid[]))",
 			filters.AlbumIDs)
 	}
+	// isMotion is not a facet dimension: every facet count includes it
+	// (a Live Photo's facets are its own), and the result pages apply
+	// it like any other narrowing.
+	if filters.IsMotion != nil {
+		if *filters.IsMotion {
+			s.clauses = append(s.clauses, "a.live_photo_video_id IS NOT NULL")
+		} else {
+			s.clauses = append(s.clauses, "a.live_photo_video_id IS NULL")
+		}
+	}
 	if len(filters.TagIDs) > 0 && exclude != dimensionTags {
 		s.clause("EXISTS (SELECT 1 FROM asset_tags atg WHERE atg.asset_id = a.id AND atg.tag_id = ANY(%s::uuid[]))",
 			filters.TagIDs)

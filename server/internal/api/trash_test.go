@@ -860,3 +860,60 @@ func (e *assetEnv) requireNoAssetRow(t *testing.T, id uuid.UUID) {
 		t.Fatalf("asset row %s still exists, want it gone", id)
 	}
 }
+
+// TestDeletingOneStillKeepsTheSharedMotion pins the pair's delete rule:
+// two stills can reference one motion (a burst matched by checksum), and
+// the motion goes with the LAST of them -- deleting the first still
+// leaves both the motion's row and the second still's link intact.
+func TestDeletingOneStillKeepsTheSharedMotion(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	owner := env.sessionUserID(t)
+
+	stillA := uuid.MustParse("00000000-0000-0000-0009-000000000001")
+	stillB := uuid.MustParse("00000000-0000-0000-0009-000000000002")
+	motion := uuid.MustParse("00000000-0000-0000-0009-000000000003")
+	env.insertTimelineAsset(t, stillA, owner, time.Now().UTC(), timelineAssetOpts{})
+	env.insertTimelineAsset(t, stillB, owner, time.Now().UTC(), timelineAssetOpts{})
+	env.exec(t, `
+		INSERT INTO assets (id, owner_id, storage_kind, file_path, checksum, original_filename,
+		                    file_size, mime_type, media_kind, width, height, is_component,
+		                    taken_at, taken_at_source)
+		VALUES ($1, $2, 'blob', $3, $4, 'burst.mp4', 2048, 'video/mp4', 'video', 0, 0, true,
+		        now(), 'import')`,
+		pgUUID(motion), pgUUID(owner), "originals/fixtures/"+motion.String(), "motion-"+motion.String())
+	env.exec(t, `UPDATE assets SET live_photo_video_id = $2 WHERE id = $1`, pgUUID(stillA), pgUUID(motion))
+	env.exec(t, `UPDATE assets SET live_photo_video_id = $2 WHERE id = $1`, pgUUID(stillB), pgUUID(motion))
+
+	// The first still goes; the motion and the second still stay.
+	if rec := env.deleteAsset(t, env.cookie, stillA); rec.Code != http.StatusNoContent {
+		t.Fatalf("first delete status = %d, want %d (body %q)", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	var motionRows int
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM assets WHERE id = $1", pgUUID(motion)).Scan(&motionRows); err != nil {
+		t.Fatalf("count the motion row: %v", err)
+	}
+	if motionRows != 1 {
+		t.Fatalf("motion rows after the first still's delete = %d, want the shared motion kept", motionRows)
+	}
+	var stillBLink pgtype.UUID
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT live_photo_video_id FROM assets WHERE id = $1", pgUUID(stillB)).Scan(&stillBLink); err != nil {
+		t.Fatalf("read the second still: %v", err)
+	}
+	if !stillBLink.Valid || uuid.UUID(stillBLink.Bytes) != motion {
+		t.Errorf("the second still's link = %v, want the shared motion", stillBLink)
+	}
+
+	// The last still goes; the motion follows it.
+	if rec := env.deleteAsset(t, env.cookie, stillB); rec.Code != http.StatusNoContent {
+		t.Fatalf("second delete status = %d, want %d (body %q)", rec.Code, http.StatusNoContent, rec.Body.String())
+	}
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM assets WHERE id = $1", pgUUID(motion)).Scan(&motionRows); err != nil {
+		t.Fatalf("count the motion row: %v", err)
+	}
+	if motionRows != 0 {
+		t.Errorf("motion rows after the last still's delete = %d, want the motion purged", motionRows)
+	}
+}

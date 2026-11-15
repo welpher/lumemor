@@ -1065,6 +1065,20 @@ func TestUploadAssetValidatesStructure(t *testing.T) {
 			files: []assetUploadFile{{field: "photo", name: "IMG_1234.jpg", content: payload}},
 		},
 		{
+			// The pairing video must BE a video: an image-family part
+			// would build a component nothing can play, so it is
+			// refused loudly (the link's own "is a video" check).
+			name: "ImageFamilyLiveVideoIsRejected",
+			fields: map[string]string{
+				"deviceAssetId": "device-2",
+				"fileName":      "IMG_1235.jpg",
+			},
+			files: []assetUploadFile{
+				{field: "photo", name: "IMG_1235.jpg", content: payload},
+				{field: "liveVideo", name: "IMG_1235.jpg", content: jpegColorFixture(t, color.RGBA{R: 0x22, G: 0x33, B: 0x44, A: 0xff})},
+			},
+		},
+		{
 			// The pairing video must follow its photo: an early
 			// liveVideo is refused before anything is staged.
 			name: "LiveVideoBeforePhotoIsRejected",

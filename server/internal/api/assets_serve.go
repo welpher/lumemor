@@ -15,9 +15,11 @@
 package api
 
 import (
+	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -183,6 +185,16 @@ func (s *server) GetAssetThumbnail(w http.ResponseWriter, r *http.Request, id op
 // playback and seeking. The original is the uploaded file itself, so
 // it is servable immediately after the upload -- readiness gates only
 // the derived files.
+//
+// A LIVE PHOTO IS ONE DOWNLOAD OF TWO FILES: the still alone is not
+// the asset the family kept -- the second the camera captured is --
+// so the response becomes a ZIP holding the still and its motion. The
+// motion that arrived as a file of its own (a paired upload's MOV, a
+// CID match) always rides along; one the server carved out of the
+// still's own bytes rides only when the caller's
+// downloadIncludeEmbeddedVideos preference asks for it, because that
+// still already carries it. Nothing is re-encoded: the archive is a
+// transport envelope around the stored originals.
 func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -201,6 +213,15 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 	if err != nil {
 		s.internalError(w, r, "load asset for original", err)
 		return
+	}
+
+	// The pair's archive: only a still whose motion row still exists
+	// takes this arm (a motion deleted since the pair formed nulls the
+	// link through the schema, which lands the still's own branch).
+	if row.MediaKind == dbgen.MediaKindImage && row.LivePhotoVideoID.Valid {
+		if s.serveLivePairArchive(w, r, row, requester.userID) {
+			return
+		}
 	}
 
 	// The stored file_path names where the bytes live: a blob row's
@@ -241,6 +262,153 @@ func (s *server) GetAssetOriginal(w http.ResponseWriter, r *http.Request, id ope
 	// If-Modified-Since, and the content-addressed blob never changes
 	// under its name.
 	s.serveMediaFile(w, r, file, row.Checksum, row.MimeType, info.ModTime())
+}
+
+// serveLivePairArchive answers a Live Photo's download as one ZIP of
+// the still and its motion, and reports whether it did. It answers
+// false -- before writing anything -- when the pair is not fully
+// downloadable (the motion row is gone, or a file on disk is), so the
+// caller falls back to the still alone: a broken pair degrades to a
+// plain photo, never to an error the family cannot act on.
+//
+// The embedded-motion rule is the account's: the preference read is
+// the caller's own row, and its absence (a deleted account mid-flight)
+// falls back to the shipped default -- the extra copy is not given.
+func (s *server) serveLivePairArchive(w http.ResponseWriter, r *http.Request, still dbgen.Asset, viewer uuid.UUID) bool {
+	motion, err := s.queries.GetAssetByID(r.Context(), still.LivePhotoVideoID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false
+	}
+	if err != nil {
+		s.logger.Error("load the Live Photo motion for download", "error", err,
+			"asset_id", uuid.UUID(still.ID.Bytes))
+		return false
+	}
+
+	// The still's own bytes first: the pair is worth nothing without
+	// them, so a missing still takes the caller's ordinary failure
+	// path rather than a half archive.
+	_, stillFile, ok := s.openAssetBytes(r, still)
+	if !ok {
+		return false
+	}
+	defer func() { _ = stillFile.Close() }()
+
+	type archiveEntry struct {
+		row  dbgen.Asset
+		file *os.File
+	}
+	entries := []archiveEntry{{row: still, file: stillFile}}
+
+	motionWanted := !motion.MotionExtracted
+	if !motionWanted {
+		prefs, err := s.queries.GetUserSelf(r.Context(), pgUUID(viewer))
+		switch {
+		case err == nil:
+			motionWanted = prefs.DownloadIncludeEmbeddedVideos
+		case errors.Is(err, pgx.ErrNoRows):
+			// No row: the shipped default (off) stands.
+		default:
+			s.logger.Error("read the download preferences; leaving the embedded motion out",
+				"error", err, "asset_id", uuid.UUID(still.ID.Bytes))
+		}
+	}
+	if motionWanted {
+		motionPath, motionFile, ok := s.openAssetBytes(r, motion)
+		if !ok {
+			// The motion's file vanished: the still is still a
+			// download, and the pair's loss is the sweep's concern.
+			s.logger.Warn("the Live Photo motion file is missing; downloading the still alone",
+				"asset_id", uuid.UUID(still.ID.Bytes), "motion_path", motionPath)
+		} else {
+			defer func() { _ = motionFile.Close() }()
+			entries = append(entries, archiveEntry{row: motion, file: motionFile})
+		}
+	}
+
+	// The archive's own name: the still's stem, so a family member
+	// unzipping a batch recognizes the photo, not a hash.
+	w.Header().Set("Content-Type", "application/zip")
+	w.Header().Set("Content-Disposition",
+		"attachment; filename*=UTF-8''"+escapeExtFilename(archiveNameOf(still.OriginalFilename)))
+	w.Header().Set("Cache-Control", "no-store")
+
+	archive := zip.NewWriter(w)
+	used := make(map[string]bool, len(entries))
+	for _, entry := range entries {
+		// Two rows may share a display name (a still and its motion
+		// are the camera's two files, often one stem): the archive
+		// keeps both, suffixing the later one instead of overwriting.
+		header := &zip.FileHeader{
+			Name:   uniqueEntryName(entry.row.OriginalFilename, used),
+			Method: zip.Store,
+		}
+		// The stored originals are already compressed media: the
+		// archive is an envelope, not a re-compression (and the
+		// capture instant rides as the entry's time).
+		if entry.row.TakenAt.Valid {
+			header.Modified = entry.row.TakenAt.Time
+		}
+		writer, err := archive.CreateHeader(header)
+		if err != nil {
+			s.logger.Error("write the Live Photo archive entry", "error", err,
+				"asset_id", uuid.UUID(still.ID.Bytes))
+			return true
+		}
+		if _, err := io.Copy(writer, entry.file); err != nil {
+			s.logger.Error("stream the Live Photo archive entry", "error", err,
+				"asset_id", uuid.UUID(still.ID.Bytes))
+			return true
+		}
+	}
+	if err := archive.Close(); err != nil {
+		s.logger.Error("close the Live Photo archive", "error", err, "asset_id", uuid.UUID(still.ID.Bytes))
+	}
+	return true
+}
+
+// openAssetBytes opens one asset row's stored original and reports
+// whether the bytes are there: a missing row file is a logged
+// storage inconsistency, and the pair's download degrades around it.
+func (s *server) openAssetBytes(r *http.Request, row dbgen.Asset) (string, *os.File, bool) {
+	path, err := storage.ResolveAssetPath(s.dataDir, row.FilePath, string(row.StorageKind))
+	if err != nil {
+		s.logger.Error("resolve the Live Photo file", "error", err, "asset_id", uuid.UUID(row.ID.Bytes))
+		return "", nil, false
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		s.logger.Warn("open the Live Photo file", "error", err, "asset_id", uuid.UUID(row.ID.Bytes))
+		return path, nil, false
+	}
+	return path, file, true
+}
+
+// archiveNameOf turns a still's file name into the archive's name:
+// the same stem, the zip extension.
+func archiveNameOf(name string) string {
+	if index := strings.LastIndex(name, "."); index > 0 {
+		return name[:index] + ".zip"
+	}
+	return name + ".zip"
+}
+
+// uniqueEntryName answers one archive entry name, suffixing a repeat
+// (photo.jpg, photo (2).jpg) so no entry is ever silently dropped.
+func uniqueEntryName(name string, used map[string]bool) string {
+	if name == "" {
+		name = "asset"
+	}
+	candidate := name
+	stem, ext := name, ""
+	if index := strings.LastIndex(name, "."); index > 0 {
+		stem, ext = name[:index], name[index:]
+	}
+	for n := 2; used[candidate]; n++ {
+		candidate = fmt.Sprintf("%s (%d)%s", stem, n, ext)
+	}
+	used[candidate] = true
+	return candidate
 }
 
 // PlayAsset implements GET /api/v1/assets/{id}/play: the transcoded

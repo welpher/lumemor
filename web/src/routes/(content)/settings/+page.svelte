@@ -267,7 +267,9 @@
 		adoptSelf(outcome.self);
 	}
 
-	async function persistDownloadFlag(flag: 'downloadIncludeVideos' | 'downloadIncludeSidecars'): Promise<void> {
+	async function persistDownloadFlag(
+		flag: 'downloadIncludeVideos' | 'downloadIncludeSidecars' | 'downloadIncludeEmbeddedVideos'
+	): Promise<void> {
 		if (self === null) {
 			return;
 		}
@@ -716,6 +718,23 @@
 									onchange={() => void persistDownloadFlag('downloadIncludeSidecars')}
 								/>
 								{$_('settings_download_sidecars')}
+							</label>
+							<!-- The embedded-motion switch: the ONE preference the
+							     single-asset download reads today. Its label says
+							     what it does without a second sentence -- the note
+							     below explains the Live Photo rule for the case the
+							     label cannot. -->
+							<label
+								class="settings__toggle flex items-center gap-2 font-body font-semibold text-[14px] leading-[1.4] text-text-soft cursor-pointer"
+							>
+								<input
+									class="settings__toggle-input w-[18px] h-[18px] accent-accent"
+									type="checkbox"
+									data-testid="settings-download-embedded"
+									bind:checked={self.downloadIncludeEmbeddedVideos}
+									onchange={() => void persistDownloadFlag('downloadIncludeEmbeddedVideos')}
+								/>
+								{$_('settings_download_embedded')}
 							</label>
 						</div>
 						<p class="settings__note font-body font-normal text-[12px] leading-[1.5] text-text-faint">

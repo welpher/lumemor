@@ -873,6 +873,7 @@ NON_ERROR_KEYS = {
     "settings_download_format_tar",
     "settings_download_format_zip",
     "settings_download_note",
+    "settings_download_embedded",
     "settings_download_sidecars",
     "settings_download_title",
     "settings_download_videos",

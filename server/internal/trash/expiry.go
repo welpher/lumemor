@@ -149,6 +149,29 @@ func RunExpiry(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *eve
 			continue
 		}
 
+		// A SHARED MOTION SURVIVES ITS FIRST STILL. A Live Photo's
+		// component can be referenced by more than one still (a burst
+		// by checksum), and the trash marks the whole pair when any
+		// one of them is trashed. Expiring the component while another
+		// LIVE still still plays it would break that still's motion,
+		// so a live reference keeps the row and its bytes; the still's
+		// own expiry (later) is the run that finally lets it go.
+		if row.IsComponent {
+			stills, err := queries.ListLivePhotoStillsOfMotion(ctx, row.ID)
+			if err != nil {
+				return counts, fmt.Errorf("trash expiry: list the stills of %s: %w", assetID, err)
+			}
+			liveReferences := 0
+			for _, still := range stills {
+				if !still.DeletedAt.Valid {
+					liveReferences++
+				}
+			}
+			if liveReferences > 0 {
+				continue
+			}
+		}
+
 		// The shared-blob reference count runs BEFORE the row delete
 		// and excludes the row itself by id, so it answers the same
 		// whichever side of the delete it runs on. Every OTHER row

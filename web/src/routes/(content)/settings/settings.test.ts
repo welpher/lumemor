@@ -27,6 +27,7 @@ function selfBody(overrides: Record<string, unknown> = {}): Record<string, unkno
 		downloadFormat: 'zip',
 		downloadIncludeVideos: true,
 		downloadIncludeSidecars: false,
+		downloadIncludeEmbeddedVideos: false,
 		...overrides
 	};
 }
@@ -645,10 +646,18 @@ test('the download preferences patch on every change', async () => {
 	sidecars!.dispatchEvent(new Event('change', { bubbles: true }));
 	await settle();
 
+	// The embedded-motion toggle: off by default, one PATCH per change.
+	const embedded = document.body.querySelector<HTMLInputElement>('[data-testid="settings-download-embedded"]');
+	expect(embedded?.checked).toBe(false);
+	embedded!.checked = true;
+	embedded!.dispatchEvent(new Event('change', { bubbles: true }));
+	await settle();
+
 	const patches = callsOf(fetchMock, 'PATCH', '/users/me');
-	expect(patches.length).toBe(2);
+	expect(patches.length).toBe(3);
 	expect(JSON.parse(String(patches[0].body))).toEqual({ downloadFormat: 'tar' });
 	expect(JSON.parse(String(patches[1].body))).toEqual({ downloadIncludeSidecars: true });
+	expect(JSON.parse(String(patches[2].body))).toEqual({ downloadIncludeEmbeddedVideos: true });
 	// The controls adopted the saved state.
 	expect(
 		document.body

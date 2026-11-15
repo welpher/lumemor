@@ -54,8 +54,8 @@ func TestRetentionPeriodicRegistration(t *testing.T) {
 	if got := len(retentionPeriodicJobs()); got != 1 {
 		t.Errorf("retention periodic jobs = %d, want exactly the one registration", got)
 	}
-	if got := len(periodicJobs()); got != 2 {
-		t.Errorf("queue periodic jobs = %d, want the sweep and the expiry (two registrations)", got)
+	if got := len(periodicJobs()); got != 3 {
+		t.Errorf("queue periodic jobs = %d, want the sweep, the expiry and the pair maintenance (three registrations)", got)
 	}
 
 	e := newEnv(t)
@@ -64,6 +64,9 @@ func TestRetentionPeriodicRegistration(t *testing.T) {
 	}
 	if !e.queue.client.PeriodicJobs().RemoveByID(sweepPeriodicJobID) {
 		t.Error("the requeue sweep periodic job lost its registration")
+	}
+	if !e.queue.client.PeriodicJobs().RemoveByID(livePhotoSweepPeriodicJobID) {
+		t.Error("the Live Photo pair maintenance periodic job is not registered in the started queue")
 	}
 }
 

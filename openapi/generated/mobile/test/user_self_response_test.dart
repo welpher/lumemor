@@ -57,5 +57,11 @@ void main() {
       // TODO
     });
 
+    // Whether a download adds the motion a single-file \"motion photo\" embeds as a separate video file. Default `false`: the still's original already carries that motion, so the extra copy is a duplicate unless the account asks for it. A paired Live Photo's own motion file always rides along and this switch never removes it. 
+    // bool downloadIncludeEmbeddedVideos
+    test('to test the property `downloadIncludeEmbeddedVideos`', () async {
+      // TODO
+    });
+
   });
 }

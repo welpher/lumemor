@@ -34,11 +34,13 @@ var (
 // exiftoolArgs is the fixed argument template beyond the binary:
 // -json (machine-readable output), -n (numeric tag values, so GPS
 // coordinates arrive as numbers instead of degree-minute-second
-// strings), -charset filename=utf8 (file names are interpreted as
-// UTF-8). Nothing here is user-controlled; the one file path is
-// appended by the platform command builders and guarded by the job's
-// assetPath.
-var exiftoolArgs = []string{"-json", "-n", "-charset", "filename=utf8"}
+// strings), -struct (keep structured XMP structured: without it the
+// container directories a motion photo's XMP carries flatten into
+// scalar tags and the motion inside can no longer be located),
+// -charset filename=utf8 (file names are interpreted as UTF-8).
+// Nothing here is user-controlled; the one file path is appended by
+// the platform command builders and guarded by the job's assetPath.
+var exiftoolArgs = []string{"-json", "-n", "-struct", "-charset", "filename=utf8"}
 
 // extractMetadata runs one exiftool invocation over path with the
 // fixed argument template and returns the raw JSON output. On timeout

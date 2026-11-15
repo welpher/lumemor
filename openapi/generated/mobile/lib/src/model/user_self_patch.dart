@@ -21,6 +21,7 @@ part 'user_self_patch.g.dart';
 /// * [downloadFormat] 
 /// * [downloadIncludeVideos] - The download packaging's video switch.
 /// * [downloadIncludeSidecars] - The download packaging's sidecar switch.
+/// * [downloadIncludeEmbeddedVideos] - The download packaging's embedded-motion switch (default false: the single-file motion photo's original already carries its motion). 
 @BuiltValue()
 abstract class UserSelfPatch implements Built<UserSelfPatch, UserSelfPatchBuilder> {
   /// The new display name; 1 to 100 runes after trimming (an empty name is refused -- the profile always carries one). 
@@ -50,6 +51,10 @@ abstract class UserSelfPatch implements Built<UserSelfPatch, UserSelfPatchBuilde
   /// The download packaging's sidecar switch.
   @BuiltValueField(wireName: r'downloadIncludeSidecars')
   bool? get downloadIncludeSidecars;
+
+  /// The download packaging's embedded-motion switch (default false: the single-file motion photo's original already carries its motion). 
+  @BuiltValueField(wireName: r'downloadIncludeEmbeddedVideos')
+  bool? get downloadIncludeEmbeddedVideos;
 
   UserSelfPatch._();
 
@@ -120,6 +125,13 @@ class _$UserSelfPatchSerializer implements PrimitiveSerializer<UserSelfPatch> {
       yield r'downloadIncludeSidecars';
       yield serializers.serialize(
         object.downloadIncludeSidecars,
+        specifiedType: const FullType(bool),
+      );
+    }
+    if (object.downloadIncludeEmbeddedVideos != null) {
+      yield r'downloadIncludeEmbeddedVideos';
+      yield serializers.serialize(
+        object.downloadIncludeEmbeddedVideos,
         specifiedType: const FullType(bool),
       );
     }
@@ -201,6 +213,14 @@ class _$UserSelfPatchSerializer implements PrimitiveSerializer<UserSelfPatch> {
           ) as bool?;
           if (valueDes == null) continue;
           result.downloadIncludeSidecars = valueDes;
+          break;
+        case r'downloadIncludeEmbeddedVideos':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(bool),
+          ) as bool?;
+          if (valueDes == null) continue;
+          result.downloadIncludeEmbeddedVideos = valueDes;
           break;
         default:
           unhandled.add(key);

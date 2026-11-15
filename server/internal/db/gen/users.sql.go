@@ -25,7 +25,7 @@ func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 
 INSERT INTO users (id, name, email, password_hash, role, locale)
-VALUES ($1, $2, $3, $4, $5, 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars
+VALUES ($1, $2, $3, $4, $5, 'en') RETURNING id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars, download_include_embedded_videos
 `
 
 type CreateUserParams struct {
@@ -67,12 +67,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.DownloadFormat,
 		&i.DownloadIncludeVideos,
 		&i.DownloadIncludeSidecars,
+		&i.DownloadIncludeEmbeddedVideos,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars FROM users WHERE email = $1
+SELECT id, name, email, password_hash, role, locale, theme, is_disabled, totp_secret, created_at, updated_at, download_format, download_include_videos, download_include_sidecars, download_include_embedded_videos FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -93,6 +94,7 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.DownloadFormat,
 		&i.DownloadIncludeVideos,
 		&i.DownloadIncludeSidecars,
+		&i.DownloadIncludeEmbeddedVideos,
 	)
 	return i, err
 }
@@ -115,25 +117,27 @@ func (q *Queries) GetUserRole(ctx context.Context, id pgtype.UUID) (UserRole, er
 const getUserSelf = `-- name: GetUserSelf :one
 SELECT id, name, email, password_hash, role, locale, theme,
        download_format, download_include_videos, download_include_sidecars,
+       download_include_embedded_videos,
        is_disabled, totp_secret, created_at, updated_at
 FROM users WHERE id = $1
 `
 
 type GetUserSelfRow struct {
-	ID                      pgtype.UUID        `json:"id"`
-	Name                    string             `json:"name"`
-	Email                   string             `json:"email"`
-	PasswordHash            string             `json:"password_hash"`
-	Role                    UserRole           `json:"role"`
-	Locale                  string             `json:"locale"`
-	Theme                   string             `json:"theme"`
-	DownloadFormat          string             `json:"download_format"`
-	DownloadIncludeVideos   bool               `json:"download_include_videos"`
-	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
-	IsDisabled              bool               `json:"is_disabled"`
-	TotpSecret              pgtype.Text        `json:"totp_secret"`
-	CreatedAt               pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	ID                            pgtype.UUID        `json:"id"`
+	Name                          string             `json:"name"`
+	Email                         string             `json:"email"`
+	PasswordHash                  string             `json:"password_hash"`
+	Role                          UserRole           `json:"role"`
+	Locale                        string             `json:"locale"`
+	Theme                         string             `json:"theme"`
+	DownloadFormat                string             `json:"download_format"`
+	DownloadIncludeVideos         bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars       bool               `json:"download_include_sidecars"`
+	DownloadIncludeEmbeddedVideos bool               `json:"download_include_embedded_videos"`
+	IsDisabled                    bool               `json:"is_disabled"`
+	TotpSecret                    pgtype.Text        `json:"totp_secret"`
+	CreatedAt                     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                     pgtype.Timestamptz `json:"updated_at"`
 }
 
 // The me-scoped profile read (the settings feature): the caller's
@@ -153,6 +157,7 @@ func (q *Queries) GetUserSelf(ctx context.Context, id pgtype.UUID) (GetUserSelfR
 		&i.DownloadFormat,
 		&i.DownloadIncludeVideos,
 		&i.DownloadIncludeSidecars,
+		&i.DownloadIncludeEmbeddedVideos,
 		&i.IsDisabled,
 		&i.TotpSecret,
 		&i.CreatedAt,
@@ -385,39 +390,44 @@ UPDATE users SET
     download_format = COALESCE($5, download_format),
     download_include_videos = COALESCE($6, download_include_videos),
     download_include_sidecars = COALESCE($7, download_include_sidecars),
+    download_include_embedded_videos =
+        COALESCE($8, download_include_embedded_videos),
     updated_at = now()
-WHERE id = $8
+WHERE id = $9
 RETURNING id, name, email, password_hash, role, locale, theme,
           download_format, download_include_videos, download_include_sidecars,
+          download_include_embedded_videos,
           is_disabled, totp_secret, created_at, updated_at
 `
 
 type UpdateUserSelfParams struct {
-	Name                    pgtype.Text `json:"name"`
-	Email                   pgtype.Text `json:"email"`
-	Locale                  pgtype.Text `json:"locale"`
-	Theme                   pgtype.Text `json:"theme"`
-	DownloadFormat          pgtype.Text `json:"download_format"`
-	DownloadIncludeVideos   pgtype.Bool `json:"download_include_videos"`
-	DownloadIncludeSidecars pgtype.Bool `json:"download_include_sidecars"`
-	ID                      pgtype.UUID `json:"id"`
+	Name                          pgtype.Text `json:"name"`
+	Email                         pgtype.Text `json:"email"`
+	Locale                        pgtype.Text `json:"locale"`
+	Theme                         pgtype.Text `json:"theme"`
+	DownloadFormat                pgtype.Text `json:"download_format"`
+	DownloadIncludeVideos         pgtype.Bool `json:"download_include_videos"`
+	DownloadIncludeSidecars       pgtype.Bool `json:"download_include_sidecars"`
+	DownloadIncludeEmbeddedVideos pgtype.Bool `json:"download_include_embedded_videos"`
+	ID                            pgtype.UUID `json:"id"`
 }
 
 type UpdateUserSelfRow struct {
-	ID                      pgtype.UUID        `json:"id"`
-	Name                    string             `json:"name"`
-	Email                   string             `json:"email"`
-	PasswordHash            string             `json:"password_hash"`
-	Role                    UserRole           `json:"role"`
-	Locale                  string             `json:"locale"`
-	Theme                   string             `json:"theme"`
-	DownloadFormat          string             `json:"download_format"`
-	DownloadIncludeVideos   bool               `json:"download_include_videos"`
-	DownloadIncludeSidecars bool               `json:"download_include_sidecars"`
-	IsDisabled              bool               `json:"is_disabled"`
-	TotpSecret              pgtype.Text        `json:"totp_secret"`
-	CreatedAt               pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	ID                            pgtype.UUID        `json:"id"`
+	Name                          string             `json:"name"`
+	Email                         string             `json:"email"`
+	PasswordHash                  string             `json:"password_hash"`
+	Role                          UserRole           `json:"role"`
+	Locale                        string             `json:"locale"`
+	Theme                         string             `json:"theme"`
+	DownloadFormat                string             `json:"download_format"`
+	DownloadIncludeVideos         bool               `json:"download_include_videos"`
+	DownloadIncludeSidecars       bool               `json:"download_include_sidecars"`
+	DownloadIncludeEmbeddedVideos bool               `json:"download_include_embedded_videos"`
+	IsDisabled                    bool               `json:"is_disabled"`
+	TotpSecret                    pgtype.Text        `json:"totp_secret"`
+	CreatedAt                     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                     pgtype.Timestamptz `json:"updated_at"`
 }
 
 // The me-scoped profile patch (the settings feature): every column
@@ -435,6 +445,7 @@ func (q *Queries) UpdateUserSelf(ctx context.Context, arg UpdateUserSelfParams) 
 		arg.DownloadFormat,
 		arg.DownloadIncludeVideos,
 		arg.DownloadIncludeSidecars,
+		arg.DownloadIncludeEmbeddedVideos,
 		arg.ID,
 	)
 	var i UpdateUserSelfRow
@@ -449,6 +460,7 @@ func (q *Queries) UpdateUserSelf(ctx context.Context, arg UpdateUserSelfParams) 
 		&i.DownloadFormat,
 		&i.DownloadIncludeVideos,
 		&i.DownloadIncludeSidecars,
+		&i.DownloadIncludeEmbeddedVideos,
 		&i.IsDisabled,
 		&i.TotpSecret,
 		&i.CreatedAt,
