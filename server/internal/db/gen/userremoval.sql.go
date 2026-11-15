@@ -78,6 +78,54 @@ func (q *Queries) DisposalSyncAlbum(ctx context.Context, ownerID pgtype.UUID) (p
 	return id, err
 }
 
+const dropCollidingAlbumCoverPicks = `-- name: DropCollidingAlbumCoverPicks :exec
+
+DELETE FROM album_cover_week_picks drops
+WHERE drops.asset_id = $1
+  AND EXISTS (
+      SELECT 1 FROM album_cover_week_picks kept
+      WHERE kept.album_id = drops.album_id
+        AND kept.iso_week = drops.iso_week
+        AND kept.asset_id = $2
+  )
+`
+
+type DropCollidingAlbumCoverPicksParams struct {
+	FromAsset pgtype.UUID `json:"from_asset"`
+	ToAsset   pgtype.UUID `json:"to_asset"`
+}
+
+// A folded duplicate that sits in a cover set hands its cell to the
+// surviving row: the pin's store and the week store both name asset
+// ids directly. The colliding-cell statements run FIRST and drop the
+// duplicate's cell in every set that already holds the survivor (the
+// two copies of one photo cannot hold two positions of the same
+// set), so the moves that follow never trip the set's uniqueness.
+func (q *Queries) DropCollidingAlbumCoverPicks(ctx context.Context, arg DropCollidingAlbumCoverPicksParams) error {
+	_, err := q.db.Exec(ctx, dropCollidingAlbumCoverPicks, arg.FromAsset, arg.ToAsset)
+	return err
+}
+
+const dropCollidingAlbumCoverPinnedPicks = `-- name: DropCollidingAlbumCoverPinnedPicks :exec
+DELETE FROM album_cover_picks drops
+WHERE drops.asset_id = $1
+  AND EXISTS (
+      SELECT 1 FROM album_cover_picks kept
+      WHERE kept.album_id = drops.album_id
+        AND kept.asset_id = $2
+  )
+`
+
+type DropCollidingAlbumCoverPinnedPicksParams struct {
+	FromAsset pgtype.UUID `json:"from_asset"`
+	ToAsset   pgtype.UUID `json:"to_asset"`
+}
+
+func (q *Queries) DropCollidingAlbumCoverPinnedPicks(ctx context.Context, arg DropCollidingAlbumCoverPinnedPicksParams) error {
+	_, err := q.db.Exec(ctx, dropCollidingAlbumCoverPinnedPicks, arg.FromAsset, arg.ToAsset)
+	return err
+}
+
 const dropMergedTags = `-- name: DropMergedTags :exec
 DELETE FROM tags moving
 USING tags keep
@@ -141,7 +189,10 @@ type DuplicateOwnedAssetsRow struct {
 // Component rows (a Live Photo's video half) stay out of the fold on
 // both sides: a component is not content of its own -- it rides its
 // photo's decision, and the fold purges it together with the photo it
-// belongs to.
+// belongs to. (The exclusion is scoped to the fold's intent, not a
+// completeness claim: two colliding component checksums -- identical
+// video bytes under different photo halves -- are outside this
+// statement and ride the handover untouched.)
 func (q *Queries) DuplicateOwnedAssets(ctx context.Context, arg DuplicateOwnedAssetsParams) ([]DuplicateOwnedAssetsRow, error) {
 	rows, err := q.db.Query(ctx, duplicateOwnedAssets, arg.ToOwner, arg.FromOwner)
 	if err != nil {
@@ -436,22 +487,35 @@ func (q *Queries) MergeDuplicateTags(ctx context.Context, arg MergeDuplicateTags
 	return err
 }
 
-const moveAlbumCovers = `-- name: MoveAlbumCovers :exec
-UPDATE albums
-SET cover_asset_id = $1, updated_at = now()
-WHERE cover_asset_id = $2
+const moveAlbumCoverPicks = `-- name: MoveAlbumCoverPicks :exec
+UPDATE album_cover_picks
+SET asset_id = $1
+WHERE asset_id = $2
 `
 
-type MoveAlbumCoversParams struct {
+type MoveAlbumCoverPicksParams struct {
 	ToAsset   pgtype.UUID `json:"to_asset"`
 	FromAsset pgtype.UUID `json:"from_asset"`
 }
 
-// A folded duplicate that pins an album's cover hands the pin to the
-// surviving row (covers carry no foreign key: a dangling pin would
-// outlive the row it names).
-func (q *Queries) MoveAlbumCovers(ctx context.Context, arg MoveAlbumCoversParams) error {
-	_, err := q.db.Exec(ctx, moveAlbumCovers, arg.ToAsset, arg.FromAsset)
+func (q *Queries) MoveAlbumCoverPicks(ctx context.Context, arg MoveAlbumCoverPicksParams) error {
+	_, err := q.db.Exec(ctx, moveAlbumCoverPicks, arg.ToAsset, arg.FromAsset)
+	return err
+}
+
+const moveAlbumCoverWeekPicks = `-- name: MoveAlbumCoverWeekPicks :exec
+UPDATE album_cover_week_picks
+SET asset_id = $1
+WHERE asset_id = $2
+`
+
+type MoveAlbumCoverWeekPicksParams struct {
+	ToAsset   pgtype.UUID `json:"to_asset"`
+	FromAsset pgtype.UUID `json:"from_asset"`
+}
+
+func (q *Queries) MoveAlbumCoverWeekPicks(ctx context.Context, arg MoveAlbumCoverWeekPicksParams) error {
+	_, err := q.db.Exec(ctx, moveAlbumCoverWeekPicks, arg.ToAsset, arg.FromAsset)
 	return err
 }
 

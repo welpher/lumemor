@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 )
@@ -43,12 +44,26 @@ func bulkAlbumAssetID(i int) uuid.UUID {
 	return uuid.MustParse(fmt.Sprintf("60000000-0000-0000-0001-%012x", i))
 }
 
-// wallAlbumOpts carries the optional column values of a fixture
-// album; the zero value is a plain album with no pinned cover and
-// the insert time as updated_at.
+// frameSet folds a card's cover frames into a membership set: the
+// automatic group's order is the sample's, so the tests assert WHICH
+// frames a card named rather than a positional list.
+func frameSet(ids []openapi_types.UUID) map[uuid.UUID]bool {
+	set := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		set[uuid.UUID(id)] = true
+	}
+	return set
+}
+
+// wallAlbumOpts carries the optional values of a fixture album; the
+// zero value is a plain album with no pinned cover and the insert
+// time as updated_at.
 type wallAlbumOpts struct {
-	coverAssetID *uuid.UUID
-	updatedAt    time.Time
+	// coverAssetIDs seeds the pin's store, in pick order (the
+	// fixtures write the picks rows directly, the same shape the
+	// write face stores).
+	coverAssetIDs []uuid.UUID
+	updatedAt     time.Time
 }
 
 // insertWallAlbum inserts one fixture album row directly, with
@@ -56,20 +71,31 @@ type wallAlbumOpts struct {
 // the fixtures pin it instead of relying on now()).
 func (e *assetEnv) insertWallAlbum(t *testing.T, id, owner uuid.UUID, albumType, title string, opts wallAlbumOpts) {
 	t.Helper()
-	var coverAssetID any
-	if opts.coverAssetID != nil {
-		coverAssetID = pgUUID(*opts.coverAssetID)
-	}
 	updatedAt := opts.updatedAt
 	if updatedAt.IsZero() {
 		updatedAt = time.Now()
 	}
 	if _, err := e.pool.Exec(context.Background(), `
-		INSERT INTO albums (id, owner_id, title, type, cover_asset_id, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
+		INSERT INTO albums (id, owner_id, title, type, updated_at)
+		VALUES ($1, $2, $3, $4, $5)`,
 		pgUUID(id), pgUUID(owner), title, albumType,
-		coverAssetID, updatedAt); err != nil {
+		updatedAt); err != nil {
 		t.Fatalf("insert fixture album %s: %v", id, err)
+	}
+	e.insertWallCoverPicks(t, id, opts.coverAssetIDs...)
+}
+
+// insertWallCoverPicks seeds an album's pinned set directly, in pick
+// order (the assets the picks name must already exist).
+func (e *assetEnv) insertWallCoverPicks(t *testing.T, id uuid.UUID, assetIDs ...uuid.UUID) {
+	t.Helper()
+	for position, assetID := range assetIDs {
+		if _, err := e.pool.Exec(context.Background(), `
+			INSERT INTO album_cover_picks (album_id, position, asset_id)
+			VALUES ($1, $2, $3)`,
+			pgUUID(id), int16(position), pgUUID(assetID)); err != nil {
+			t.Fatalf("insert fixture album %s cover pick %d: %v", id, position, err)
+		}
 	}
 }
 
@@ -337,12 +363,31 @@ func TestAlbumWall(t *testing.T) {
 	if memory.ItemCount != 2 {
 		t.Errorf("wall[1].itemCount = %d, want 2", memory.ItemCount)
 	}
-	// No pinned cover: the two most recent live members, newest first.
-	if len(memory.CoverAssetIds) != 2 ||
-		uuid.UUID(memory.CoverAssetIds[0]) != ownNewer ||
-		uuid.UUID(memory.CoverAssetIds[1]) != ownOlder {
-		t.Errorf("wall[1].coverAssetIds = %v, want [%s %s] (the derived cover, newest first)",
+	// No pinned cover: the automatic group samples the whole
+	// collection (below the rotation floor here, so the sample is the
+	// album's stable one) -- both live members, in a stable order that
+	// is NOT recency (the sample's seed decides, and the same instant
+	// answers the same group).
+	if len(memory.CoverAssetIds) != 2 {
+		t.Fatalf("wall[1].coverAssetIds = %v, want both live members", memory.CoverAssetIds)
+	}
+	got := map[uuid.UUID]bool{
+		uuid.UUID(memory.CoverAssetIds[0]): true,
+		uuid.UUID(memory.CoverAssetIds[1]): true,
+	}
+	if !got[ownNewer] || !got[ownOlder] {
+		t.Errorf("wall[1].coverAssetIds = %v, want the members %s and %s",
 			memory.CoverAssetIds, ownNewer, ownOlder)
+	}
+	again := env.getAlbumWall(t, env.cookie)
+	for _, card := range again.Albums {
+		if uuid.UUID(card.Id) != ownMemory {
+			continue
+		}
+		if fmt.Sprint(card.CoverAssetIds) != fmt.Sprint(memory.CoverAssetIds) {
+			t.Errorf("the automatic group moved between two reads of one week: %v then %v",
+				memory.CoverAssetIds, card.CoverAssetIds)
+		}
 	}
 	if want := time.Date(2026, 11, 4, 18, 0, 0, 0, time.UTC); !memory.UpdatedAt.Truncate(time.Microsecond).Equal(want) {
 		t.Errorf("wall[1].updatedAt = %v, want %v", memory.UpdatedAt, want)
@@ -577,23 +622,25 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		env.addTimelineItem(t, derived, row.id, adminID)
 	}
 
-	// The pinned-cover album: the cover is a mid-pack live member, not
-	// the most recent -- the pin wins over the derived candidates.
+	// The pinned-cover album: a directory album (four frames, the
+	// album card's count) whose four members are pinned in an order
+	// that is NOT recency -- the pin wins over the automatic sample,
+	// and the stored order is the render order.
 	pinned := fixtureWallAlbumID("12")
-	pinnedCover := fixtureWallAssetID("31")
-	env.insertWallAlbum(t, pinned, adminID, "memory", "Pinned cover", wallAlbumOpts{
-		coverAssetID: &pinnedCover,
-	})
+	pinIDs := []uuid.UUID{
+		fixtureWallAssetID("34"), // oldest, picked first
+		fixtureWallAssetID("31"), // newest, picked second
+		fixtureWallAssetID("33"),
+		fixtureWallAssetID("32"),
+	}
+	env.insertWallAlbum(t, pinned, adminID, "directory", "Pinned cover", wallAlbumOpts{})
 	for i, days := range []int{5, 10, 1, 0} {
 		id := fixtureWallAssetID(fmt.Sprintf("%02d", 31+i))
 		taken := time.Date(2026, 6, days+1, 12, 0, 0, 0, time.UTC)
-		if i == 0 {
-			id = pinnedCover // taken June 6, mid-pack
-			taken = time.Date(2026, 6, 6, 12, 0, 0, 0, time.UTC)
-		}
 		env.insertTimelineAsset(t, id, adminID, taken, timelineAssetOpts{})
 		env.addTimelineItem(t, pinned, id, adminID)
 	}
+	env.insertWallCoverPicks(t, pinned, pinIDs...)
 
 	wall := env.getAlbumWall(t, env.cookie)
 	byID := make(map[uuid.UUID]apigen.AlbumSummary, len(wall.Albums))
@@ -608,16 +655,39 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	if derivedAlbum.ItemCount != 6 {
 		t.Errorf("derived-cover itemCount = %d, want 6 (the live members only)", derivedAlbum.ItemCount)
 	}
-	wantCover := []uuid.UUID{live[0], live[1], live[2], live[3]}
-	if len(derivedAlbum.CoverAssetIds) != len(wantCover) {
-		t.Fatalf("derived-cover coverAssetIds = %v, want the 4 newest live %v",
-			derivedAlbum.CoverAssetIds, wantCover)
+	// The automatic group is a SAMPLE of the six live members (the
+	// album holds fewer than twice the memory band's six frames, so
+	// it never rotates): six distinct live ids, none of the three
+	// excluded rows, and not the recency order.
+	if len(derivedAlbum.CoverAssetIds) != 6 {
+		t.Fatalf("derived-cover coverAssetIds = %v, want the six live members", derivedAlbum.CoverAssetIds)
 	}
-	for i, id := range wantCover {
-		if uuid.UUID(derivedAlbum.CoverAssetIds[i]) != id {
-			t.Errorf("derived-cover coverAssetIds[%d] = %s, want %s (all %v)",
-				i, derivedAlbum.CoverAssetIds[i], id, derivedAlbum.CoverAssetIds)
+	liveSet := make(map[uuid.UUID]bool, len(live))
+	for _, id := range live {
+		liveSet[id] = true
+	}
+	seen := make(map[uuid.UUID]bool, 6)
+	for i, raw := range derivedAlbum.CoverAssetIds {
+		id := uuid.UUID(raw)
+		if !liveSet[id] {
+			t.Errorf("derived-cover coverAssetIds[%d] = %s, want a live member (all %v)",
+				i, id, derivedAlbum.CoverAssetIds)
 		}
+		if seen[id] {
+			t.Errorf("derived-cover coverAssetIds repeats %s", id)
+		}
+		seen[id] = true
+	}
+	recency := true
+	for i := range live {
+		if uuid.UUID(derivedAlbum.CoverAssetIds[i]) != live[i] {
+			recency = false
+			break
+		}
+	}
+	if recency {
+		t.Errorf("derived-cover coverAssetIds = %v, want a sample of the album, not the newest frames",
+			derivedAlbum.CoverAssetIds)
 	}
 
 	pinnedAlbum, ok := byID[pinned]
@@ -627,15 +697,21 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	if pinnedAlbum.ItemCount != 4 {
 		t.Errorf("pinned-cover itemCount = %d, want 4", pinnedAlbum.ItemCount)
 	}
-	if len(pinnedAlbum.CoverAssetIds) != 1 || uuid.UUID(pinnedAlbum.CoverAssetIds[0]) != pinnedCover {
-		t.Errorf("pinned-cover coverAssetIds = %v, want exactly [%s] (the pin, not the recency)",
-			pinnedAlbum.CoverAssetIds, pinnedCover)
+	if len(pinnedAlbum.CoverAssetIds) != len(pinIDs) {
+		t.Fatalf("pinned-cover coverAssetIds = %v, want the four picks %v (the pin, not a sample)",
+			pinnedAlbum.CoverAssetIds, pinIDs)
+	}
+	for i, id := range pinIDs {
+		if uuid.UUID(pinnedAlbum.CoverAssetIds[i]) != id {
+			t.Errorf("pinned-cover coverAssetIds[%d] = %s, want %s (the pick order, kept as written)",
+				i, pinnedAlbum.CoverAssetIds[i], id)
+		}
 	}
 
 	// The pinned sync card: the same honesty over its own members --
-	// three live count, the three newest live as the derived cover
-	// (the non-live members are the newest of all and must lead
-	// nowhere).
+	// three live count, the three live in the automatic group's
+	// sample (the non-live members are the newest of all and must
+	// lead nowhere).
 	syncAlbum, ok := byID[ownSync]
 	if !ok {
 		t.Fatalf("the caller's sync album is missing from the wall (got %v)", wall.Albums)
@@ -647,21 +723,31 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		t.Errorf("sync card itemCount = %d, want 3 (the live members only)", syncAlbum.ItemCount)
 	}
 	if len(syncAlbum.CoverAssetIds) != len(syncLive) {
-		t.Fatalf("sync card coverAssetIds = %v, want the 3 newest live %v",
+		t.Fatalf("sync card coverAssetIds = %v, want the 3 live members %v",
 			syncAlbum.CoverAssetIds, syncLive)
 	}
-	for i, id := range syncLive {
-		if uuid.UUID(syncAlbum.CoverAssetIds[i]) != id {
-			t.Errorf("sync card coverAssetIds[%d] = %s, want %s (all %v)",
-				i, syncAlbum.CoverAssetIds[i], id, syncAlbum.CoverAssetIds)
+	syncGot := make(map[uuid.UUID]bool, len(syncLive))
+	for _, raw := range syncAlbum.CoverAssetIds {
+		syncGot[uuid.UUID(raw)] = true
+	}
+	for _, id := range syncLive {
+		if !syncGot[id] {
+			t.Errorf("sync card coverAssetIds = %v, want %s among them", syncAlbum.CoverAssetIds, id)
 		}
 	}
 
-	// The detail carries the raw pin (the wall derives, the detail
-	// reports the column).
+	// The detail carries the stored pin in pick order (the wall
+	// renders the filled group, the detail reports the set as
+	// written).
 	detail := env.getAlbumDetail(t, env.cookie, pinned, "")
-	if detail.CoverAssetId == nil || uuid.UUID(*detail.CoverAssetId) != pinnedCover {
-		t.Errorf("detail coverAssetId = %v, want the pinned %s", detail.CoverAssetId, pinnedCover)
+	if len(detail.CoverAssetIds) != len(pinIDs) {
+		t.Fatalf("detail coverAssetIds = %v, want the four picks %v",
+			detail.CoverAssetIds, pinIDs)
+	}
+	for i, id := range pinIDs {
+		if uuid.UUID(detail.CoverAssetIds[i]) != id {
+			t.Errorf("detail coverAssetIds[%d] = %s, want %s (pick order)", i, detail.CoverAssetIds[i], id)
+		}
 	}
 }
 
@@ -786,8 +872,8 @@ func TestAlbumDetail(t *testing.T) {
 		if page.Type != apigen.AlbumDetailTypeMemory {
 			t.Errorf("detail type = %q, want memory", page.Type)
 		}
-		if page.CoverAssetId != nil {
-			t.Errorf("detail coverAssetId = %v, want null (no pin)", *page.CoverAssetId)
+		if len(page.CoverAssetIds) != 0 {
+			t.Errorf("detail coverAssetIds = %v, want empty (no pin)", page.CoverAssetIds)
 		}
 		if page.CallerRole != apigen.AlbumDetailCallerRoleOwner {
 			t.Errorf("detail callerRole = %q, want owner", page.CallerRole)
@@ -925,8 +1011,8 @@ func TestSyncAlbumDetail(t *testing.T) {
 		if page.Type != apigen.AlbumDetailTypeSync {
 			t.Errorf("detail type = %q, want sync (the default album)", page.Type)
 		}
-		if page.CoverAssetId != nil {
-			t.Errorf("detail coverAssetId = %v, want null (no pin can land on a sync album)", *page.CoverAssetId)
+		if len(page.CoverAssetIds) != 0 {
+			t.Errorf("detail coverAssetIds = %v, want empty (no pin can land on a sync album)", page.CoverAssetIds)
 		}
 		if page.CallerRole != apigen.AlbumDetailCallerRoleOwner {
 			t.Errorf("detail callerRole = %q, want owner (the caller's own stream)", page.CallerRole)
