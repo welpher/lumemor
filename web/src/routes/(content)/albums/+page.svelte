@@ -43,6 +43,7 @@
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateAlbumDialog, { type CreateAlbumSwitches } from '$lib/albums/CreateAlbumDialog.svelte';
+	import { toast } from '$lib/components/toast.svelte';
 	import { albumCoverCell, albumCoverGrid } from '$lib/albums/cover-layout';
 	import Plus from '@lucide/svelte/icons/plus';
 
@@ -232,6 +233,11 @@
 		// Done affordance acknowledges it.
 		if (outcome.skipped.length === 0 && outcome.sourceWritable) {
 			createOpen = false;
+			// The clean creation's confirmation is the toast (§7.14):
+			// the report face says the same sentence when it holds the
+			// dialog, so the toast belongs to the path that closes it
+			// (one acknowledgment, never two).
+			toast($_('albums_created'));
 		}
 	}
 
