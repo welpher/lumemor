@@ -200,6 +200,7 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"PUT /api/v1/people/{clusterId}/birthdate",
 		"PUT /api/v1/people/{clusterId}/avatar",
 		"POST /api/v1/people/merge",
+		"POST /api/v1/faces",
 		"POST /api/v1/faces/{faceId}/cluster",
 		"DELETE /api/v1/faces/{faceId}",
 		"POST /api/v1/faces/{faceId}/move",
