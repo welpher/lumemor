@@ -409,24 +409,27 @@ test('Escape drops a live selection and an armed select mode', () => {
 	flushSync();
 });
 
-test("the month axis is the wall's own organ: one stop per month, folded from the same groups", () => {
+test("the month axis is the wall's own organ: one mark per month, folded from the same groups", () => {
 	// The photo rendering and the right-edge
 	// rail are one component. The axis cannot disagree with the
 	// wall -- its months fold from the SAME internal groups the
-	// rendering packs, so the stops' labels are the month headers'
+	// rendering packs, so the marks' months are the month headers'
 	// labels, verbatim and in order.
 	const wall = mount(Wall, { target: document.body, props: { items } });
 	flushSync();
 
 	const rail = document.body.querySelector('.scrubber');
 	expect(rail).not.toBeNull();
-	const stops = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop'));
-	expect(stops).toHaveLength(2);
-	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
+	const marks = Array.from(document.body.querySelectorAll('.scrubber__stop'));
+	expect(marks).toHaveLength(2);
 	// The wall's month headers carry the same strings (the
 	// same-fold guarantee, asserted from both sides).
 	const headers = Array.from(document.body.querySelectorAll('.wall__month-header'));
 	expect(headers.map((header) => header.textContent)).toEqual(['November 2026', 'October 2026']);
+	// The control speaks for itself: a scrollbar, one tab stop, no
+	// month button anywhere.
+	expect(rail?.querySelector('.scrubber__rail')?.getAttribute('role')).toBe('scrollbar');
+	expect(rail?.querySelector('button')).toBeNull();
 
 	unmount(wall);
 	flushSync();
@@ -447,7 +450,7 @@ test('the panel frame: its own scroll root and compact axis, no fixed scrubber',
 	// The same wall in a narrow container: the root IS the scroll
 	// container (the horizontal padding lives there so the row math
 	// measures the true content width), the axis is the compact
-	// in-panel rail, and the page-level fixed scrubber never renders.
+	// in-panel control, and the page-level fixed scrubber never renders.
 	const wall = mount(Wall, {
 		target: document.body,
 		props: { items, variant: 'panel', onreachbottom: () => undefined }
@@ -461,11 +464,16 @@ test('the panel frame: its own scroll root and compact axis, no fixed scrubber',
 	expect(root?.className).toContain('pe-8');
 	// The month headers are the same bands.
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
-	// The compact axis: one stop per month, inside the panel.
+	// The compact axis: the ONE scrollbar control in its 24px slot
+	// (the press, the drag and the keyboard are the page rail's),
+	// with a decorative mark per month and no month button.
 	const axis = document.body.querySelector('[data-testid="panel-axis"]');
 	expect(axis).not.toBeNull();
-	const stops = Array.from(axis?.querySelectorAll('button') ?? []);
-	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
+	const control = axis?.querySelector('.scrubber__rail');
+	expect(control?.getAttribute('role')).toBe('scrollbar');
+	expect(control?.className).toContain('cursor-row-resize');
+	expect(axis?.querySelectorAll('.scrubber__stop')).toHaveLength(2);
+	expect(axis?.querySelector('button')).toBeNull();
 	// No page-level fixed scrubber in the panel frame.
 	expect(document.body.querySelector('.scrubber')).toBeNull();
 
