@@ -40,10 +40,28 @@
 	// own completion state instead of waiting for an event nobody
 	// fires).
 	//
-	// THE PINNED LIVE-PHOTO DECISION: TimelineItem carries
-	// livePhotoVideoId, so a Live Photo tile shows its small live
-	// badge here; the hover video preview arrives with the viewer and
-	// the component transcode, both later arrivals.
+	// THE LIVE PHOTO (the still is the asset, the moment is an
+	// attachment): TimelineItem carries livePhotoVideoId, so the tile
+	// marks the type with a concentric-ring glyph at the top-right --
+	// a BARE glyph with a drop shadow, no plate: the selection check
+	// already owns a circle at the top-left, and a second circle there
+	// would read as a second control. The glyph is decoration
+	// (aria-hidden); the anchor's accessible name carries the type
+	// ("... · live photo").
+	//
+	// HOVER PLAYS THE MOMENT: entering the tile (pointer or keyboard
+	// focus) mounts the component video's play stream -- muted,
+	// looping, no controls -- over the still; once it is actually
+	// playing the tile takes its slow push (1 -> 1.07 with a micro
+	// pan) and the glyph flips to the pause mark, so the mark always
+	// tells the truth about what is moving. Leaving resets both. A
+	// motion that cannot play (the component's transcode still
+	// running, the stream refusing) keeps the still and the type
+	// glyph: no push, no toast, and the next hover tries again.
+	// `prefers-reduced-motion` collapses the push through the theme's
+	// global rule; the mark still flips (the glyph is information,
+	// not decoration). The hidden video never becomes a tile of its
+	// own -- it is not even fetched until a hover asks.
 	//
 	// THE HOVER AFFORDANCES: a restrained
 	// bottom scrim of translucent Night rises on hover and keyboard
@@ -68,6 +86,7 @@
 	import { decode } from 'blurhash';
 	import { _ } from 'svelte-i18n';
 	import type { TimelineItem } from '$lib/api/timeline';
+	import { assetPlayUrl } from '$lib/api/assets';
 	import { formatDuration } from '$lib/format';
 
 	// The tile-relevant subset of the timeline item shape: every wall
@@ -100,6 +119,35 @@
 	let loaded = $state(false);
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let image: HTMLImageElement | undefined = $state();
+
+	/** Whether this tile is a Live Photo: an image with its moment attached. */
+	const isLive = $derived(item.kind === 'image' && item.livePhotoVideoId !== null);
+
+	/** A hover/focus asked for the moment (the stream mounts here alone). */
+	let motionAsked = $state(false);
+	/** The moment answered and is actually playing (the push's gate). */
+	let motionPlaying = $state(false);
+	/** The moment's stream refused (transcode pending, file gone): stay on the still. */
+	let motionBroken = $state(false);
+
+	/** Ask for the moment: mount the stream and wait for it to play. */
+	function startMotion(): void {
+		if (!isLive || motionBroken) {
+			return;
+		}
+		motionAsked = true;
+	}
+
+	/**
+	 * Drop the moment: unmount the stream and reset the push. A
+	 * refusal is forgotten here, so the next hover asks again -- the
+	 * component's transcode may have landed in between.
+	 */
+	function stopMotion(): void {
+		motionAsked = false;
+		motionPlaying = false;
+		motionBroken = false;
+	}
 
 	/** The view-size serving copy (always -- see the serving pin above). */
 	const viewUrl = $derived(`/api/v1/assets/${encodeURIComponent(item.id)}/thumbnail?size=view`);
@@ -168,7 +216,12 @@
      surfaces over the photo, no blur. The tile is a size container
      so its duration chip can scale itself down on narrow tiles. The
      content-visibility pair keeps offscreen tiles out of layout and
-     paint (rows add their own windowing above it). -->
+     paint (rows add their own windowing above it).
+
+     The hover/focus pair previews the media -- it starts no action
+     -- so the envelope needs no widget role; the anchor inside it is
+     the tile's one interactive element. -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="tile @container group relative w-full h-full overflow-hidden bg-accent-soft [content-visibility:auto] transition-[scale,border-radius] duration-(--motion-base) ease-standard {selected
 		? 'rounded-control scale-(--wall-select-scale) [outline:var(--wall-select-ring)_solid_var(--color-accent)] [outline-offset:calc(var(--wall-select-ring)*-1)]'
@@ -176,47 +229,79 @@
 	class:tile--selected={selected}
 	class:tile--selectable={selectable}
 	class:cursor-pointer={selectable}
+	onmouseenter={startMotion}
+	onmouseleave={stopMotion}
+	onfocusin={startMotion}
+	onfocusout={stopMotion}
 >
 	<a
 		class="tile__link absolute inset-0 focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 		href="/a/{encodeURIComponent(item.id)}"
 		onclick={handleTileClick}
-		aria-label={item.originalFilename}
+		aria-label={isLive ? `${item.originalFilename} · ${$_('asset_live_photo_label')}` : item.originalFilename}
 	>
-		{#if item.blurhash !== null}
-			<canvas
-				class="tile__placeholder absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
-				class:tile__placeholder--hidden={loaded}
-				class:opacity-0={loaded}
-				width="32"
-				height="32"
-				bind:this={canvas}
-				aria-hidden="true"
-			></canvas>
-		{:else}
-			<div
-				class="tile__placeholder tile__placeholder--empty absolute inset-0 w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-soft)_60%,var(--color-card)),var(--color-accent-soft))] transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
-				class:tile__placeholder--hidden={loaded}
-				class:opacity-0={loaded}
-				aria-hidden="true"
-			></div>
-		{/if}
+		<!-- The media region: the placeholder, the still and (on a
+		     hover) the moment. The slow push lives here, so the still
+		     and the motion breathe as ONE picture -- the chips and the
+		     check ride outside the push, since a control that drifts
+		     under the pointer is a control that fights it. -->
+		<div class="tile__media absolute inset-0" class:tile__media--moving={motionPlaying} aria-hidden="true">
+			{#if item.blurhash !== null}
+				<canvas
+					class="tile__placeholder absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+					class:tile__placeholder--hidden={loaded}
+					class:opacity-0={loaded}
+					width="32"
+					height="32"
+					bind:this={canvas}
+					aria-hidden="true"
+				></canvas>
+			{:else}
+				<div
+					class="tile__placeholder tile__placeholder--empty absolute inset-0 w-full h-full bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-soft)_60%,var(--color-card)),var(--color-accent-soft))] transition-[opacity] duration-(--motion-placeholder-fade) ease-standard"
+					class:tile__placeholder--hidden={loaded}
+					class:opacity-0={loaded}
+					aria-hidden="true"
+				></div>
+			{/if}
 
-		{#if item.isReady}
-			<img
-				class="tile__image absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-base) ease-standard"
-				class:opacity-0={!loaded}
-				class:tile__image--loaded={loaded}
-				src={viewUrl}
-				alt=""
-				loading="lazy"
-				decoding="async"
-				bind:this={image}
-				onload={() => (loaded = true)}
-				onerror={() => (loaded = false)}
-				draggable="false"
-			/>
-		{/if}
+			{#if item.isReady}
+				<img
+					class="tile__image absolute inset-0 w-full h-full object-cover transition-[opacity] duration-(--motion-base) ease-standard"
+					class:opacity-0={!loaded}
+					class:tile__image--loaded={loaded}
+					src={viewUrl}
+					alt=""
+					loading="lazy"
+					decoding="async"
+					bind:this={image}
+					onload={() => (loaded = true)}
+					onerror={() => (loaded = false)}
+					draggable="false"
+				/>
+			{/if}
+
+			{#if motionAsked && !motionBroken && item.livePhotoVideoId !== null}
+				<!-- The moment: the component row's play stream, muted and
+				     looping, no controls. It is fetched HERE alone -- a
+				     hover asks, leaving drops the element -- so the hidden
+				     video never costs a byte at rest. -->
+				<video
+					class="tile__motion absolute inset-0 w-full h-full object-cover z-(--z-stage-media)"
+					src={assetPlayUrl(item.livePhotoVideoId)}
+					muted
+					loop
+					autoplay
+					playsinline
+					onplaying={() => (motionPlaying = true)}
+					onerror={() => {
+						motionBroken = true;
+						motionPlaying = false;
+					}}
+					aria-hidden="true"
+				></video>
+			{/if}
+		</div>
 
 		<!-- The bottom scrim: the Night-based translucency that rises
 		     with the tile's state affordances on hover and keyboard
@@ -243,21 +328,40 @@
 			</span>
 		{/if}
 
-		{#if item.kind === 'image' && item.livePhotoVideoId !== null}
+		{#if isLive}
+			<!-- The type mark: a BARE glyph with a drop shadow, at the
+			     top-right -- no plate behind it. The selection check
+			     already draws a filled circle at the top-left; a second
+			     disc beside it would read as a second control, and the
+			     shadow alone keeps the rings legible on a bright sky
+			     and a dark frame alike. The glyph says "this still has
+			     a moment attached"; while the moment plays it says
+			     "pause", so the mark never lies about what is moving.
+			     Decoration, not an action: aria-hidden, the anchor's
+			     name carries the type. -->
 			<span
-				class="tile__badge tile__badge--live absolute top-1.5 left-1.5 z-(--z-tile-chip) inline-flex items-center justify-center w-6 h-6 rounded-full text-cream-text bg-night"
+				class="tile__live absolute top-2 right-2 z-(--z-tile-chip) inline-flex items-center justify-center text-cream-text drop-shadow-[0_1px_4px_rgb(0_0_0/0.55)]"
 				title={$_('asset_live_photo_label')}
 				aria-hidden="true"
 			>
-				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true">
-					<circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.75" />
-					<path
-						d="M2.5 12h3M18.5 12h3M12 2.5v3M12 18.5v3"
-						stroke="currentColor"
-						stroke-width="1.75"
-						stroke-linecap="round"
-					/>
-				</svg>
+				{#if motionPlaying}
+					<svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
+						<path d="M9 6v12M15 6v12" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+					</svg>
+				{:else}
+					<svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
+						<circle
+							cx="12"
+							cy="12"
+							r="9.2"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-dasharray="2.4 3.4"
+							stroke-linecap="round"
+						/>
+						<circle cx="12" cy="12" r="3.6" fill="currentColor" />
+					</svg>
+				{/if}
 			</span>
 		{/if}
 
@@ -317,3 +421,32 @@
 		</button>
 	{/if}
 </div>
+
+<style>
+	/* The moment's slow push: the still and the motion breathe as one
+	 * picture while the motion plays -- 3.2s alternate, the photo
+	 * enlarging a touch while it drifts, so a hovering pointer reads
+	 * "this is moving" before it reads any glyph. Reduced motion keeps
+	 * the mark and drops the push: the global theme rule already
+	 * collapses animation durations, and the explicit rule keeps the
+	 * intent legible where the theme's blanket is read as an
+	 * implementation detail rather than a decision. */
+	.tile__media--moving {
+		animation: tile-motion-push 3.2s var(--ease-standard) infinite alternate;
+	}
+
+	@keyframes tile-motion-push {
+		from {
+			transform: scale(1) translate3d(0, 0, 0);
+		}
+		to {
+			transform: scale(1.07) translate3d(-1.6%, -1%, 0);
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.tile__media--moving {
+			animation: none;
+		}
+	}
+</style>
