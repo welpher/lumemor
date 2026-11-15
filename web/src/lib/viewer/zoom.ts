@@ -5,12 +5,13 @@
 // lands mid-flight takes over from the CURRENT interpolated scale,
 // never from the target the running animation was heading to.
 //
-// THE LADDER: the zoom rests on a step lattice (1, 1.5, 2 -- the same
-// 2x ceiling the pre-rework binary zoom had). A step input moves the
+// THE LADDER: the zoom rests on a step lattice (1, 1.5, 2, 2.5, 3 --
+// the 3x ceiling the round's rework pins). A step input moves the
 // TARGET one lattice step (clamped at both ends), so quick repeated
 // inputs advance the destination one step at a time while each new
-// animation starts from wherever the scale actually is. The scale and
-// the target are equal whenever the engine rests.
+// animation starts from wherever the scale actually is. The double
+// click flips 1x/2x -- the readable middle, never the ceiling. The
+// scale and the target are equal whenever the engine rests.
 //
 // THE CLOCK: the start is stamped with performance.now() at the
 // input's call time and progress is measured against the rAF
@@ -26,9 +27,11 @@
 
 /** The resting scale (the photo fits the stage). */
 export const VIEWER_ZOOM_BASE = 1;
-/** The lattice ceiling -- the same max the old binary zoom had. */
-export const VIEWER_ZOOM_MAX = 2;
-/** One lattice step (1, 1.5, 2). */
+/** The lattice ceiling. */
+export const VIEWER_ZOOM_MAX = 3;
+/** The double-click's landing: the readable middle, never the ceiling. */
+export const VIEWER_ZOOM_DOUBLE = 2;
+/** One lattice step (1, 1.5, 2, 2.5, 3). */
 export const VIEWER_ZOOM_STEP = 0.5;
 
 /** The interpolation length: the ~300ms the round-2 feedback pins. */
@@ -47,7 +50,7 @@ export type ZoomEngine = {
 	zoomIn(): void;
 	/** One step toward the base; inert (and quiet) when already there. */
 	zoomOut(): void;
-	/** The double-click binary: the base when zoomed, the ceiling when at rest. */
+	/** The double-click binary: the base when zoomed, 2x when at rest. */
 	toggleZoom(): void;
 	/** Animate back to the base (the bar's reset affordance). */
 	reset(): void;
@@ -154,7 +157,7 @@ export function createZoomEngine(apply: (state: ZoomState) => void): ZoomEngine 
 			animateTo(Math.max(VIEWER_ZOOM_BASE, target - VIEWER_ZOOM_STEP));
 		},
 		toggleZoom(): void {
-			animateTo(target > VIEWER_ZOOM_BASE ? VIEWER_ZOOM_BASE : VIEWER_ZOOM_MAX);
+			animateTo(target > VIEWER_ZOOM_BASE ? VIEWER_ZOOM_BASE : VIEWER_ZOOM_DOUBLE);
 		},
 		reset(): void {
 			animateTo(VIEWER_ZOOM_BASE);
