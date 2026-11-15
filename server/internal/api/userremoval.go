@@ -73,17 +73,17 @@ import (
 )
 
 // The disposal's own refusals, mapped onto their envelopes by the
-// handler: the last administrator (409), a receiver that is the
-// account being deleted (409), an unknown receiver (400 naming the
-// field), a vanished account row (404, the stale-list race) and the
-// external trash move's own explicit failure.
+// handler: the last administrator (409), an unknown receiver (400
+// naming the field), a vanished account row (404, the stale-list race)
+// and the external trash move's own explicit failure. A receiver that
+// is the account being deleted is refused by the handler before the
+// transaction opens, so it carries no error value here.
 var (
-	errRemovalLastAdmin      = errors.New("the instance's last administrator cannot be deleted")
-	errRemovalSelf           = errors.New("an administrator cannot delete their own account")
-	errRemovalTransferToSelf = errors.New("the receiving account must be another account")
-	errRemovalUnknownTarget  = errors.New("transferTo names no account")
-	errRemovalUserGone       = errors.New("no account with this identifier")
-	errRemovalTrashMove      = errors.New("an external file could not be moved into the trash")
+	errRemovalLastAdmin     = errors.New("the instance's last administrator cannot be deleted")
+	errRemovalSelf          = errors.New("an administrator cannot delete their own account")
+	errRemovalUnknownTarget = errors.New("transferTo names no account")
+	errRemovalUserGone      = errors.New("no account with this identifier")
+	errRemovalTrashMove     = errors.New("an external file could not be moved into the trash")
 )
 
 // userDisposal is the validated disposition of one deletion: exactly
@@ -165,10 +165,6 @@ func (s *server) DeleteUser(w http.ResponseWriter, r *http.Request, id oapitypes
 	case errors.Is(err, errRemovalLastAdmin):
 		s.writeError(w, http.StatusConflict, apigen.USERLASTADMIN,
 			"the last administrator cannot be deleted", nil)
-		return
-	case errors.Is(err, errRemovalTransferToSelf):
-		s.writeError(w, http.StatusConflict, apigen.USERTRANSFERTOSELF,
-			"the receiving account must be another account", nil)
 		return
 	case errors.Is(err, errRemovalSelf):
 		// The caller's own account: the disposal hands the content to
