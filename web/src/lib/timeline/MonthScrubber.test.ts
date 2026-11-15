@@ -311,6 +311,37 @@ test('the keyboard focus shows the readout (the focus indicator), never the tick
 	flushSync();
 });
 
+test('a pointer press owns the axis: its focus never parks the readout', () => {
+	vi.useFakeTimers();
+	try {
+		const { scrubber } = mountScrubber({ activeKey: '2026-10', progress: 0.5 });
+		const element = rail();
+		stubRailRect(element);
+
+		// The press takes the focus in a browser (the rail is a tab
+		// stop); the readout is the pointer's, and its own linger is
+		// the only thing keeping it after the release.
+		element.dispatchEvent(pointerEvent('pointerdown', 70));
+		element.dispatchEvent(new FocusEvent('focus'));
+		flushSync();
+		element.dispatchEvent(pointerEvent('pointerup', 70));
+		flushSync();
+		vi.advanceTimersByTime(800);
+		flushSync();
+		expect(readout().style.opacity).toBe('0');
+
+		// A keypress hands the axis back to the keyboard: the readout
+		// is the focus indicator again, with no pointer needed.
+		element.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+		flushSync();
+		expect(readout().style.opacity).toBe('1');
+		unmount(scrubber);
+		flushSync();
+	} finally {
+		vi.useRealTimers();
+	}
+});
+
 test('a layout-less rail (zero height) scrubs to the top and names the first month', () => {
 	const { scrubber, onscrub } = mountScrubber();
 	const element = rail();

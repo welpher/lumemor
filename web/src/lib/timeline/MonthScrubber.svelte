@@ -191,6 +191,14 @@
 	let focused = $state(false);
 	let scrollActive = $state(false);
 
+	// A pointer press focuses the rail too (it is a tab stop), and a
+	// bubble held by THAT focus would never leave -- the click would
+	// leave a readout parked on the axis and the scroll fade would
+	// never run. The axis tells the two apart: a press cancels the
+	// focus hold, a keypress arms it again (the keyboard walk is what
+	// the readout stands in for).
+	let pointerTookFocus = false;
+
 	const railActive = $derived(hovering || dragging || lingering || focused || scrollActive);
 
 	// The pointer's height on the rail: the bubble and the tick ride
@@ -254,6 +262,10 @@
 		if (event.button !== 0) {
 			return;
 		}
+		// The press is the pointer's, even though it also takes the
+		// focus (see pointerTookFocus).
+		pointerTookFocus = true;
+		focused = false;
 		dragging = true;
 		pointerY = railY(event);
 		const target = event.currentTarget as HTMLElement | null;
@@ -314,6 +326,10 @@
 	// and End take the ends. The walk rides the page's own jump (the
 	// same smooth landing the dots' months get).
 	function handleKeydown(event: KeyboardEvent): void {
+		// The keyboard takes the axis back from any earlier press:
+		// from here the readout is the focus indicator.
+		pointerTookFocus = false;
+		focused = true;
 		const at = activeIndex;
 		let target: number | null = null;
 		if (event.key === 'ArrowUp') {
@@ -336,11 +352,12 @@
 	}
 
 	function handleFocus(): void {
-		focused = true;
+		focused = !pointerTookFocus;
 	}
 
 	function handleBlur(): void {
 		focused = false;
+		pointerTookFocus = false;
 	}
 </script>
 
