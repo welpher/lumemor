@@ -293,7 +293,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.search-chip')).toHaveCount(0);
 	});
 
-	test('scene 4: the bare search is the recent-photos browse -- hint line, month wall, total count', async ({
+	test('scene 4: the bare search is the recent-photos browse -- hint line, the one flat wall, total count', async ({
 		page
 	}) => {
 		await page.goto('/search');

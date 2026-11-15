@@ -24,12 +24,13 @@
 	// grouping would lie about the rank order), the count wording
 	// "N matches". Anything less takes NO text path (the server's own
 	// rule, mirrored here), the request is the pure browse, and the
-	// wall renders the timeline's exact month-grouped day-block form
-	// -- the browse state IS the recent-photos feed: an empty query
-	// shows photos, never the no-results card (that card is for a
-	// query that answered nothing), with the one hint line above the
-	// wall saying so. Both states paginate through the mode-tagged
-	// cursor (the client's walk).
+	// wall renders the SAME flat justified form in both states -- the
+	// browse state IS the recent-photos feed wearing the rank order:
+	// an empty query shows photos, never the no-results card (that
+	// card is for a query -- or a deep-linked filter -- that answered
+	// nothing), with the one hint line above the bare browse's wall
+	// saying so. Both states paginate through the mode-tagged cursor
+	// (the client's walk).
 	//
 	// THE SSE CONVERGENCE (the pinned semantics): every asset.*
 	// event re-executes the current search -- the refetch IS the
@@ -199,6 +200,23 @@
 	// typing (an effect write, never a bind onto the derived).
 	const filters = $derived(filtersFromSearchParams(page.url.searchParams));
 	const queryMode = $derived(isQueryMode(filters.query));
+	/** Any facet rode the deep link (a camera, a tag, a place...). */
+	const hasFilters = $derived(
+		filters.personIds.length > 0 ||
+			filters.placeIds.length > 0 ||
+			filters.years.length > 0 ||
+			filters.cameras.length > 0 ||
+			filters.kinds.length > 0 ||
+			filters.albumIds.length > 0 ||
+			filters.tagIds.length > 0
+	);
+	// The BROWSE face is the BARE address alone: no query, no facet.
+	// A filter-only deep link (the viewer's camera or tag rows land
+	// here) is a RESULT face -- the wall is the filtered set, so the
+	// match count, no hint, and the no-results card on zero are the
+	// honest copy; "recent photos" and "All N photos" would be
+	// falsehoods over a narrowed wall.
+	const browseFace = $derived(!queryMode && !hasFilters);
 	let draft = $state('');
 
 	$effect(() => {
@@ -241,13 +259,13 @@
 	const countLabel = $derived.by(() => {
 		const count = $search.items.length;
 		if ($search.nextCursor !== null) {
-			return queryMode
-				? $_('search_match_count_so_far', { values: { count } })
-				: $_('search_browse_count_so_far', { values: { count } });
+			return browseFace
+				? $_('search_browse_count_so_far', { values: { count } })
+				: $_('search_match_count_so_far', { values: { count } });
 		}
-		return queryMode
-			? $_('search_match_count', { values: { count } })
-			: $_('search_browse_count', { values: { count } });
+		return browseFace
+			? $_('search_browse_count', { values: { count } })
+			: $_('search_match_count', { values: { count } });
 	});
 
 	/** Replace the URL with the next filter state (the deep-link). */
@@ -310,13 +328,7 @@
 	<title>{$_('nav_search')} · lumemor</title>
 </svelte:head>
 
-<!-- The page root pins the wall's sticky month headers below the
-     context bar: the bar is py-2 (16px) around its tallest child
-     (the 39px field row: 8+8 padding, the 21px line, the two 1px
-     borders) plus its own 1px border -- 56px. The query state's
-     flat wall has no headers to pin; the var is set once for both
-     states so the browse state's headers land under the bar. -->
-<section class="search" style:--wall-sticky-offset="56px" aria-busy={$search.status === 'loading'}>
+<section class="search" aria-busy={$search.status === 'loading'}>
 	<!-- THE CONTEXT BAR: back + title + count on the left, the ONE
 	     search field dead center (the three-column row's middle
 	     column), the right column empty. The shell's own topbar hides
@@ -361,7 +373,7 @@
 	<!-- THE BROWSE HINT: the one line above the wall in the browse
 	     state only -- an empty query is the recent-photos feed, and
 	     the line says so; the query state carries no copy at all. -->
-	{#if !queryMode}
+	{#if browseFace}
 		<div class="search__hint-wrap px-4 pt-3">
 			<p class="search__hint m-0 mb-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
 				{$_('search_browse_hint')}
@@ -377,16 +389,17 @@
 		{#if firstLoad}
 			<LoadingLine label={$_('search_loading')} />
 		{:else if settledEmpty}
-			{#if queryMode}
-				<!-- The no-results card is the QUERY state's face only:
-				     a query that answered nothing. An empty query never
-				     lands here -- the browse state below owns that case. -->
-				<StateCard title={$_('search_empty_title')} body={$_('search_empty_body')} />
-			{:else}
-				<!-- The browse feed with nothing to show: the library
-				     (or the deep-linked filter) holds no photos -- the
-				     no-data face, not the no-results one. -->
+			{#if browseFace}
+				<!-- The bare browse with nothing to show: the library
+				     itself holds no photos -- the no-data face, not
+				     the no-results one. -->
 				<StateCard title={$_('timeline_empty_title')} body={$_('timeline_empty_body')} />
+			{:else}
+				<!-- A query (or a deep-linked filter) that answered
+				     nothing: the data exists, this narrowing emptied
+				     it -- the no-results face, never the no-data
+				     lie. -->
+				<StateCard title={$_('search_empty_title')} body={$_('search_empty_body')} />
 			{/if}
 		{:else if $search.status === 'error' && $search.items.length === 0}
 			<StateCard

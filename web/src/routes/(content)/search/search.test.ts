@@ -407,10 +407,36 @@ test('a deep-linked filter rides the request (the URL state survives the chiples
 
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?personIds=p1&locale=en&limit=100', undefined);
 	// The filter narrows nothing on the page: no chip row renders,
-	// the wall is the browse feed over the filtered set (the one flat
-	// wall).
+	// the wall is the one flat wall over the filtered set.
 	expect(document.body.querySelectorAll('.search-chip')).toHaveLength(0);
 	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(1);
+	// A filter-only deep link is a RESULT face: the match count (not
+	// the bare browse's "All"), and no "recent photos" hint over a
+	// narrowed wall.
+	expect(countLabel()).toBe('3 matches');
+	expect(document.body.querySelector('.search__hint')).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
+test('a filter that answers nothing gets the no-results card, not the no-data lie', async () => {
+	const fetchMock = stubFetch(
+		searchRoutes({
+			'/api/v1/search?personIds=p1&locale=en&limit=100': () =>
+				jsonResponse(200, { items: [], facets: facetsBody })
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	pageState.url = new URL('http://localhost/search?personIds=p1');
+	const page = mountPage();
+	await settle();
+
+	// The library holds photos; THIS narrowing emptied it -- the
+	// no-results face (never "No photos yet" over a filtered wall).
+	const card = document.body.querySelector('.state-card');
+	expect(card?.textContent).toContain('No matching photos');
+	expect(card?.textContent).not.toContain('No photos yet');
 
 	unmount(page);
 	flushSync();
