@@ -1109,16 +1109,25 @@
 							     background, dark text -- and it FLIPS below the box
 							     when the box sits too close to the photo's top edge
 							     to hold it above (the flip rule: the plate never
-							     clips). -->
+							     clips).
+							     THE REVEAL'S HIT AREA: the box keeps its pointer
+							     events while hidden -- the region over the face IS
+							     the arm that reveals it (the pointer finds the face,
+							     the face's outline and plate answer). Without it the
+							     photo side of the two-way linkage is unreachable:
+							     the chip could light a box the pointer could never
+							     touch. The pointer leaving the region unlinks through
+							     the same ~220ms grace, so the plate does not blink
+							     off on a one-pixel overshoot. -->
 							<div class="absolute inset-0 z-(--z-stage-chrome)" data-face-layer>
 								{#each detail.faces as face (face.id)}
 									{@const linked = isLinked(face.id)}
 									{@const plateFlips =
 										mediaBox !== null && (face.bbox.y / 1000) * mediaBox.height < 30}
 									<button
-										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard {linked
+										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard [@media(hover:none)]:pointer-events-none {linked
 											? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
-											: 'opacity-0 border-transparent pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+											: 'opacity-0 border-transparent'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
 										style:left={`${face.bbox.x / 10}%`}
 										style:top={`${face.bbox.y / 10}%`}
 										style:width={`${face.bbox.w / 10}%`}
