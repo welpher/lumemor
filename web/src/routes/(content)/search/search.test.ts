@@ -6,9 +6,9 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The search page: the URL owns the state (the deep-link contract),
-// the two result states render through the wall vocabulary (QUERY
-// state's flat justified wall, BROWSE state's month-grouped
-// day-block wall exactly as the timeline), the context bar carries
+// the two result states render ONE wall (the flat justified rank
+// order -- the query's matches and the browse's recent feed are the
+// same wall wearing different orders), the context bar carries
 // the centered field and the honest count, an empty query is the
 // recent-photos browse (never the no-results card), the manual
 // pager walks the cursor, the empty and error states carry their
@@ -175,7 +175,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('the empty query is the recent-photos browse: the month-grouped wall, the hint line, the total count', async () => {
+test('the empty query is the recent-photos browse: the one flat wall, the hint line, the total count', async () => {
 	const fetchMock = stubFetch(searchRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
@@ -183,10 +183,10 @@ test('the empty query is the recent-photos browse: the month-grouped wall, the h
 
 	// The request is the pure browse (no query parameter).
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?locale=en&limit=100', undefined);
-	// BROWSE state: the timeline's exact month-grouped day-block wall.
-	// (The fixture spans two months: November and October 2026.)
-	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
-	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(3);
+	// BROWSE state: the SAME flat wall as the query state -- the
+	// recent feed wears the rank order, no month or day grouping.
+	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(0);
+	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(0);
 	expect(tiles()).toHaveLength(3);
 	// The per-user subset rides the wall: the check affordance is
 	// wired (the hover-reveal entry; a selection raises the bar) and
@@ -381,9 +381,9 @@ test('a one-rune query takes no text path: the request and the wall mirror the b
 
 	// The server's own rule, mirrored: the request carries no query.
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?locale=en&limit=100', undefined);
-	// The honest render: the time-ordered grouped wall.
-	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(0);
-	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
+	// The honest render: the one flat wall (the browse order).
+	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(1);
+	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(0);
 	// The typed text stays in the box (the URL state).
 	expect((document.body.querySelector('input.search-query') as HTMLInputElement).value).toBe('x');
 	// The browse face: the hint line rides the wall.
@@ -407,9 +407,10 @@ test('a deep-linked filter rides the request (the URL state survives the chiples
 
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?personIds=p1&locale=en&limit=100', undefined);
 	// The filter narrows nothing on the page: no chip row renders,
-	// the wall is the browse feed over the filtered set.
+	// the wall is the browse feed over the filtered set (the one flat
+	// wall).
 	expect(document.body.querySelectorAll('.search-chip')).toHaveLength(0);
-	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
+	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(1);
 
 	unmount(page);
 	flushSync();

@@ -51,7 +51,6 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
-	import Wall from '$lib/timeline/Wall.svelte';
 	import FlatWall from '$lib/timeline/FlatWall.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
@@ -211,9 +210,9 @@
 		});
 	});
 
-	// The browse state's month/day fold lives inside the shared Wall
-	// (the one renderer every photo surface composes); QUERY state
-	// keeps the flat order. BOTH walls curate the per-user subset
+	// The ONE results wall: the flat justified rank order for both
+	// states -- the browse feed is the same wall wearing the recent
+	// order. The wall curates the per-user subset
 	// (the curation ruling): the batch bar's favorite toggle + the
 	// tag affordance, every role -- the endpoint's owner resolution
 	// applies to the admin too, and the honest missing report
@@ -370,11 +369,11 @@
 		</div>
 	{/if}
 
-	<!-- The results: the two-state wall, the states, the pager. The
-	     BROWSE wall is month-grouped and so carries the axis slot; the
-	     QUERY wall is the flat justified rank order with no axis, so it
-	     keeps the plain 8px margin. -->
-	<div class="search__results {queryMode ? 'px-2' : 'px-2 pe-[72px]'} pt-3 pb-12">
+	<!-- The results: ONE wall for both states -- the flat justified
+	     rank order, no month groups, no axis, the plain 8px margin
+	     (the browse feed is the same wall wearing the recent order;
+	     the hint line above the wall is the only browse mark). -->
+	<div class="search__results px-2 pt-3 pb-12">
 		{#if firstLoad}
 			<LoadingLine label={$_('search_loading')} />
 		{:else if settledEmpty}
@@ -396,22 +395,12 @@
 				actionLabel={$_('action_retry')}
 				onaction={() => void search.run(filters, $locale ?? 'en')}
 			/>
-		{:else if queryMode}
-			<!-- QUERY state: the FLAT justified wall -- rank order
-			     preserved, no grouping; the selection flow is the flat
-			     wall's own organ (the same subset). -->
-			<FlatWall
-				items={$search.items}
-				actions={BATCH_ACTIONS}
-				onbatch={runBatch}
-				onaddtag={openTagDialog}
-				onaddmemory={openMemoryDialog}
-			/>
 		{:else}
-			<!-- BROWSE state: the unified month-grouped day-block wall --
-			     the same renderer every photo surface composes, with
-			     the per-user subset. -->
-			<Wall
+			<!-- The ONE results wall: the flat justified rank order --
+			     the query's matches and the browse's recent feed are
+			     the same wall wearing different orders; the selection
+			     flow is the flat wall's own organ. -->
+			<FlatWall
 				items={$search.items}
 				actions={BATCH_ACTIONS}
 				onbatch={runBatch}
