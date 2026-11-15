@@ -13298,7 +13298,16 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description Unexpected server failure. */
+            /**
+             * @description Unexpected server failure, or the trash arm's
+             *     external-move failure: a directory album's external file
+             *     that the server could not move into its trash area -- the
+             *     operating system denied the permission, or the source the
+             *     row names is no longer there. The whole disposal rolled
+             *     back: the account and its content are exactly as they were,
+             *     and every internal file move already performed was moved
+             *     back to its source.
+             */
             500: {
                 headers: {
                     [name: string]: unknown;
