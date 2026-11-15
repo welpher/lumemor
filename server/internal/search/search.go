@@ -78,6 +78,11 @@ type Filters struct {
 	AlbumIDs []uuid.UUID
 	// TagIDs restricts to the caller's own tags (foreign ids drop).
 	TagIDs []uuid.UUID
+	// IsMotion restricts to Live Photos (true: a still carrying a
+	// motion) or to everything else (false). Nil keeps both. The web
+	// interface does not expose this filter yet; the contract keeps
+	// the slot so a surface can ask without a second revision.
+	IsMotion *bool
 }
 
 // CursorMode tags the cursor's ordering: the filter browse pages in

@@ -13,7 +13,7 @@ Method | HTTP request | Description
 
 
 # **searchAssets**
-> SearchResponse searchAssets(query, personIds, placeIds, from, to, cameras, kinds, albumIds, tagIds, locale, cursor, limit)
+> SearchResponse searchAssets(query, personIds, placeIds, from, to, cameras, kinds, albumIds, tagIds, isMotion, locale, cursor, limit)
 
 The unified search, one text box, two merged paths, filter facets.
 
@@ -37,12 +37,13 @@ final BuiltList<String> cameras = ; // BuiltList<String> | Restrict the results 
 final BuiltList<MediaKind> kinds = ; // BuiltList<MediaKind> | Restrict the results to these media families. A value outside `image`/`video` answers 400. 
 final BuiltList<String> albumIds = ; // BuiltList<String> | Restrict the results to members of these albums. Albums the caller cannot see drop out of the filter: they contribute nothing, they never empty the result. 
 final BuiltList<String> tagIds = ; // BuiltList<String> | Restrict the results to assets carrying one of the CALLER's tags. Another account's tag ids drop out of the filter (tags are per-user state). 
+final bool isMotion = true; // bool | Restrict the results to Live Photos (`true`) or to everything else (`false`): an asset counts as a Live Photo exactly when it carries a motion. THE INTERFACE LEAVES THIS SLOT UNEXPOSED for now -- the search surface's filter bar does not render it and the web client never sends it; the parameter exists so the backend can answer the question when a surface asks, without a second contract revision. It is not a facet: the facet counts ignore it. 
 final String locale = zh-Hans; // String | The display locale of the places facet's names, exactly the `GET /places` locale join. Absent means `en`. A value outside the set answers 400 `VALIDATION_FAILED`. 
 final String cursor = GN4WpRPw0AABkvShW2x9jp8KKzxNXm9w; // String | The `nextCursor` of the previous page; absent on the first page. The cursor carries the page's ordering mode (the fused rank of a text query, or the timeline order of the filter browse): a cursor of the other mode answers 400 `VALIDATION_FAILED`, and so does any value this endpoint did not produce. 
 final int limit = 100; // int | Page size: the number of items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
 
 try {
-    final response = api.searchAssets(query, personIds, placeIds, from, to, cameras, kinds, albumIds, tagIds, locale, cursor, limit);
+    final response = api.searchAssets(query, personIds, placeIds, from, to, cameras, kinds, albumIds, tagIds, isMotion, locale, cursor, limit);
     print(response);
 } on DioException catch (e) {
     print('Exception when calling SearchApi->searchAssets: $e\n');
@@ -62,6 +63,7 @@ Name | Type | Description  | Notes
  **kinds** | [**BuiltList&lt;MediaKind&gt;**](MediaKind.md)| Restrict the results to these media families. A value outside `image`/`video` answers 400.  | [optional] 
  **albumIds** | [**BuiltList&lt;String&gt;**](String.md)| Restrict the results to members of these albums. Albums the caller cannot see drop out of the filter: they contribute nothing, they never empty the result.  | [optional] 
  **tagIds** | [**BuiltList&lt;String&gt;**](String.md)| Restrict the results to assets carrying one of the CALLER's tags. Another account's tag ids drop out of the filter (tags are per-user state).  | [optional] 
+ **isMotion** | **bool**| Restrict the results to Live Photos (`true`) or to everything else (`false`): an asset counts as a Live Photo exactly when it carries a motion. THE INTERFACE LEAVES THIS SLOT UNEXPOSED for now -- the search surface's filter bar does not render it and the web client never sends it; the parameter exists so the backend can answer the question when a surface asks, without a second contract revision. It is not a facet: the facet counts ignore it.  | [optional] 
  **locale** | **String**| The display locale of the places facet's names, exactly the `GET /places` locale join. Absent means `en`. A value outside the set answers 400 `VALIDATION_FAILED`.  | [optional] [default to 'en']
  **cursor** | **String**| The `nextCursor` of the previous page; absent on the first page. The cursor carries the page's ordering mode (the fused rank of a text query, or the timeline order of the filter browse): a cursor of the other mode answers 400 `VALIDATION_FAILED`, and so does any value this endpoint did not produce.  | [optional] 
  **limit** | **int**| Page size: the number of items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400.  | [optional] [default to 100]
