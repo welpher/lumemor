@@ -760,8 +760,11 @@
 						</button>
 						{#if pathOpen}
 							<div class="mt-1.5 flex items-start gap-2" id="asset-path">
+								<!-- Two lines at most: the path breaks at any
+								     character (the filename is the half worth
+								     reading, never the half cut off). -->
 								<span
-									class="min-w-0 flex-1 break-all font-mono font-normal text-[12px] leading-[1.5] text-text-soft"
+									class="info__path min-w-0 flex-1 line-clamp-2 break-all font-mono font-normal text-[12px] leading-[1.5] text-text-soft"
 									>{detail.path}</span
 								>
 								<button
