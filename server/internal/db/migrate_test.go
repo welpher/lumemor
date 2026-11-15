@@ -29,6 +29,8 @@ var wantTables = []string{
 	// album domain
 	"albums",
 	"album_items",
+	"album_cover_picks",
+	"album_cover_week_picks",
 	"album_shares",
 	"user_album_prefs",
 	"user_favorites",

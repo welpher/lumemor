@@ -25,9 +25,9 @@ void main() {
       // TODO
     });
 
-    // The pinned cover asset, or null when unset -- the raw column; the wall derives its collage fallback, the detail carries the pin itself. 
-    // String coverAssetId
-    test('to test the property `coverAssetId`', () async {
+    // The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
+    // BuiltList<String> coverAssetIds
+    test('to test the property `coverAssetIds`', () async {
       // TODO
     });
 

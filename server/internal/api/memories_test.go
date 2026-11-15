@@ -77,14 +77,14 @@ func TestMemorySharedViewsLiveFilter(t *testing.T) {
 		}
 		requireMemoryMemberIDs(t, detail, viaShare, own)
 
-		// The wall card agrees: the count and the collage tiles are
+		// The wall card agrees: the count and the collage frames are
 		// the owner-visible live members, not the raw membership.
 		card := memoryCardOf(t, env, viewerCookie, memory)
 		if card.ItemCount != 2 {
 			t.Errorf("sharee card itemCount = %d, want 2", card.ItemCount)
 		}
-		if len(card.CoverAssetIds) != 2 || uuid.UUID(card.CoverAssetIds[0]) != viaShare {
-			t.Errorf("sharee card coverAssetIds = %v, want [viaShare own] (the newest live owner-visible members)", card.CoverAssetIds)
+		if got := frameSet(card.CoverAssetIds); len(got) != 2 || !got[viaShare] || !got[own] {
+			t.Errorf("sharee card coverAssetIds = %v, want viaShare and own among them (the live owner-visible members)", card.CoverAssetIds)
 		}
 	})
 
@@ -110,7 +110,7 @@ func TestMemorySharedViewsLiveFilter(t *testing.T) {
 			t.Errorf("sharee card itemCount after the revocation = %d, want 1", card.ItemCount)
 		}
 		if len(card.CoverAssetIds) != 1 || uuid.UUID(card.CoverAssetIds[0]) != own {
-			t.Errorf("sharee card coverAssetIds after the revocation = %v, want [own]", card.CoverAssetIds)
+			t.Errorf("sharee card coverAssetIds after the revocation = %v, want [own] (the only frame the caller can see)", card.CoverAssetIds)
 		}
 
 		// The owner's own view keeps the plain live membership: the

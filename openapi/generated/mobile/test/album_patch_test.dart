@@ -13,9 +13,9 @@ void main() {
       // TODO
     });
 
-    // The pinned cover asset. When present it must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row) -- otherwise the answer is 400 with the message key `album_cover_not_member`. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
-    // String coverAssetId
-    test('to test the property `coverAssetId`', () async {
+    // The owner's pin, as a full set: the frames of the cover in render order (the order the owner picked them in -- the server stores and returns it as given, never re-sorting). The length is 0 or exactly N, N being the card's frame count (four on the album card, six on the memory band): an empty array clears the pin and returns the album to the automatic weekly group, a full set pins it, and any other length answers 400 `VALIDATION_FAILED` (a partial set is the picker's un-saveable state, never a stored one). Repeated ids answer 400 too -- a cover is a set, and one frame cannot fill two cells. Every id must be a LIVE member of THIS album (the membership row exists and the asset is not trashed, not hidden, not a Live Photo component row); otherwise the answer is 400 with the message key `album_cover_not_member` and a `count` of the refused frames. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
+    // BuiltList<String> coverAssetIds
+    test('to test the property `coverAssetIds`', () async {
       // TODO
     });
 

@@ -163,29 +163,31 @@ func (q *Queries) CountAlbumReferencesOfAsset(ctx context.Context, assetID pgtyp
 	return count, err
 }
 
-const countLiveAlbumMember = `-- name: CountLiveAlbumMember :one
+const countLiveAlbumMembers = `-- name: CountLiveAlbumMembers :one
 SELECT count(*) AS matches
 FROM album_items ai
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = $1
-  AND ai.asset_id = $2
+  AND ai.asset_id = ANY($2::uuid[])
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
 `
 
-type CountLiveAlbumMemberParams struct {
-	AlbumID pgtype.UUID `json:"album_id"`
-	AssetID pgtype.UUID `json:"asset_id"`
+type CountLiveAlbumMembersParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
 }
 
-// The cover validation (the application-layer check): does the
-// given asset sit in this album as a LIVE member? The membership row
-// must exist AND the asset must pass the live predicate -- a hidden,
-// trashed or Live Photo component member is a member no more for
-// cover purposes, and an asset outside the album never was one.
-func (q *Queries) CountLiveAlbumMember(ctx context.Context, arg CountLiveAlbumMemberParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countLiveAlbumMember, arg.AlbumID, arg.AssetID)
+// The cover write's validation: how many of the requested ids sit in
+// this album as LIVE members? The membership row must exist AND the
+// asset must pass the live predicate -- a hidden, trashed or Live
+// Photo component member is a member no more for cover purposes, and
+// an asset outside the album never was one. The handler compares the
+// count with the request's length: a shortfall names the refused
+// write's dead ids.
+func (q *Queries) CountLiveAlbumMembers(ctx context.Context, arg CountLiveAlbumMembersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countLiveAlbumMembers, arg.AlbumID, arg.AssetIds)
 	var matches int64
 	err := row.Scan(&matches)
 	return matches, err
@@ -268,6 +270,38 @@ func (q *Queries) CreateMemoryAlbum(ctx context.Context, arg CreateMemoryAlbumPa
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
+}
+
+const deleteAlbumCoverPicks = `-- name: DeleteAlbumCoverPicks :exec
+DELETE FROM album_cover_picks
+WHERE album_id = $1
+`
+
+// The pin's full-set write: the stored picks go before the request's
+// set lands, so a shorter set never leaves a stale trailing position.
+func (q *Queries) DeleteAlbumCoverPicks(ctx context.Context, albumID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteAlbumCoverPicks, albumID)
+	return err
+}
+
+const deleteAlbumCoverWeek = `-- name: DeleteAlbumCoverWeek :exec
+DELETE FROM album_cover_week_picks
+WHERE album_id = $1
+  AND iso_week = $2
+`
+
+type DeleteAlbumCoverWeekParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	IsoWeek string      `json:"iso_week"`
+}
+
+// The frozen group's reset: used when the album's sampling can no
+// longer be filled from its pool (the group is shorter than the
+// frame count and no candidate remains), so the next read samples
+// afresh instead of rendering a stale short group forever.
+func (q *Queries) DeleteAlbumCoverWeek(ctx context.Context, arg DeleteAlbumCoverWeekParams) error {
+	_, err := q.db.Exec(ctx, deleteAlbumCoverWeek, arg.AlbumID, arg.IsoWeek)
+	return err
 }
 
 const deleteAlbumTimelinePreference = `-- name: DeleteAlbumTimelinePreference :execrows
@@ -375,7 +409,7 @@ func (q *Queries) EnsureSyncAlbum(ctx context.Context, arg EnsureSyncAlbumParams
 }
 
 const getAlbumForCaller = `-- name: GetAlbumForCaller :one
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -451,7 +485,6 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
@@ -467,7 +500,7 @@ func (q *Queries) GetAlbumForCaller(ctx context.Context, arg GetAlbumForCallerPa
 
 const getAlbumForTimelinePref = `-- name: GetAlbumForTimelinePref :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        CASE
            WHEN al.owner_id = $1 THEN 'owner'::text
            ELSE 'viewer'::text
@@ -515,7 +548,6 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
@@ -529,7 +561,7 @@ func (q *Queries) GetAlbumForTimelinePref(ctx context.Context, arg GetAlbumForTi
 
 const getAlbumForWrite = `-- name: GetAlbumForWrite :one
 
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s
            WHERE s.album_id = al.id AND s.user_id = $1
@@ -572,7 +604,6 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
@@ -585,7 +616,7 @@ func (q *Queries) GetAlbumForWrite(ctx context.Context, arg GetAlbumForWritePara
 }
 
 const getAlbumSummary = `-- name: GetAlbumSummary :one
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        EXISTS (
            SELECT 1 FROM album_shares s WHERE s.album_id = al.id
        ) AS is_shared,
@@ -632,7 +663,6 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 		&i.Album.OwnerID,
 		&i.Album.Title,
 		&i.Album.Type,
-		&i.Album.CoverAssetID,
 		&i.Album.RootPath,
 		&i.Album.LastScannedAt,
 		&i.Album.CreatedAt,
@@ -646,63 +676,117 @@ func (q *Queries) GetAlbumSummary(ctx context.Context, arg GetAlbumSummaryParams
 	return i, err
 }
 
-const listAlbumCoverCandidates = `-- name: ListAlbumCoverCandidates :many
-SELECT ranked.album_id,
-       ranked.asset_id
-FROM (
-    SELECT ai.album_id,
-           ai.asset_id,
-           row_number() OVER (
-               PARTITION BY ai.album_id
-               ORDER BY a.taken_at DESC, a.id DESC
-           ) AS recency_rank
-    FROM album_items ai
-    JOIN albums al ON al.id = ai.album_id
-    JOIN assets a ON a.id = ai.asset_id
-    WHERE ai.album_id = ANY($1::uuid[])
-      AND a.deleted_at IS NULL
-      AND a.is_hidden = false
-      AND a.is_component = false
-      AND (
-          al.type <> 'memory'
-          OR al.owner_id = $2
-          OR caller_asset_visible(al.owner_id, a.id)
-      )
-) ranked
-WHERE ranked.recency_rank <= 4
-ORDER BY ranked.album_id, ranked.recency_rank
+const insertAlbumCoverPicks = `-- name: InsertAlbumCoverPicks :exec
+INSERT INTO album_cover_picks (album_id, position, asset_id)
+SELECT $1, (picked.ord - 1)::smallint, picked.asset_id
+FROM unnest($2::uuid[]) WITH ORDINALITY AS picked (asset_id, ord)
 `
 
-type ListAlbumCoverCandidatesParams struct {
-	AlbumIds []pgtype.UUID `json:"album_ids"`
-	UserID   pgtype.UUID   `json:"user_id"`
+type InsertAlbumCoverPicksParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
 }
 
-type ListAlbumCoverCandidatesRow struct {
-	AlbumID pgtype.UUID `json:"album_id"`
-	AssetID pgtype.UUID `json:"asset_id"`
+// The pin's full-set write: the request's ids land at their pick
+// positions (0-based, first pick first). The ids arrive already
+// validated as live members of the album.
+func (q *Queries) InsertAlbumCoverPicks(ctx context.Context, arg InsertAlbumCoverPicksParams) error {
+	_, err := q.db.Exec(ctx, insertAlbumCoverPicks, arg.AlbumID, arg.AssetIds)
+	return err
 }
 
-// The derived covers of the given albums: each one's four most
-// recent live members, taken_at descending with the asset id as the
-// tiebreak -- the exact rows the wall renders for an album without a
-// pinned cover asset. The window keeps the result bounded at four
-// rows per album however many members an album holds. The memory's
-// shared-view rule rides the same predicate as the pages and the
-// counts: a sharee's collage tiles are the owner-visible live
-// members, the owner's own (the caller is the album's owner) are
-// the plain live ones, so the card's tiles never name a photo the
-// card's count already dropped.
-func (q *Queries) ListAlbumCoverCandidates(ctx context.Context, arg ListAlbumCoverCandidatesParams) ([]ListAlbumCoverCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, listAlbumCoverCandidates, arg.AlbumIds, arg.UserID)
+const insertAlbumCoverWeekPicks = `-- name: InsertAlbumCoverWeekPicks :exec
+INSERT INTO album_cover_week_picks (album_id, iso_week, position, asset_id)
+SELECT $1, $2, (picked.ord - 1)::smallint, picked.asset_id
+FROM unnest($3::uuid[]) WITH ORDINALITY AS picked (asset_id, ord)
+ON CONFLICT DO NOTHING
+`
+
+type InsertAlbumCoverWeekPicksParams struct {
+	AlbumID  pgtype.UUID   `json:"album_id"`
+	IsoWeek  string        `json:"iso_week"`
+	AssetIds []pgtype.UUID `json:"asset_ids"`
+}
+
+// The automatic group's frozen rows: the resolver's sampling lands at
+// the week's positions. ON CONFLICT keeps two concurrent resolutions
+// of the same week convergent -- both computed the same deterministic
+// sampling, so the first write wins without an error.
+func (q *Queries) InsertAlbumCoverWeekPicks(ctx context.Context, arg InsertAlbumCoverWeekPicksParams) error {
+	_, err := q.db.Exec(ctx, insertAlbumCoverWeekPicks, arg.AlbumID, arg.IsoWeek, arg.AssetIds)
+	return err
+}
+
+const listAlbumCoverPicks = `-- name: ListAlbumCoverPicks :many
+
+SELECT album_id, position, asset_id
+FROM album_cover_picks
+WHERE album_id = ANY($1::uuid[])
+ORDER BY album_id, position
+`
+
+// Cover stores (the cover-picker rework): the owner's ordered picks
+// and the automatic group's per-week frozen sampling. A cover is a
+// set of frames (four on the album card, six on the memory band),
+// so both stores are row-per-frame keyed by position -- the order is
+// the render order and never re-sorted by the reads.
+// The pinned cover sets of the given albums, in pick order. A picked
+// frame the caller cannot see (trashed, hidden, moved out of the
+// album) is not filtered here: the caller needs the stored list to
+// tell the owner WHICH pinned frame died, and the renderer fills the
+// dead cells from the pool.
+func (q *Queries) ListAlbumCoverPicks(ctx context.Context, albumIds []pgtype.UUID) ([]AlbumCoverPick, error) {
+	rows, err := q.db.Query(ctx, listAlbumCoverPicks, albumIds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListAlbumCoverCandidatesRow
+	var items []AlbumCoverPick
 	for rows.Next() {
-		var i ListAlbumCoverCandidatesRow
-		if err := rows.Scan(&i.AlbumID, &i.AssetID); err != nil {
+		var i AlbumCoverPick
+		if err := rows.Scan(&i.AlbumID, &i.Position, &i.AssetID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumCoverWeekPicks = `-- name: ListAlbumCoverWeekPicks :many
+SELECT album_id, position, asset_id
+FROM album_cover_week_picks
+WHERE album_id = ANY($1::uuid[])
+  AND iso_week = $2
+ORDER BY album_id, position
+`
+
+type ListAlbumCoverWeekPicksParams struct {
+	AlbumIds []pgtype.UUID `json:"album_ids"`
+	IsoWeek  string        `json:"iso_week"`
+}
+
+type ListAlbumCoverWeekPicksRow struct {
+	AlbumID  pgtype.UUID `json:"album_id"`
+	Position int16       `json:"position"`
+	AssetID  pgtype.UUID `json:"asset_id"`
+}
+
+// The frozen automatic groups of the given albums for one ISO week,
+// in the order the sampling stored. A missing album has no row for
+// the week yet (the resolver samples and stores one).
+func (q *Queries) ListAlbumCoverWeekPicks(ctx context.Context, arg ListAlbumCoverWeekPicksParams) ([]ListAlbumCoverWeekPicksRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumCoverWeekPicks, arg.AlbumIds, arg.IsoWeek)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumCoverWeekPicksRow
+	for rows.Next() {
+		var i ListAlbumCoverWeekPicksRow
+		if err := rows.Scan(&i.AlbumID, &i.Position, &i.AssetID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -789,6 +873,167 @@ func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItem
 			&i.OriginalFilename,
 			&i.MediaKind,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumLiveCoverPicks = `-- name: ListAlbumLiveCoverPicks :many
+SELECT picks.album_id, picks.position, picks.asset_id
+FROM album_cover_picks picks
+JOIN albums al ON al.id = picks.album_id
+JOIN album_items ai ON ai.album_id = picks.album_id AND ai.asset_id = picks.asset_id
+JOIN assets a ON a.id = picks.asset_id
+WHERE picks.album_id = ANY($1::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = $2
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY picks.album_id, picks.position
+`
+
+type ListAlbumLiveCoverPicksParams struct {
+	AlbumIds []pgtype.UUID `json:"album_ids"`
+	UserID   pgtype.UUID   `json:"user_id"`
+}
+
+// The LIVE subset of the given albums' pinned sets, in pick order: a
+// pick whose membership row is gone or whose asset is trashed,
+// hidden or a component row is dead for cover purposes. The card
+// renders exactly these in their positions and fills the dead cells;
+// a fully dead set falls back to the automatic group. The memory's
+// shared-view rule rides the pool's predicate so a shared card never
+// names a photo its viewer cannot see.
+func (q *Queries) ListAlbumLiveCoverPicks(ctx context.Context, arg ListAlbumLiveCoverPicksParams) ([]AlbumCoverPick, error) {
+	rows, err := q.db.Query(ctx, listAlbumLiveCoverPicks, arg.AlbumIds, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AlbumCoverPick
+	for rows.Next() {
+		var i AlbumCoverPick
+		if err := rows.Scan(&i.AlbumID, &i.Position, &i.AssetID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumLiveCoverPool = `-- name: ListAlbumLiveCoverPool :many
+SELECT ai.album_id, ai.asset_id
+FROM album_items ai
+JOIN albums al ON al.id = ai.album_id
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = ANY($1::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = $2
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY ai.album_id, a.taken_at DESC, a.id DESC
+`
+
+type ListAlbumLiveCoverPoolParams struct {
+	AlbumIds []pgtype.UUID `json:"album_ids"`
+	UserID   pgtype.UUID   `json:"user_id"`
+}
+
+type ListAlbumLiveCoverPoolRow struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	AssetID pgtype.UUID `json:"asset_id"`
+}
+
+// The sampling pool of the given albums: every live member the caller
+// can see, in the timeline's own order (taken_at descending, the
+// asset id as the tiebreak). The order is the pool's stable shape,
+// never the sampling's ranking -- the rotation hashes these ids. The
+// memory's shared-view rule rides the same predicate as the pages
+// and the counts: a sharee's pool is the owner-visible live members,
+// the owner's own is the plain live ones, so a cover never names a
+// photo the card's count already dropped.
+func (q *Queries) ListAlbumLiveCoverPool(ctx context.Context, arg ListAlbumLiveCoverPoolParams) ([]ListAlbumLiveCoverPoolRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumLiveCoverPool, arg.AlbumIds, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumLiveCoverPoolRow
+	for rows.Next() {
+		var i ListAlbumLiveCoverPoolRow
+		if err := rows.Scan(&i.AlbumID, &i.AssetID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAlbumLiveCoverWeekPicks = `-- name: ListAlbumLiveCoverWeekPicks :many
+SELECT picks.album_id, picks.position, picks.asset_id
+FROM album_cover_week_picks picks
+JOIN albums al ON al.id = picks.album_id
+JOIN album_items ai ON ai.album_id = picks.album_id AND ai.asset_id = picks.asset_id
+JOIN assets a ON a.id = picks.asset_id
+WHERE picks.album_id = ANY($1::uuid[])
+  AND picks.iso_week = $2
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = $3
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY picks.album_id, picks.position
+`
+
+type ListAlbumLiveCoverWeekPicksParams struct {
+	AlbumIds []pgtype.UUID `json:"album_ids"`
+	IsoWeek  string        `json:"iso_week"`
+	UserID   pgtype.UUID   `json:"user_id"`
+}
+
+type ListAlbumLiveCoverWeekPicksRow struct {
+	AlbumID  pgtype.UUID `json:"album_id"`
+	Position int16       `json:"position"`
+	AssetID  pgtype.UUID `json:"asset_id"`
+}
+
+// The LIVE subset of the given albums' frozen weekly groups, in the
+// order the sampling stored: the same liveness predicate the pins
+// run, because a week's cell dies exactly like a pin's -- the frame
+// leaves the album, is trashed, hidden or belongs to another
+// account's sight.
+func (q *Queries) ListAlbumLiveCoverWeekPicks(ctx context.Context, arg ListAlbumLiveCoverWeekPicksParams) ([]ListAlbumLiveCoverWeekPicksRow, error) {
+	rows, err := q.db.Query(ctx, listAlbumLiveCoverWeekPicks, arg.AlbumIds, arg.IsoWeek, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAlbumLiveCoverWeekPicksRow
+	for rows.Next() {
+		var i ListAlbumLiveCoverWeekPicksRow
+		if err := rows.Scan(&i.AlbumID, &i.Position, &i.AssetID); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -994,7 +1239,7 @@ func (q *Queries) ListAssetAlbumsForCaller(ctx context.Context, arg ListAssetAlb
 
 const listWallAlbumsForCaller = `-- name: ListWallAlbumsForCaller :many
 
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -1026,7 +1271,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'owner'::text AS caller_role,
        NULL::uuid AS owner_user_id,
        NULL::text AS owner_email,
@@ -1054,7 +1299,7 @@ WHERE al.owner_id = $1
 
 UNION ALL
 
-SELECT al.id, al.owner_id, al.title, al.type, al.cover_asset_id, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
+SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, al.created_at, al.updated_at, al.source_writable, al.allow_app_deletion,
        'viewer'::text AS caller_role,
        u.id AS owner_user_id,
        u.email AS owner_email,
@@ -1152,7 +1397,6 @@ func (q *Queries) ListWallAlbumsForCaller(ctx context.Context, userID pgtype.UUI
 			&i.Album.OwnerID,
 			&i.Album.Title,
 			&i.Album.Type,
-			&i.Album.CoverAssetID,
 			&i.Album.RootPath,
 			&i.Album.LastScannedAt,
 			&i.Album.CreatedAt,
@@ -1244,41 +1488,33 @@ func (q *Queries) RemoveAlbumItems(ctx context.Context, arg RemoveAlbumItemsPara
 const updateAlbumFields = `-- name: UpdateAlbumFields :one
 UPDATE albums
 SET title = COALESCE($1, title),
-    cover_asset_id = COALESCE($2, cover_asset_id),
-    allow_app_deletion = COALESCE($3, allow_app_deletion),
+    allow_app_deletion = COALESCE($2, allow_app_deletion),
     updated_at = now()
-WHERE id = $4
+WHERE id = $3
 RETURNING id
 `
 
 type UpdateAlbumFieldsParams struct {
 	Title            pgtype.Text `json:"title"`
-	CoverAssetID     pgtype.UUID `json:"cover_asset_id"`
 	AllowAppDeletion pgtype.Bool `json:"allow_app_deletion"`
 	AlbumID          pgtype.UUID `json:"album_id"`
 }
 
 // The property patch: every field COALESCEs over the stored value,
 // so an absent (NULL) parameter keeps it and a present one replaces
-// it. The cover rides the same discipline -- a coverAssetId of JSON
-// null decodes as absent, the patch convention of the asset surface,
-// so the pin can change through this face but never clear. The
-// deletability switch joins the property fields: present
+// it. The deletability switch joins the property fields: present
 // updates the owner's allow-app-deletion posture of the directory
 // album, absent keeps it, with the type arm that keeps
-// the switch off memory albums living in the handler. updated_at
-// moves with the write: the wall orders the own group by it. No
-// owner guard and no type guard here: the handler's gate already
-// resolved the caller's right to this write, and an album deleted
-// between the gate and the statement answers no row -- the honest
-// 404 of a gone album.
+// the switch off memory albums living in the handler. The cover does
+// NOT ride this statement: a cover is a set with an order, and its
+// store is its own full-set write (the picks' delete-and-insert
+// pair). updated_at moves with the write: the wall orders the own
+// group by it. No owner guard and no type guard here: the handler's
+// gate already resolved the caller's right to this write, and an
+// album deleted between the gate and the statement answers no row --
+// the honest 404 of a gone album.
 func (q *Queries) UpdateAlbumFields(ctx context.Context, arg UpdateAlbumFieldsParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, updateAlbumFields,
-		arg.Title,
-		arg.CoverAssetID,
-		arg.AllowAppDeletion,
-		arg.AlbumID,
-	)
+	row := q.db.QueryRow(ctx, updateAlbumFields, arg.Title, arg.AllowAppDeletion, arg.AlbumID)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err

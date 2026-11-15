@@ -181,12 +181,11 @@ func (s *server) albumCurationGate(w http.ResponseWriter, r *http.Request, reque
 // albumSummaryCardForID reads one album's wall card for a write
 // response: the row with its honest companions (the share badge, the
 // live member count, the caller's timeline preference) plus the
-// derived cover candidates when no pin exists -- the wall's own
-// derivation, so the write's answer is the card GET /albums lists.
-// The card's callerRole is owner: only an owner-or-admin write
-// reaches this point, and the role is the write-affordance
-// discriminator of the card shape. It answers ok=false once it has
-// written the response.
+// cover's frames -- the wall's own resolution, so the write's answer
+// is the card GET /albums lists. The card's callerRole is owner: only
+// an owner-or-admin write reaches this point, and the role is the
+// write-affordance discriminator of the card shape. It answers
+// ok=false once it has written the response.
 func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, callerID, albumID uuid.UUID) (apigen.AlbumSummary, bool) {
 	row, err := s.queries.GetAlbumSummary(r.Context(), dbgen.GetAlbumSummaryParams{
 		AlbumID: pgUUID(albumID),
@@ -201,28 +200,17 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, c
 		return apigen.AlbumSummary{}, false
 	}
 
-	// The derived cover: the wall's own candidates query over the one
-	// album, bounded at four rows by construction. The caller rides
-	// along: the write's caller is the owner or an administrator
-	// overriding the owner check, and the candidates query's own
-	// owner check passes both for an own memory -- so the write's
-	// card carries the owner's live tiles either way.
-	var derived []uuid.UUID
-	if !row.Album.CoverAssetID.Valid {
-		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), dbgen.ListAlbumCoverCandidatesParams{
-			AlbumIds: []pgtype.UUID{row.Album.ID},
-			UserID:   pgUUID(callerID),
-		})
-		if err != nil {
-			s.internalError(w, r, "load album cover candidates", err)
-			return apigen.AlbumSummary{}, false
-		}
-		for _, candidate := range candidates {
-			derived = append(derived, uuid.UUID(candidate.AssetID.Bytes))
-		}
+	covers, err := s.coverGroups(r.Context(), callerID, []coverType{{
+		ID:        uuid.UUID(row.Album.ID.Bytes),
+		Type:      row.Album.Type,
+		ItemCount: row.ItemCount,
+	}})
+	if err != nil {
+		s.internalError(w, r, "load album cover", err)
+		return apigen.AlbumSummary{}, false
 	}
 	return albumSummaryCard(row.Album, row.IsShared, row.ItemCount,
-		apigen.AlbumSummaryCallerRoleOwner, derived,
+		apigen.AlbumSummaryCallerRoleOwner, covers[uuid.UUID(row.Album.ID.Bytes)],
 		timelinePrefField(row.Album.Type, "owner", row.InTimeline)), true
 }
 
@@ -471,7 +459,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 	if request.Title == nil &&
-		request.CoverAssetId == nil && request.AllowAppDeletion == nil {
+		request.CoverAssetIds == nil && request.AllowAppDeletion == nil {
 		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
 		return
 	}
@@ -491,21 +479,54 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 
-	// The cover validation, the application-layer check: a
-	// present cover must be a LIVE member of THIS album. The check
-	// runs before the write so an invalid patch lands nothing.
-	if request.CoverAssetId != nil {
-		matches, err := s.queries.CountLiveAlbumMember(ctx, dbgen.CountLiveAlbumMemberParams{
-			AlbumID: pgUUID(albumId),
-			AssetID: pgUUID(uuid.UUID(*request.CoverAssetId)),
-		})
-		if err != nil {
-			s.internalError(w, r, "validate the album cover", err)
+	// The cover's full-set validation. A cover is 0 or exactly N ids
+	// (N is the card's frame count: four on the album card, six on
+	// the memory band) -- a partial set is the picker's un-saveable
+	// state, never a stored one -- and every id must be a DIFFERENT
+	// live member of THIS album. The checks run before the write so
+	// an invalid patch lands nothing.
+	var coverPicks []uuid.UUID
+	if request.CoverAssetIds != nil {
+		frames := coverFramesFor(gate.Album.Type)
+		coverPicks = make([]uuid.UUID, 0, len(*request.CoverAssetIds))
+		for _, raw := range *request.CoverAssetIds {
+			coverPicks = append(coverPicks, uuid.UUID(raw))
+		}
+		if len(coverPicks) != 0 && len(coverPicks) != frames {
+			s.writeValidationError(w,
+				fmt.Sprintf("coverAssetIds must carry 0 or %d asset ids", frames),
+				[]string{"coverAssetIds"})
 			return
 		}
-		if matches == 0 {
-			s.writeMessageKey(w, "the cover must be a live member of this album", "album_cover_not_member")
-			return
+		seen := make(map[uuid.UUID]bool, len(coverPicks))
+		for _, id := range coverPicks {
+			if seen[id] {
+				// A cover is a set: the same frame twice is a client
+				// bug, and the stored positions could not tell the two
+				// apart.
+				s.writeValidationError(w,
+					"coverAssetIds must not repeat an asset id",
+					[]string{"coverAssetIds"})
+				return
+			}
+			seen[id] = true
+		}
+		if len(coverPicks) > 0 {
+			matches, err := s.queries.CountLiveAlbumMembers(ctx, dbgen.CountLiveAlbumMembersParams{
+				AlbumID:  pgUUID(albumId),
+				AssetIds: pgUUIDs(coverPicks),
+			})
+			if err != nil {
+				s.internalError(w, r, "validate the album cover", err)
+				return
+			}
+			if int(matches) != len(coverPicks) {
+				// The refused set names how many of its frames are no
+				// longer in the album: the picker marks them and asks
+				// for a re-pick.
+				s.writeCoverNotMember(w, len(coverPicks)-int(matches))
+				return
+			}
 		}
 	}
 
@@ -519,9 +540,6 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		}
 		params.Title = pgtype.Text{String: title, Valid: true}
 	}
-	if request.CoverAssetId != nil {
-		params.CoverAssetID = pgUUID(uuid.UUID(*request.CoverAssetId))
-	}
 	if request.AllowAppDeletion != nil {
 		// The owner's deletability posture, the edit dialog's switch:
 		// repeating the stored value converges through the COALESCE
@@ -529,13 +547,43 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		params.AllowAppDeletion = pgtype.Bool{Bool: *request.AllowAppDeletion, Valid: true}
 	}
 
-	if _, err := s.queries.UpdateAlbumFields(ctx, params); err != nil {
+	// The property fields and the cover's full-set write land in one
+	// transaction: the picks' delete-and-insert is one decision (a
+	// shorter set must never leave a stale trailing position), and a
+	// vanished album folds into the reads' 404 either way.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.internalError(w, r, "begin the album patch", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	txQueries := dbgen.New(tx)
+	if _, err := txQueries.UpdateAlbumFields(ctx, params); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// The album vanished between the gate and the write.
 			s.writeAlbumNotFound(w)
 			return
 		}
 		s.internalError(w, r, "patch the album", err)
+		return
+	}
+	if request.CoverAssetIds != nil {
+		if err := txQueries.DeleteAlbumCoverPicks(ctx, pgUUID(albumId)); err != nil {
+			s.internalError(w, r, "clear the album cover", err)
+			return
+		}
+		if len(coverPicks) > 0 {
+			if err := txQueries.InsertAlbumCoverPicks(ctx, dbgen.InsertAlbumCoverPicksParams{
+				AlbumID:  pgUUID(albumId),
+				AssetIds: pgUUIDs(coverPicks),
+			}); err != nil {
+				s.internalError(w, r, "store the album cover", err)
+				return
+			}
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		s.internalError(w, r, "commit the album patch", err)
 		return
 	}
 
