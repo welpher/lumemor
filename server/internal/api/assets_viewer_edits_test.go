@@ -67,8 +67,8 @@ func TestPatchAssetTakenAt(t *testing.T) {
 	env.patchAsset(t, env.cookie, id, map[string]any{"takenAt": "2026-08-12T18:42:00+08:00"})
 	requireAssetUpdatedEvents(t, env, 1, id, "image")
 
-	// A different offset for the same instant is still a change (the
-	// zone is display state that rides its own write arm).
+	// A different wall time and offset (18:42+08 -> 18:42+09) is a
+	// different instant carrying the new zone.
 	detail = env.patchAsset(t, env.cookie, id, map[string]any{"takenAt": "2026-08-12T18:42:00+09:00"})
 	if !detail.TakenAt.Equal(time.Date(2026, 8, 12, 9, 42, 0, 0, time.UTC)) {
 		t.Errorf("re-zoned takenAt = %v, want the new offset's instant", detail.TakenAt)
@@ -77,6 +77,18 @@ func TestPatchAssetTakenAt(t *testing.T) {
 		t.Errorf("re-zoned takenAtZone = %v, want +09:00", detail.TakenAtZone)
 	}
 	requireAssetUpdatedEvents(t, env, 2, id, "image")
+
+	// The zone-only arm: 17:42+08:00 is the SAME instant as the
+	// stored 09:42 UTC with the other offset -- the zone is a served
+	// field compared on its own, so this repeat is still a change.
+	detail = env.patchAsset(t, env.cookie, id, map[string]any{"takenAt": "2026-08-12T17:42:00+08:00"})
+	if !detail.TakenAt.Equal(time.Date(2026, 8, 12, 9, 42, 0, 0, time.UTC)) {
+		t.Errorf("zone-only takenAt = %v, want the unchanged instant", detail.TakenAt)
+	}
+	if detail.TakenAtZone == nil || *detail.TakenAtZone != "+08:00" {
+		t.Errorf("zone-only takenAtZone = %v, want +08:00", detail.TakenAtZone)
+	}
+	requireAssetUpdatedEvents(t, env, 3, id, "image")
 }
 
 // TestPatchAssetTakenAtValidation pins the zone door: the contract

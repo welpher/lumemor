@@ -32,9 +32,9 @@
 	// stage's top edge, no surface of its own -- only the
 	// night/70 -> transparent fade keeps its buttons readable over
 	// any photo, and the photo draws from y=0. The bar carries NO
-	// filename (the panel's header owns it; the bar repeats it only
-	// to cover the photo): back on the left, the actions on the
-	// right, the middle open. The arrows rest at 45% opacity, hover
+	// filename (the panel's header owns the name; a second copy on
+	// the bar would only cover the photo): back on the left, the
+	// actions on the right, the middle open. The arrows rest at 45% opacity, hover
 	// and keyboard focus return 100%, and the touch form (no hover)
 	// rests at 90%. The filmstrip is the stage's bottom-left corner,
 	// no card around it -- the THUMBS are the translucent part
