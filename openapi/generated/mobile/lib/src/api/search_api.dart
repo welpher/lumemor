@@ -35,6 +35,7 @@ class SearchApi {
   /// * [kinds] - Restrict the results to these media families. A value outside `image`/`video` answers 400. 
   /// * [albumIds] - Restrict the results to members of these albums. Albums the caller cannot see drop out of the filter: they contribute nothing, they never empty the result. 
   /// * [tagIds] - Restrict the results to assets carrying one of the CALLER's tags. Another account's tag ids drop out of the filter (tags are per-user state). 
+  /// * [isMotion] - Restrict the results to Live Photos (`true`) or to everything else (`false`): an asset counts as a Live Photo exactly when it carries a motion. THE INTERFACE LEAVES THIS SLOT UNEXPOSED for now -- the search surface's filter bar does not render it and the web client never sends it; the parameter exists so the backend can answer the question when a surface asks, without a second contract revision. It is not a facet: the facet counts ignore it. 
   /// * [locale] - The display locale of the places facet's names, exactly the `GET /places` locale join. Absent means `en`. A value outside the set answers 400 `VALIDATION_FAILED`. 
   /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. The cursor carries the page's ordering mode (the fused rank of a text query, or the timeline order of the filter browse): a cursor of the other mode answers 400 `VALIDATION_FAILED`, and so does any value this endpoint did not produce. 
   /// * [limit] - Page size: the number of items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
@@ -57,6 +58,7 @@ class SearchApi {
     BuiltList<MediaKind>? kinds,
     BuiltList<String>? albumIds,
     BuiltList<String>? tagIds,
+    bool? isMotion,
     String? locale = 'en',
     String? cursor,
     int? limit = 100,
@@ -101,6 +103,7 @@ class SearchApi {
       if (kinds != null) r'kinds': encodeCollectionQueryParameter<MediaKind>(_serializers, kinds, const FullType(BuiltList, [FullType(MediaKind)]), format: ListFormat.csv,),
       if (albumIds != null) r'albumIds': encodeCollectionQueryParameter<String>(_serializers, albumIds, const FullType(BuiltList, [FullType(String)]), format: ListFormat.csv,),
       if (tagIds != null) r'tagIds': encodeCollectionQueryParameter<String>(_serializers, tagIds, const FullType(BuiltList, [FullType(String)]), format: ListFormat.csv,),
+      if (isMotion != null) r'isMotion': encodeQueryParameter(_serializers, isMotion, const FullType(bool)),
       if (locale != null) r'locale': encodeQueryParameter(_serializers, locale, const FullType(String)),
       if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
       if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),

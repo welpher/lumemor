@@ -12344,6 +12344,19 @@ export interface operations {
                  */
                 tagIds?: string[];
                 /**
+                 * @description Restrict the results to Live Photos (`true`) or to
+                 *     everything else (`false`): an asset counts as a Live Photo
+                 *     exactly when it carries a motion. THE INTERFACE LEAVES
+                 *     THIS SLOT UNEXPOSED for now -- the search surface's
+                 *     filter bar does not render it and the web client never
+                 *     sends it; the parameter exists so the backend can answer
+                 *     the question when a surface asks, without a second
+                 *     contract revision. It is not a facet: the facet counts
+                 *     ignore it.
+                 * @example true
+                 */
+                isMotion?: boolean;
+                /**
                  * @description The display locale of the places facet's names, exactly
                  *     the `GET /places` locale join. Absent means `en`. A value
                  *     outside the set answers 400 `VALIDATION_FAILED`.
