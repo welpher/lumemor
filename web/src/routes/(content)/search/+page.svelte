@@ -1,26 +1,36 @@
 <script lang="ts">
-	// The unified search page: one text box, the facet
-	// chips of the seven dimensions, the honest count line, and the
-	// results wall -- the search row over the unified
-	// search endpoint (the merged text and semantic paths, the
-	// filter browse).
+	// The search page: one clean result surface. Its own context bar
+	// (the shell's topbar and drawer hide while this route is active)
+	// carries the back link, the page title, the honest count and the
+	// ONE search field, dead center: the bar is the three-column row
+	// `1fr · 520px · 1fr` -- the identity on the left, the field in
+	// the middle, the right column deliberately empty -- so the
+	// field's center sits at the viewport's center at every width.
+	// The body below is the results wall alone; the query IS the
+	// filter, so no facet affordance rides this page (narrowing is
+	// editing the query, not decorating it).
 	//
-	// THE URL IS THE STATE (the pinned rule): the query and every
-	// filter selection live in the /search URL's parameters, so the
-	// page is deep-linkable (a places card links straight into a
-	// filtered browse) and the topbar's box navigates here with
-	// `query=`. Edits on this page (a query submit, a chip toggle)
-	// REPLACE the URL -- the URL is the app state, and the history
-	// stays one clean step back to whatever surface led here.
+	// THE URL IS THE STATE (the pinned rule): the query and any
+	// deep-linked filter selection live in the /search URL's
+	// parameters, so the page is deep-linkable and the topbar's box
+	// (wherever the shell bar still renders) navigates here with
+	// `query=`. Edits on this page (a query submit) REPLACE the URL
+	// -- the URL is the app state, and the history stays one clean
+	// step back to whatever surface led here.
 	//
-	// THE TWO RESULT MODES (the pinned rule): a query whose trimmed
-	// text spans two or more runes is QUERY mode -- the flat
+	// THE TWO RESULT STATES (the pinned rule): a query whose trimmed
+	// text spans two or more runes is QUERY state -- the flat
 	// justified wall, rank order preserved (no month/day grouping:
-	// grouping would lie about the rank order); anything less takes
-	// NO text path (the server's own rule, mirrored here), the
-	// request is the pure filter browse, and the wall renders the
-	// timeline's exact month-grouped day-block form. Both paginate
-	// through the mode-tagged cursor (the client's walk).
+	// grouping would lie about the rank order), the count wording
+	// "N matches". Anything less takes NO text path (the server's own
+	// rule, mirrored here), the request is the pure browse, and the
+	// wall renders the SAME flat justified form in both states -- the
+	// browse state IS the recent-photos feed wearing the rank order:
+	// an empty query shows photos, never the no-results card (that
+	// card is for a query -- or a deep-linked filter -- that answered
+	// nothing), with the one hint line above the bare browse's wall
+	// saying so. Both states paginate through the mode-tagged cursor
+	// (the client's walk).
 	//
 	// THE SSE CONVERGENCE (the pinned semantics): every asset.*
 	// event re-executes the current search -- the refetch IS the
@@ -42,15 +52,15 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { subscribeAssetEvents } from '$lib/events';
 	import { publishWallItems } from '$lib/timeline/wall-sequence.svelte';
-	import Wall from '$lib/timeline/Wall.svelte';
 	import FlatWall from '$lib/timeline/FlatWall.svelte';
-	import FacetChips, { type FacetChip } from '$lib/search/FacetChips.svelte';
+	import CountLabel from '$lib/components/CountLabel.svelte';
 	import AddTagDialog from '$lib/tags/AddTagDialog.svelte';
 	import AddToMemoryDialog from '$lib/memories/AddToMemoryDialog.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import Search from '@lucide/svelte/icons/search';
+	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronsDown from '@lucide/svelte/icons/chevrons-down';
 
 	const search = createSearchClient();
@@ -185,11 +195,28 @@
 
 	// The URL state: the page derives its filters off the route URL,
 	// and the run effect re-executes the search whenever the URL
-	// (or the locale, whose places-facet names ride the request)
+	// (or the locale, whose display names ride the request)
 	// changes. The query box's draft seeds from the URL and survives
 	// typing (an effect write, never a bind onto the derived).
 	const filters = $derived(filtersFromSearchParams(page.url.searchParams));
 	const queryMode = $derived(isQueryMode(filters.query));
+	/** Any facet rode the deep link (a camera, a tag, a place...). */
+	const hasFilters = $derived(
+		filters.personIds.length > 0 ||
+			filters.placeIds.length > 0 ||
+			filters.years.length > 0 ||
+			filters.cameras.length > 0 ||
+			filters.kinds.length > 0 ||
+			filters.albumIds.length > 0 ||
+			filters.tagIds.length > 0
+	);
+	// The BROWSE face is the BARE address alone: no query, no facet.
+	// A filter-only deep link (the viewer's camera or tag rows land
+	// here) is a RESULT face -- the wall is the filtered set, so the
+	// match count, no hint, and the no-results card on zero are the
+	// honest copy; "recent photos" and "All N photos" would be
+	// falsehoods over a narrowed wall.
+	const browseFace = $derived(!queryMode && !hasFilters);
 	let draft = $state('');
 
 	$effect(() => {
@@ -201,9 +228,9 @@
 		});
 	});
 
-	// The browse mode's month/day fold lives inside the shared Wall
-	// (the one renderer every photo surface composes); QUERY mode
-	// keeps the flat order. BOTH walls curate the per-user subset
+	// The ONE results wall: the flat justified rank order for both
+	// states -- the browse feed is the same wall wearing the recent
+	// order. The wall curates the per-user subset
 	// (the curation ruling): the batch bar's favorite toggle + the
 	// tag affordance, every role -- the endpoint's owner resolution
 	// applies to the admin too, and the honest missing report
@@ -221,96 +248,24 @@
 	const observerAvailable = typeof IntersectionObserver === 'function';
 	let sentinel: HTMLElement | undefined = $state();
 
-	/** The count line's label: the loaded count, "so far" while a
-	 * page follows (the honest wire truth, never a claimed total). */
-	const countLabel = $derived(
-		$search.nextCursor === null
-			? $_('search_result_count', { values: { count: $search.items.length } })
-			: $_('search_result_count_so_far', { values: { count: $search.items.length } })
-	);
-
 	/**
-	 * The chips of the current facets: one per entry of the seven
-	 * dimensions, each carrying the honest rest-of-filters count and
-	 * its selected state (the URL's filters decide, never the facet
-	 * list alone -- a deep link's filter can predate the response).
+	 * The count's wording: query state says "N matches", browse says
+	 * "All N photos" (the browse feed is the whole library, not a
+	 * filtered set); while a page follows, the loaded count is what
+	 * is honest, so the "so far" arm takes over until the walk
+	 * exhausts. The count follows the query -- it is never a stale
+	 * total from a previous answer.
 	 */
-	const chips = $derived.by(() => {
-		const facets = $search.facets;
-		if (facets === null) {
-			return [];
+	const countLabel = $derived.by(() => {
+		const count = $search.items.length;
+		if ($search.nextCursor !== null) {
+			return browseFace
+				? $_('search_browse_count_so_far', { values: { count } })
+				: $_('search_match_count_so_far', { values: { count } });
 		}
-		const current = filters;
-		const list: FacetChip[] = [];
-		for (const entry of facets.people) {
-			list.push({
-				dimension: 'people',
-				value: entry.id,
-				text: `${$_('search_facet_people')} · ${entry.name}`,
-				count: entry.assetCount,
-				selected: current.personIds.includes(entry.id)
-			});
-		}
-		for (const entry of facets.places) {
-			list.push({
-				dimension: 'places',
-				value: String(entry.placeId),
-				text: `${$_('search_facet_places')} · ${entry.name}`,
-				count: entry.assetCount,
-				selected: current.placeIds.includes(entry.placeId)
-			});
-		}
-		for (const entry of facets.years) {
-			list.push({
-				dimension: 'years',
-				value: String(entry.year),
-				text: `${$_('search_facet_years')} · ${entry.year}`,
-				count: entry.assetCount,
-				selected: current.years.includes(entry.year)
-			});
-		}
-		for (const entry of facets.cameras) {
-			// The display halves: make and model joined, the raw id
-			// the honest fallback when EXIF carried neither.
-			const halves = [entry.make ?? null, entry.model ?? null].filter((half) => half !== null && half !== '');
-			const label = halves.length > 0 ? halves.join(' ') : entry.id;
-			list.push({
-				dimension: 'cameras',
-				value: entry.id,
-				text: `${$_('search_facet_cameras')} · ${label}`,
-				count: entry.assetCount,
-				selected: current.cameras.includes(entry.id)
-			});
-		}
-		for (const entry of facets.kinds) {
-			const kindLabel = entry.kind === 'image' ? $_('search_kind_image') : $_('search_kind_video');
-			list.push({
-				dimension: 'kinds',
-				value: entry.kind,
-				text: `${$_('search_facet_kinds')} · ${kindLabel}`,
-				count: entry.assetCount,
-				selected: current.kinds.includes(entry.kind)
-			});
-		}
-		for (const entry of facets.albums) {
-			list.push({
-				dimension: 'albums',
-				value: entry.id,
-				text: `${$_('search_facet_albums')} · ${entry.title}`,
-				count: entry.assetCount,
-				selected: current.albumIds.includes(entry.id)
-			});
-		}
-		for (const entry of facets.tags) {
-			list.push({
-				dimension: 'tags',
-				value: entry.id,
-				text: `${$_('search_facet_tags')} · ${entry.name}`,
-				count: entry.assetCount,
-				selected: current.tagIds.includes(entry.id)
-			});
-		}
-		return list;
+		return browseFace
+			? $_('search_browse_count', { values: { count } })
+			: $_('search_match_count', { values: { count } });
 	});
 
 	/** Replace the URL with the next filter state (the deep-link). */
@@ -325,49 +280,6 @@
 		navigate({ ...filters, query: draft });
 	}
 
-	/** Toggle one chip's dimension value in the filter state. */
-	function toggleChip(chip: FacetChip): void {
-		const next: SearchFilters = { ...filters };
-		switch (chip.dimension) {
-			case 'people': {
-				next.personIds = toggleEntry(filters.personIds, chip.value);
-				break;
-			}
-			case 'places': {
-				const placeId = Number.parseInt(chip.value, 10);
-				next.placeIds = toggleEntry(filters.placeIds, placeId);
-				break;
-			}
-			case 'years': {
-				const year = Number.parseInt(chip.value, 10);
-				next.years = toggleEntry(filters.years, year);
-				break;
-			}
-			case 'cameras': {
-				next.cameras = toggleEntry(filters.cameras, chip.value);
-				break;
-			}
-			case 'kinds': {
-				next.kinds = toggleEntry(filters.kinds, chip.value as SearchFilters['kinds'][number]);
-				break;
-			}
-			case 'albums': {
-				next.albumIds = toggleEntry(filters.albumIds, chip.value);
-				break;
-			}
-			case 'tags': {
-				next.tagIds = toggleEntry(filters.tagIds, chip.value);
-				break;
-			}
-		}
-		navigate(next);
-	}
-
-	/** One entry's toggle in a filter list (the generic dimension arm). */
-	function toggleEntry<T>(entries: readonly T[], value: T): T[] {
-		return entries.includes(value) ? entries.filter((entry) => entry !== value) : [...entries, value];
-	}
-
 	// The shared unknown-code fallback (a code with no i18n entry
 	// renders the generic message, never raw code jargon); the
 	// reactive `$_` keeps the text locale-tracked.
@@ -378,7 +290,7 @@
 	// Publish the loaded result items as the viewer's navigation
 	// sequence (see $lib/timeline/wall.svelte): the copy outlives
 	// this route, so the /a/{id} viewer walks exactly the items this
-	// wall rendered -- the rank order in the query mode, the time
+	// wall rendered -- the rank order in the query state, the time
 	// order in the browse.
 	$effect(() => {
 		publishWallItems($search.items);
@@ -417,42 +329,78 @@
 </svelte:head>
 
 <section class="search" aria-busy={$search.status === 'loading'}>
-	<!-- The search head: the large query box, the facet
-	     chips, the honest count line. The box is a form so the
-	     keyboard's Enter commits the search. The head is chrome (the
-	     page's own 16px inset); the wall below is the surface that
-	     carries the 8px margin and the month-axis slot. -->
-	<div class="search__head px-4 pt-6">
-		<form class="search-form relative max-w-[640px]" role="search" onsubmit={submitQuery}>
-			<Search size={18} class="absolute start-3.5 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
+	<!-- THE CONTEXT BAR: back + title + count on the left, the ONE
+	     search field dead center (the three-column row's middle
+	     column), the right column empty. The shell's own topbar hides
+	     while this route is active (the content shell's route rule). -->
+	<header
+		class="search-bar sticky top-0 z-(--z-sticky-bar) grid grid-cols-[minmax(0,1fr)_minmax(0,520px)_minmax(0,1fr)] items-center gap-3 px-4 py-2 bg-card border-b border-border"
+	>
+		<div class="search-bar__identity flex min-w-0 items-center gap-2">
+			<a
+				class="search-bar__back inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-control bg-transparent text-text-soft no-underline cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+				href="/timeline"
+				aria-label={$_('search_back')}
+			>
+				<ChevronLeft size={20} aria-hidden="true" />
+			</a>
+			<h1 class="search-bar__title m-0 shrink-0 font-display font-bold text-[20px] leading-[1.3] text-text">
+				{$_('nav_search')}
+			</h1>
+			<!-- The count idiom (glyph + digits; the wording is the
+			     accessible name): it follows the query, and it yields
+			     below lg -- the identity stays one bar-tall row. -->
+			<CountLabel
+				class="search-bar__count hidden lg:inline-flex font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				count={$search.items.length}
+				label={countLabel}
+			/>
+		</div>
+		<!-- The field's own form: the keyboard's Enter commits the
+		     query to the URL (the submit is the page's state write). -->
+		<form class="search-bar__field relative min-w-0 w-full" role="search" onsubmit={submitQuery}>
+			<Search size={16} class="absolute start-3 top-1/2 -translate-y-1/2 text-text-faint pointer-events-none" />
 			<input
-				class="search-query w-full ps-11 pe-4 py-3 font-body font-normal text-[17px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
+				class="search-query w-full ps-9 pe-3 py-2 font-body font-normal text-[15px] leading-[1.4] text-text bg-page border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
 				type="search"
 				placeholder={$_('search_query_placeholder')}
 				aria-label={$_('nav_search')}
 				bind:value={draft}
 			/>
 		</form>
-		{#if $search.facets !== null}
-			<FacetChips {chips} ontoggle={toggleChip} />
-			<p
-				class="search-meta flex flex-wrap items-baseline gap-x-2.5 m-0 mt-2.5 text-[12px] leading-[1.4] text-text-faint"
-			>
-				<b class="font-body font-bold text-text-soft tabular-nums">{countLabel}</b>
-				<span>{$_('search_result_note')}</span>
-			</p>
-		{/if}
-	</div>
+	</header>
 
-	<!-- The results: the two-mode wall, the states, the pager. The
-	     BROWSE wall is month-grouped and so carries the axis slot; the
-	     QUERY wall is the flat justified rank order with no axis, so it
-	     keeps the plain 8px margin. -->
-	<div class="search__results {queryMode ? 'px-2' : 'px-2 pe-[72px]'} pt-3 pb-12">
+	<!-- THE BROWSE HINT: the one line above the wall in the browse
+	     state only -- an empty query is the recent-photos feed, and
+	     the line says so; the query state carries no copy at all. -->
+	{#if browseFace}
+		<div class="search__hint-wrap px-4 pt-3">
+			<p class="search__hint m-0 mb-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
+				{$_('search_browse_hint')}
+			</p>
+		</div>
+	{/if}
+
+	<!-- The results: ONE wall for both states -- the flat justified
+	     rank order, no month groups, no axis, the plain 8px margin
+	     (the browse feed is the same wall wearing the recent order;
+	     the hint line above the wall is the only browse mark). -->
+	<div class="search__results px-2 pt-3 pb-12">
 		{#if firstLoad}
 			<LoadingLine label={$_('search_loading')} />
 		{:else if settledEmpty}
-			<StateCard title={$_('search_empty_title')} body={$_('search_empty_body')} />
+			{#if browseFace}
+				<!-- The bare browse with nothing to show: the library
+				     itself holds no photos -- the no-data face, not
+				     the no-results one. -->
+				<StateCard title={$_('timeline_empty_title')} body={$_('timeline_empty_body')} />
+			{:else}
+				<!-- A query (or a deep-linked filter) that answered
+				     nothing: the data exists, this narrowing emptied
+				     it -- the no-results face, never the no-data
+				     lie. -->
+				<StateCard title={$_('search_empty_title')} body={$_('search_empty_body')} />
+			{/if}
 		{:else if $search.status === 'error' && $search.items.length === 0}
 			<StateCard
 				tone="error"
@@ -460,22 +408,12 @@
 				actionLabel={$_('action_retry')}
 				onaction={() => void search.run(filters, $locale ?? 'en')}
 			/>
-		{:else if queryMode}
-			<!-- QUERY mode: the FLAT justified wall -- rank order
-			     preserved, no grouping; the selection flow is the flat
-			     wall's own organ (the same subset). -->
-			<FlatWall
-				items={$search.items}
-				actions={BATCH_ACTIONS}
-				onbatch={runBatch}
-				onaddtag={openTagDialog}
-				onaddmemory={openMemoryDialog}
-			/>
 		{:else}
-			<!-- BROWSE mode: the unified month-grouped day-block wall --
-			     the same renderer every photo surface composes, with
-			     the per-user subset. -->
-			<Wall
+			<!-- The ONE results wall: the flat justified rank order --
+			     the query's matches and the browse's recent feed are
+			     the same wall wearing different orders; the selection
+			     flow is the flat wall's own organ. -->
+			<FlatWall
 				items={$search.items}
 				actions={BATCH_ACTIONS}
 				onbatch={runBatch}
