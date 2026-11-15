@@ -296,10 +296,15 @@ func (w *MetadataWorker) placeMotion(ctx context.Context, still dbgen.GetAssetFo
 		OwnerID:  still.OwnerID,
 		Checksum: checksum,
 	}); err == nil {
-		if err := dbgen.New(w.pool).MarkAssetAsLivePhotoMotion(ctx, existing.ID); err != nil {
-			return uuid.Nil, false, fmt.Errorf("mark the stored motion: %w", err)
+		// A TRASHED row is not a reuse: the pair must point at bytes the
+		// library will keep, and a trashed row's checksum is already
+		// released for a fresh upload to claim.
+		if !existing.DeletedAt.Valid {
+			if err := dbgen.New(w.pool).MarkAssetAsLivePhotoMotion(ctx, existing.ID); err != nil {
+				return uuid.Nil, false, fmt.Errorf("mark the stored motion: %w", err)
+			}
+			return uuid.UUID(existing.ID.Bytes), false, nil
 		}
-		return uuid.UUID(existing.ID.Bytes), false, nil
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		return uuid.Nil, false, fmt.Errorf("look up the stored motion: %w", err)
 	}
@@ -326,7 +331,7 @@ func (w *MetadataWorker) placeMotion(ctx context.Context, still dbgen.GetAssetFo
 		OriginalFilename: motionFileName(still.OriginalFilename, relPath),
 		FileSize:         int64(len(video)),
 		TakenAt:          still.TakenAt,
-		TakenAtSource:    dbgen.TakenAtSourceExif,
+		TakenAtSource:    still.TakenAtSource,
 		TakenAtZone:      still.TakenAtZone,
 	})
 	if err != nil {

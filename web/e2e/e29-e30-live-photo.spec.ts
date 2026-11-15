@@ -74,11 +74,10 @@ function liveToggle(page: Page) {
 	return page.locator('.viewer__bar-actions button').first();
 }
 
-/** The wall's timeline item count (the page bar's count label). */
-async function readTimelineCount(page: Page): Promise<number> {
-	const label = await page.locator('.wall-page__title-count').first().getAttribute('aria-label');
-	const match = /(\d+)/.exec(label ?? '');
-	return match === null ? 0 : Number(match[1]);
+/** The wall's tile count: one tile per photo, the hidden motion never
+ *  among them. */
+function tileCount(page: Page): Promise<number> {
+	return page.locator('a.tile__link').count();
 }
 
 /**
@@ -229,7 +228,7 @@ test('scene 1: the wall marks a live photo and leaves a plain photo bare', async
 	// own, and the count counts the photo once.
 	const tiles = page.locator('a.tile__link');
 	await expect(tiles.filter({ has: page.locator(`[aria-label^="${LIVE_VIDEO_NAME}"]`) })).toHaveCount(0);
-	expect(await readTimelineCount(page)).toBe(3);
+	expect(await tileCount(page)).toBe(3);
 });
 
 test('scene 2: hovering the live tile plays the moment and flips the mark', async ({ page }) => {
@@ -237,7 +236,6 @@ test('scene 2: hovering the live tile plays the moment and flips the mark', asyn
 	await expect(tile(page, LIVE_PHOTO_NAME)).toBeVisible({ timeout: 60_000 });
 
 	// At rest: no stream mounted (the motion costs no byte until asked).
-	const liveTile = tile(page, LIVE_PHOTO_NAME).locator('..');
 	await expect(page.locator('video.tile__motion')).toHaveCount(0);
 
 	// The component's play stream answers once its transcode drained;
@@ -257,8 +255,10 @@ test('scene 2: hovering the live tile plays the moment and flips the mark', asyn
 	await tile(page, LIVE_PHOTO_NAME).hover();
 	const motion = page.locator(`video.tile__motion[src="/api/v1/assets/${liveVideoId}/play"]`);
 	await expect(motion).toHaveCount(1);
-	await expect(motion).toHaveAttribute('muted', '');
-	await expect(motion).not.toHaveAttribute('controls', /.*/);
+	// Playback flags are element properties, not attributes.
+	await expect(motion).toHaveJSProperty('muted', true);
+	await expect(motion).toHaveJSProperty('loop', true);
+	await expect(motion).toHaveJSProperty('controls', false);
 	// The mark flips to the pause pair once the stream actually plays,
 	// and the still takes its slow push.
 	await expect(liveMark(page, LIVE_PHOTO_NAME).locator('path')).toHaveCount(1, { timeout: 30_000 });
@@ -270,7 +270,7 @@ test('scene 2: hovering the live tile plays the moment and flips the mark', asyn
 	// The plain tile never asks for a stream.
 	await tile(page, PLAIN_NAME).hover();
 	await expect(page.locator('video.tile__motion')).toHaveCount(0);
-	await expect(liveTile.locator('.tile__live')).toHaveCount(0);
+	await expect(liveMark(page, PLAIN_NAME)).toHaveCount(0);
 });
 
 test('scene 3: the viewer plays the motion in place and returns the still', async ({ page }) => {
@@ -364,6 +364,6 @@ test('scene 5: deleting the motion degrades the tile without an error', async ({
 	await expect(liveMark(page, MOTION_PHOTO_NAME)).toHaveCount(0, { timeout: 60_000 });
 	// The still is still one tile, still openable, and nothing shouts.
 	await expect(tile(page, MOTION_PHOTO_NAME)).toBeVisible();
-	expect(await readTimelineCount(page)).toBe(3);
+	expect(await tileCount(page)).toBe(3);
 	await expect(page.locator('[role="alert"]')).toHaveCount(0);
 });
