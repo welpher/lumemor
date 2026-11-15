@@ -293,7 +293,11 @@ test.describe('the viewer', () => {
 		// photos. The pin is DOM IDENTITY: the panel element that is
 		// open before the switch is the same element after it, with the
 		// new photo's facts as content.
-		await page.goto(`/a/${landId}`);
+		// Entered through the wall's tile (the switch needs the wall's
+		// sequence: a deep link carries no neighbors).
+		await page.goto('/timeline');
+		await tile(page, LAND_NAME).click();
+		await expect(page).toHaveURL(/\/a\/[0-9a-f-]{36}$/);
 		await page.getByRole('button', { name: 'Photo information' }).click();
 		const drawer = panel(page);
 		await expect(drawer).toBeVisible();
