@@ -38,25 +38,31 @@
 //     seeding pattern): the model group's download run is driven to
 //     succeeded and the three photos upload, converging to ready
 //     timeline items.
-//  3. The topbar's search box: typing 海边 and committing Enter
-//     navigates to /search?query=… -- the flat wall answers in RANK
+//  3. The query state: the topbar's search box (typing 海边 and
+//     committing Enter) navigates to /search?query=… -- the page's
+//     own context bar replaces the shell topbar, the field sits at
+//     the bar's dead center (the three-column row's middle column,
+//     measured against the viewport), the flat wall answers in RANK
 //     order (the OCR photo first: both paths hit it) with NO month
-//     or day headers (grouping would lie about the rank order).
-//  4. The filter browse: the bare /search (no query) renders the
-//     timeline's exact month-grouped wall, and a facet chip (the
-//     Places · Beijing chip) toggles: the URL gains placeIds, the
-//     wall re-executes to the one Beijing photo, the chip stays
-//     pressed.
-//  5. The places page: the flat list renders the Beijing card (the
+//     or day headers (grouping would lie about the rank order), and
+//     the count wording says "3 matches".
+//  4. The browse state: the bare /search (no query) IS the
+//     recent-photos feed -- the field empties, the hint line says
+//     what the wall is, the timeline's exact month-grouped wall
+//     renders, the count wording says "All 3 photos", and no facet
+//     affordance rides the page (the query is the filter).
+//  5. Any two-rune query answers the library (the semantic arm
+//     ranks it -- there is no similarity cutoff), while a one-rune
+//     deep link (the server drops it) lands on the browse face -- an
+//     empty query is never "no matching photos".
+//  6. The places page: the flat list renders the Beijing card (the
 //     locale name, the country and capture years, the honest count),
 //     and the card opens the place's own wall (the place domain's
 //     third face) with its context bar and month-grouped photos.
-//  6. The tags flow on the timeline: the batch bar's "Add tag"
+//  7. The tags flow on the timeline: the batch bar's "Add tag"
 //     opens the dialog, the "New tag" path names the tag, the
 //     honest {added, skipped} report lands, Done closes and clears
 //     the selection.
-//  7. The tag joins the search vocabulary: the browse chips row
-//     carries the new tag with its honest count.
 //  8. The browse wall curates the per-user subset (the search
 //     walls' curation ruling: BOTH walls carry [favorite, tag] for
 //     EVERY role): the bar offers the favorite toggle and the tag
@@ -66,7 +72,7 @@
 //  9. The query wall carries the same subset through its own
 //     organ: the flat wall's check entry, the same subset bar, and
 //     the tag flow riding the opener over the captured id (the
-//     existing-tag path, the scene-6 tag).
+//     existing-tag path, the scene-7 tag).
 //
 // THE STATE HANDOFF: the scenes are serial (one stack, one story --
 // see playwright.config.ts). Scene 1 signs in and saves the storage
@@ -225,7 +231,7 @@ test.describe('the signed-in scenes', () => {
 			.toBe(3);
 	});
 
-	test('scene 3: the topbar search navigates and the Chinese query answers the flat rank-ordered wall', async ({
+	test('scene 3: the query state answers the flat rank-ordered wall under its own centered field', async ({
 		page
 	}) => {
 		await page.goto('/timeline');
@@ -238,16 +244,35 @@ test.describe('the signed-in scenes', () => {
 		await expect(page).toHaveURL(`/search?query=${encodeURIComponent(QUERY)}`);
 		await expect(page).toHaveTitle('Search · lumemor');
 
-		// The count line is honest: all three photos answered (the
+		// The page's OWN context bar replaces the shell topbar: back,
+		// the title, and no shell bar above it.
+		await expect(page.locator('.shell-topbar')).toHaveCount(0);
+		await expect(page.locator('.search-bar')).toBeVisible();
+		await expect(page.locator('.search-bar__back')).toHaveAttribute('aria-label', 'Back to the timeline');
+		await expect(page.locator('.search-bar__title')).toHaveText('Search');
+
+		// The count follows the query: all three photos answered (the
 		// semantic path ranks the whole visible library, the text
 		// path boosts the OCR hit).
-		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', '3 matches');
+
+		// THE CENTERED FIELD: the three-column row's middle column
+		// puts the field's center at the viewport's center -- the
+		// bar's own geometry, measured, not assumed.
+		const field = page.locator('input.search-query');
+		const fieldBox = await field.boundingBox();
+		const viewport = page.viewportSize();
+		expect(fieldBox).not.toBeNull();
+		expect(viewport).not.toBeNull();
+		const fieldCenter = fieldBox!.x + fieldBox!.width / 2;
+		expect(Math.abs(fieldCenter - viewport!.width / 2)).toBeLessThanOrEqual(1);
 
 		// QUERY MODE renders the FLAT wall: rank order, no month or
-		// day headers (grouping would lie about the rank order).
+		// day headers (grouping would lie about the rank order), and
+		// no browse hint above it.
 		await expect(page.locator('.flat-wall')).toBeVisible();
 		await expect(page.locator('.wall__month-header')).toHaveCount(0);
-		await expect(page.locator('.wall__day-header')).toHaveCount(0);
+		await expect(page.locator('.search__hint')).toHaveCount(0);
 
 		// The rank order: the OCR photo -- hit by BOTH paths -- leads
 		// the page (the merge rule: a both-path hit outranks the
@@ -262,41 +287,57 @@ test.describe('the signed-in scenes', () => {
 		expect(new Set(names).size).toBe(3);
 		expect(names).toContain(PHOTO_GPS_NAME);
 		expect(names).toContain(PHOTO_FACE_NAME);
+
+		// The query is the filter: no facet chips ever ride the page.
+		await expect(page.locator('.search-chip')).toHaveCount(0);
 	});
 
-	test('scene 4: the filter browse renders the month-grouped wall and a facet chip re-executes', async ({ page }) => {
-		// The bare /search (no query): BROWSE mode, the timeline's
-		// exact month-grouped day-block wall over the time-ordered
-		// items.
+	test('scene 4: the bare search is the recent-photos browse -- hint line, month wall, total count', async ({
+		page
+	}) => {
 		await page.goto('/search');
 		await expect(page.locator('.flat-wall')).toHaveCount(0);
-		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+
+		// The browse state IS the recent photos: the field empties,
+		// the hint line names what the wall is, and the count wording
+		// claims the whole loaded library.
+		await expect(page.locator('input.search-query')).toHaveValue('');
+		await expect(page.locator('.search__hint')).toBeVisible();
+		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', 'All 3 photos');
+
+		// The month-grouped wall (the timeline's exact form) over the
+		// three photos.
+		await expect(page.locator('.tile')).toHaveCount(3);
 		for (const month of ['July 2026', 'June 2026', 'May 2026']) {
 			await expect(page.locator('.wall__month-header', { hasText: month })).toBeVisible();
 		}
 
-		// A facet chip toggles: the Places · Beijing chip carries the
-		// honest rest-of-filters count, the toggle lands the filter
-		// in the URL, and the wall re-executes to the one Beijing
-		// photo.
-		const chip = page.getByRole('button', { name: 'Places · Beijing' });
-		await expect(chip).toBeVisible();
-		await expect(chip.locator('.search-chip__count')).toHaveText('1');
-		await expect(chip).toHaveAttribute('aria-pressed', 'false');
-		await chip.click();
-
-		await expect(page).toHaveURL(/\/search\?placeIds=\d+$/);
-		await expect(page.locator('.tile')).toHaveCount(1);
-		await expect(page.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
-		await expect(page.locator('.search-meta b')).toHaveText('1 result');
-		await expect(chip).toHaveAttribute('aria-pressed', 'true');
-
-		// The filtered browse keeps the month-grouped wall (the
-		// filter never changes the mode).
-		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();
+		// No facet affordance rides the page in either state.
+		await expect(page.locator('.search-chip')).toHaveCount(0);
 	});
 
-	test('scene 5: the places page renders the flat city list and the card opens the place', async ({ page }) => {
+	test('scene 5: any query answers the library through the semantic arm; a one-rune deep link lands on the browse face', async ({
+		page
+	}) => {
+		// Any two-rune query takes the merged paths: the semantic arm
+		// ranks the whole library (no similarity cutoff), so this
+		// nonsense query still answers all three photos on the flat
+		// wall -- the rank order is its own and is not asserted here.
+		await page.goto('/search?query=zzzznothing');
+		await expect(page.locator('.flat-wall')).toBeVisible();
+		await expect(page.locator('.tile')).toHaveCount(3);
+		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', '3 matches');
+		await expect(page.locator('.search__hint')).toHaveCount(0);
+
+		// The one-rune query takes no text path (the server's own
+		// rule, mirrored): the deep link lands on the browse face --
+		// photos, the hint line, never a "no results" face.
+		await page.goto('/search?query=z');
+		await expect(page.locator('.search__hint')).toBeVisible();
+		await expect(page.locator('.tile')).toHaveCount(3);
+	});
+
+	test('scene 6: the places page renders the flat city list and the card opens the place', async ({ page }) => {
 		await page.goto('/places');
 		await expect(page).toHaveTitle('Places · lumemor');
 		await expect(page.getByRole('heading', { level: 1, name: 'Places · 1 city', exact: true })).toBeVisible();
@@ -332,7 +373,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.wall__month-header', { hasText: 'June 2026' })).toBeVisible();
 	});
 
-	test('scene 6: the timeline batch bar tags the selection through the new-tag path', async ({ page }) => {
+	test('scene 7: the timeline batch bar tags the selection through the new-tag path', async ({ page }) => {
 		await page.goto('/timeline');
 		await expect(page.getByRole('link', { name: PHOTO_OCR_NAME, exact: true })).toBeVisible();
 
@@ -359,23 +400,11 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.getByRole('toolbar')).toHaveCount(0);
 	});
 
-	test('scene 7: the new tag joins the search vocabulary as a facet chip', async ({ page }) => {
-		await page.goto('/search');
-		await expect(page.locator('.search-meta b')).toHaveText('3 results');
-
-		// The tags facet is the caller's own vocabulary: the
-		// scene-6 tag lists with the honest count over the browse
-		// scope.
-		const chip = page.getByRole('button', { name: `Tags · ${TAG_NAME}` });
-		await expect(chip).toBeVisible();
-		await expect(chip.locator('.search-chip__count')).toHaveText('1');
-	});
-
 	test('scene 8: the browse wall curates the per-user subset -- favorite and tag, the favorite batch lands', async ({
 		page
 	}) => {
 		await page.goto('/search');
-		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', 'All 3 photos');
 
 		// The selection joins through the tile's hover check; the bar
 		// rises with the honest count.
@@ -406,7 +435,7 @@ test.describe('the signed-in scenes', () => {
 		// The server holds the flip: a reload answers the favorited
 		// item (the wall's fresh page owns the truth).
 		await page.reload();
-		await expect(page.locator('.search-meta b')).toHaveText('3 results');
+		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', 'All 3 photos');
 		await expect(
 			page.getByRole('link', { name: PHOTO_GPS_NAME, exact: true }).locator('.tile__badge--favorite')
 		).toBeAttached();
@@ -430,7 +459,7 @@ test.describe('the signed-in scenes', () => {
 		}
 
 		// The tag flow rides the opener over the captured id: the
-		// existing-tag path tags the selection with the scene-6 tag,
+		// existing-tag path tags the selection with the scene-7 tag,
 		// the honest report lands, Done clears.
 		await bar.getByRole('button', { name: 'Add tag', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'Add tag', exact: true });
