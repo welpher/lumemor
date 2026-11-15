@@ -204,6 +204,7 @@ func (s *server) albumSummaryCardForID(w http.ResponseWriter, r *http.Request, c
 		ID:        uuid.UUID(row.Album.ID.Bytes),
 		Type:      row.Album.Type,
 		ItemCount: row.ItemCount,
+		OwnerID:   uuid.UUID(row.Album.OwnerID.Bytes),
 	}})
 	if err != nil {
 		s.internalError(w, r, "load album cover", err)

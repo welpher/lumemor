@@ -182,6 +182,7 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 			ID:        uuid.UUID(row.Album.ID.Bytes),
 			Type:      row.Album.Type,
 			ItemCount: row.ItemCount,
+			OwnerID:   uuid.UUID(row.Album.OwnerID.Bytes),
 		})
 	}
 	covers, err := s.coverGroups(r.Context(), requester.userID, coverInputs)

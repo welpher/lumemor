@@ -165,6 +165,7 @@ type coverType struct {
 	ID        uuid.UUID
 	Type      dbgen.AlbumType
 	ItemCount int64
+	OwnerID   uuid.UUID
 }
 
 // coverGroups resolves the rendered cover of every given album: the
@@ -192,6 +193,15 @@ func (s *server) coverGroups(ctx context.Context, callerID uuid.UUID, albums []c
 	}
 
 	week := isoWeekOf(s.now())
+
+	// The owner flag per album: the week store is the owner's truth
+	// alone -- a member's read never rewrites the group the owner
+	// froze (a member's narrower pool would otherwise re-fill a dead
+	// cell with a frame the owner cannot see).
+	isOwner := make(map[uuid.UUID]bool, len(ids))
+	for _, id := range ids {
+		isOwner[id] = byID[id].OwnerID == callerID
+	}
 
 	// The live pinned cells and the frozen week's live cells: two
 	// bounded reads whose rows already carry the liveness verdict, so
@@ -303,10 +313,45 @@ func (s *server) coverGroups(ctx context.Context, callerID uuid.UUID, albums []c
 			continue
 		}
 
+		if len(weeks[id]) >= frames {
+			// A full stored week answers BEFORE any size test: the
+			// freeze belongs to every album, and an album that grew
+			// across the rotation floor mid-week keeps the group it
+			// froze (the crossing picks up the rotation NEXT week).
+			slots := make([]uuid.UUID, frames)
+			for position, assetID := range weeks[id] {
+				if position < int16(frames) {
+					slots[position] = assetID
+				}
+			}
+			groups[id] = coverSlots(weekSeed(id, week), slots, pools[id])
+			continue
+		}
+
 		if album.ItemCount < int64(2*frames) {
 			// Below twice the frame count there is nothing to rotate
-			// through: one stable sample seeded by the album.
-			groups[id] = coverSample(pinSeed(id), pools[id], frames)
+			// through -- but the freeze still applies: the group is
+			// stored on first resolution under the week key (the seed
+			// stays album-only, so the stored group is identical week
+			// to week while a mid-week upload cannot move it). A
+			// stored row's survivors keep their positions and the
+			// dead cells fill -- the fill becomes the stored truth.
+			var group []uuid.UUID
+			if len(weeks[id]) > 0 {
+				slots := make([]uuid.UUID, frames)
+				for position, assetID := range weeks[id] {
+					if position < int16(frames) {
+						slots[position] = assetID
+					}
+				}
+				group = coverSlots(pinSeed(id), slots, pools[id])
+			} else {
+				group = coverSample(pinSeed(id), pools[id], frames)
+			}
+			groups[id] = group
+			if isOwner[id] {
+				weekWrites[id] = weekWrite{isoWeek: week, ids: group}
+			}
 			continue
 		}
 
@@ -316,12 +361,12 @@ func (s *server) coverGroups(ctx context.Context, callerID uuid.UUID, albums []c
 				slots[position] = assetID
 			}
 		}
-		if len(weeks[id]) != frames {
+		if len(weeks[id]) != frames && isOwner[id] {
 			weekWrites[id] = weekWrite{isoWeek: week}
 		}
 		group := coverSlots(weekSeed(id, week), slots, pools[id])
 		groups[id] = group
-		if len(weeks[id]) != frames {
+		if len(weeks[id]) != frames && isOwner[id] {
 			entry := weekWrites[id]
 			entry.ids = group
 			weekWrites[id] = entry

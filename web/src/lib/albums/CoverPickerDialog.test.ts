@@ -1,4 +1,5 @@
-import { flushSync, mount, unmount } from 'svelte';
+import { flushSync, mount, tick, unmount } from 'svelte';
+import { pickerState } from './coverPickerTestState.svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { clearToasts, toasts } from '$lib/components/toast.svelte';
@@ -263,4 +264,51 @@ test('a refused write states how many frames left the album', () => {
 	expect(line?.textContent).toContain('2 of the picked photos are no longer in the album');
 
 	unmount(dialog);
+});
+
+test('a live detail refresh never wipes an in-progress pick', async () => {
+	const onsubmit = vi.fn();
+	pickerState.open = true;
+	pickerState.currentCoverIds = [];
+	const dialog = mount(CoverPickerDialog, {
+		target: document.body,
+		props: {
+			get open() {
+				return pickerState.open;
+			},
+			get currentCoverIds() {
+				return pickerState.currentCoverIds;
+			},
+			items: pool,
+			itemCount: pool.length,
+			maxItems: 4,
+			onsubmit
+		}
+	});
+	flushSync();
+	// A half-made pick: two frames numbered in click order.
+	optionOf('a3').click();
+	optionOf('a5').click();
+	flushSync();
+	expect(badgeOf('a3')).toBe('1');
+	expect(badgeOf('a5')).toBe('2');
+
+	// The parent's detail converges mid-pick (a live event replaced
+	// the array): the seed belongs to the OPEN EDGE alone, so the
+	// badges survive the fresh prop value.
+	pickerState.currentCoverIds = ['a1', 'a2'];
+	await tick();
+	expect(badgeOf('a3')).toBe('1');
+	expect(badgeOf('a5')).toBe('2');
+
+	// Reopening is the one moment the stored pin reseeds.
+	pickerState.open = false;
+	await tick();
+	pickerState.open = true;
+	await tick();
+	expect(badgeOf('a1')).toBe('1');
+	expect(badgeOf('a2')).toBe('2');
+
+	unmount(dialog);
+	flushSync();
 });
