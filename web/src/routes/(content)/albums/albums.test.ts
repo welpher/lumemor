@@ -2,6 +2,7 @@ import { flushSync, mount, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import type { AlbumSummary } from '$lib/api/albums';
 import Page from './+page.svelte';
 
@@ -228,6 +229,7 @@ beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
 	vi.clearAllMocks();
+	clearToasts();
 	wallState = [myPhotos, roadTrip, familyArchive, quickPicks, graceHighlights];
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -837,9 +839,11 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 
 	// The write landed (the refetch converged the wall behind), and
 	// the dialog holds the write's own honest report with the Done
-	// affordance -- never a silent close.
+	// affordance -- never a silent close. The toast belongs to the
+	// CLOSING path alone: the report face never fires it.
 	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Family archive');
 	expect(modal()?.textContent).toContain('1 requested member was not added');
+	expect(toasts()).toHaveLength(0);
 	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 

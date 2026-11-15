@@ -323,8 +323,28 @@ test.describe('the viewer', () => {
 		await expect(page.getByTestId('viewer-info-state')).toHaveCount(0);
 
 		// The stage's frame carried the swap too: the media box is the
-		// same element across the switch (no tear-down per photo).
-		await expect(page.locator('.viewer__media')).toHaveCount(1);
+		// same element across the switch (no tear-down per photo), and
+		// the PAINTED FRAME survives -- the image element is not
+		// replaced (a keyed destruction would flash the placeholder
+		// between photos), and the box's width never collapses to the
+		// stage's.
+		const mediaIdentity = await page.evaluate(() => {
+			const box = document.querySelector('.viewer__media');
+			const image = box?.querySelector('.viewer__image');
+			return { box: box ?? null, image: image ?? null };
+		});
+		await filmstrip.getByRole('button', { name: LAND_NAME, exact: true }).click();
+		await expect(page).toHaveTitle(`${LAND_NAME} · lumemor`);
+		const identityAfter = await page.evaluate(() => {
+			const box = document.querySelector('.viewer__media');
+			const image = box?.querySelector('.viewer__image');
+			return { box: box ?? null, image: image ?? null };
+		});
+		expect(identityAfter.box).not.toBeNull();
+		expect(identityAfter.image).not.toBeNull();
+		expect(mediaIdentity.image === identityAfter.image).toBe(true);
+		const boxWidth = await page.locator('.viewer__media').evaluate((node) => node.getBoundingClientRect().width);
+		expect(boxWidth).toBeGreaterThan(100);
 	});
 
 	test('scene 3: the panel is four sections and five edit arms', async ({ page }) => {

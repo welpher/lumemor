@@ -286,8 +286,8 @@
 							class="flex-none font-normal text-[12px] leading-[1.4] {addedIds.includes(memory.id)
 								? ''
 								: 'text-text-faint'}"
-							count={memory.itemCount}
-							label={$_('memories_photo_count', { values: { count: memory.itemCount } })}
+							count={memory.photoCount}
+							label={$_('memories_photo_count', { values: { count: memory.photoCount } })}
 						/>
 						{#if addedIds.includes(memory.id)}
 							<!-- The accent added state: the row's write landed; the
