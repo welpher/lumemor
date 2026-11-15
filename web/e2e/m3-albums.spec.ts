@@ -278,6 +278,15 @@ const PHOTO_RW_B_NAME = 'IMG_E6_0002.jpg';
 const ALBUM_TITLE = 'Coastal week 2026';
 const RW_ALBUM_TITLE = 'Field day 2026';
 
+// The mixed count scene's seeds: one photo and one video uploaded into
+// the sync album (the only album uploads land in). Two live members,
+// ONE photo -- the numbers the card's and the bar's "N photos" must
+// part ways on.
+const MIXED_PHOTO_NAME = 'IMG_COUNT_PHOTO.jpg';
+const MIXED_VIDEO_NAME = 'CLIP_COUNT_VIDEO.mp4';
+const MIXED_PHOTO_SOURCE = path.join(repoRoot, 'server/internal/media/testdata/golden-large.jpg');
+const MIXED_VIDEO_SOURCE = path.join(repoRoot, 'server/internal/media/testdata/tiny.mp4');
+
 // The download bound: the cold upstream transfer of the group (about
 // 351 MB) is minutes, the warm re-verification is seconds; both
 // allow the cold bound.
@@ -1184,6 +1193,11 @@ test.describe('the writable source scenes', () => {
 		expect(createBody.inTimeline).toBe(false);
 		await expect(dialog).toHaveCount(0);
 
+		// The clean creation's confirmation is the house toast (the
+		// dialog's report face is for the honest problems alone, so the
+		// path that closes silently is the one that speaks here).
+		await expect(page.locator('.toasts')).toContainText('Album created.');
+
 		// The card lands with the honest zero count.
 		const card = page.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
 		await expect(card).toBeVisible();
@@ -1714,5 +1728,79 @@ test.describe('the removal scenes', () => {
 		// read-only pair's.
 		await page.goto('/people/unnamed');
 		await expect(page.locator('a.cluster-card')).toHaveCount(1);
+	});
+
+	test('scene 17: the count beside the image glyph counts photos, never members', async ({ page }) => {
+		// The acceptance walk's finding: the wall's count idiom reads
+		// "N photos" beside the IMAGE glyph, but it rendered the live
+		// member count -- videos included -- so a mixed collection
+		// claimed photos it does not hold. The sync album is the only
+		// album uploads land in, and this scene uploads one photo and
+		// one video: two live members, one photo. (It runs last: the
+		// earlier scenes upload nothing, and the extra members disturb
+		// no earlier count.)
+		const photoUpload = await page.request.post('/api/v1/assets', {
+			multipart: {
+				deviceAssetId: 'm3c-count-photo',
+				fileName: MIXED_PHOTO_NAME,
+				deviceCreatedAt: '2026-10-01T09:00:00Z',
+				deviceTimeZone: 'UTC',
+				photo: {
+					name: MIXED_PHOTO_NAME,
+					mimeType: 'image/jpeg',
+					buffer: await readFile(MIXED_PHOTO_SOURCE)
+				}
+			}
+		});
+		expect(photoUpload.status()).toBe(201);
+		const videoUpload = await page.request.post('/api/v1/assets', {
+			multipart: {
+				deviceAssetId: 'm3c-count-video',
+				fileName: MIXED_VIDEO_NAME,
+				deviceCreatedAt: '2026-10-02T09:00:00Z',
+				deviceTimeZone: 'UTC',
+				photo: {
+					name: MIXED_VIDEO_NAME,
+					mimeType: 'video/mp4',
+					buffer: await readFile(MIXED_VIDEO_SOURCE)
+				}
+			}
+		});
+		expect(videoUpload.status()).toBe(201);
+
+		// The contract's two numbers, honestly apart: `itemCount` is the
+		// collection's own size (the cover pool's cardinality),
+		// `photoCount` the image-kind members the count idiom renders.
+		const wall = await page.request.get('/api/v1/albums');
+		expect(wall.status()).toBe(200);
+		const wallBody = (await wall.json()) as {
+			albums?: Array<{ id: string; type: string; itemCount: number; photoCount: number }>;
+		};
+		const syncCard = (wallBody.albums ?? []).find((card) => card.type === 'sync');
+		expect(syncCard?.itemCount).toBe(2);
+		expect(syncCard?.photoCount).toBe(1);
+
+		const syncId = syncCard?.id ?? '';
+		expect(syncId).not.toBe('');
+		const detail = await page.request.get(`/api/v1/albums/${syncId}?limit=50`);
+		expect(detail.status()).toBe(200);
+		const detailBody = (await detail.json()) as { itemCount: number; photoCount: number };
+		expect(detailBody.itemCount).toBe(2);
+		expect(detailBody.photoCount).toBe(1);
+
+		// The wall's card renders the PHOTO count beside the image
+		// glyph (the singular plural form proves the number is 1).
+		await page.goto('/albums');
+		const card = page.locator('a.album-card').filter({ hasText: 'My photos' });
+		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '1 photo');
+
+		// The detail bar renders the same number over a wall that shows
+		// BOTH members: the count and the grid are never one number
+		// pretending to be the other -- the video is a tile with its
+		// own glyph, never a photo.
+		await page.goto(`/albums/${syncId}`);
+		await expect(page.locator('.album-detail__count')).toHaveAttribute('aria-label', '1 photo');
+		await expect(page.locator('a.tile__link')).toHaveCount(2);
+		await expect(page.locator('.tile__badge--video')).toHaveCount(1);
 	});
 });
