@@ -3288,11 +3288,30 @@ export interface paths {
          *       tags attached to them. The photos join the receiver's own
          *       stream, so the family timeline continues without a gap, and
          *       the albums the departing account shared keep their grantees.
-         *       An identical live photo the receiver already holds (one live
-         *       copy per owner is what the storage rule allows) folds into
-         *       the receiver's copy: memberships, tags, favorites and the
-         *       album cover follow the surviving row, and the redundant row
-         *       goes.
+         *
+         *       COLLIDING CONTENT. The storage's uniqueness rule is
+         *       owner plus content checksum, and it is TOTAL: one account
+         *       holds at most one row of a given content whether that row is
+         *       live or in the trash. Content the receiver already holds --
+         *       in ANY of the four state pairs -- therefore cannot simply
+         *       change hands, and the disposal folds it instead:
+         *
+         *       - the LIVE copy wins a mixed pair, so content that arrives
+         *         live stays visible under the receiver's name, and a copy
+         *         the receiver had trashed earlier does not bind it (trash it
+         *         again to be rid of it) -- symmetrically, the receiver's
+         *         live copy survives a trashed departing one;
+         *       - a tie keeps the RECEIVER's own row: both live keeps its
+         *         copy, both trashed keeps it under the LATER of the two
+         *         deletion marks (the content stays recoverable as long as
+         *         either copy had left);
+         *       - the losing copy's album memberships, tags, favorites and
+         *         any album cover it pinned move onto the survivor, then the
+         *         losing row goes. A losing Live Photo takes its component
+         *         video row with it (the pair is one asset), and every losing
+         *         photo announces `asset.deleted`, so a client holding the id
+         *         lets it go.
+         *
          *     - `dispose: "trash"` walks the departing account's photos into
          *       the CALLING administrator's trash, where the instance's
          *       retention window governs them -- restorable until it runs
@@ -3302,7 +3321,11 @@ export interface paths {
          *       individual trash items; a directory album's source file is
          *       moved into the server's trash area on this arm exactly like
          *       any other trash move, and the rest of the family's source
-         *       files are never touched.
+         *       files are never touched. The collision rule above applies
+         *       here too, onto the calling administrator: content they
+         *       already hold in any state folds rather than collides, and
+         *       their own live copy is never trashed by someone else's
+         *       disposal.
          *
          *     What dies with the account in BOTH arms: its sessions, API
          *     keys and pairing tokens (it can never authenticate again), its
