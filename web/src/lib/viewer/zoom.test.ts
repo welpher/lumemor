@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { createZoomEngine, VIEWER_ZOOM_BASE, VIEWER_ZOOM_MAX, type ZoomState } from './zoom';
+import { createZoomEngine, VIEWER_ZOOM_BASE, VIEWER_ZOOM_MAX, VIEWER_ZOOM_DOUBLE, type ZoomState } from './zoom';
 
 // The gradual zoom engine's contract: every input animates
 // the scale toward a lattice target through rAF interpolation
@@ -71,7 +71,14 @@ test('a step input interpolates toward the lattice target and lands exactly', ()
 	expect(states.at(-1)).toEqual({ scale: 1.5, target: 1.5 });
 	expect(pending).toBeNull();
 
-	// The second step reaches the 2x ceiling the old binary zoom had.
+	// The second step reaches 2x -- the double-click's landing -- and
+	// the third and fourth climb to the 3x ceiling.
+	zoom.zoomIn();
+	advance(300);
+	expect(states.at(-1)).toEqual({ scale: 2, target: 2 });
+	zoom.zoomIn();
+	advance(300);
+	expect(states.at(-1)).toEqual({ scale: 2.5, target: 2.5 });
 	zoom.zoomIn();
 	advance(300);
 	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_MAX, target: VIEWER_ZOOM_MAX });
@@ -80,10 +87,10 @@ test('a step input interpolates toward the lattice target and lands exactly', ()
 test('the scale clamps at both ends and inputs at a clamp are inert', () => {
 	const zoom = engine();
 
-	zoom.zoomIn();
-	advance(300);
-	zoom.zoomIn();
-	advance(300);
+	for (let step = 0; step < 4; step += 1) {
+		zoom.zoomIn();
+		advance(300);
+	}
 	// At the ceiling: another zoom-in changes nothing, schedules
 	// nothing, emits nothing.
 	const settled = states.length;
@@ -92,10 +99,10 @@ test('the scale clamps at both ends and inputs at a clamp are inert', () => {
 	expect(pending).toBeNull();
 	expect(states.at(-1)?.target).toBe(VIEWER_ZOOM_MAX);
 
-	zoom.zoomOut();
-	advance(300);
-	zoom.zoomOut();
-	advance(300);
+	for (let step = 0; step < 4; step += 1) {
+		zoom.zoomOut();
+		advance(300);
+	}
 	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_BASE, target: VIEWER_ZOOM_BASE });
 	// At the floor: zoom-out is inert the same way.
 	const floor = states.length;
@@ -117,19 +124,23 @@ test('an input mid-animation takes over from the current interpolated scale', ()
 	// animation must start from the CURRENT scale -- not snap to (or
 	// rebase on) the 1.5 it was heading to.
 	zoom.zoomIn();
-	expect(states.at(-1)?.target).toBe(VIEWER_ZOOM_MAX);
+	expect(states.at(-1)?.target).toBe(2);
 	advance(0);
 	expect(states.at(-1)?.scale).toBeCloseTo(takeover, 5);
 	// And it still lands on the lattice at the end.
 	advance(300);
-	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_MAX, target: VIEWER_ZOOM_MAX });
+	expect(states.at(-1)).toEqual({ scale: 2, target: 2 });
 
-	// The reverse: zoom-out mid-flight rebases the same way (from the
-	// ceiling the first out heads for 1.5; the second, pressed while
-	// that one flies, retargets to the base).
+	// A third input from 2's rest takes the next step; the reverse:
+	// zoom-out mid-flight rebases the same way (the first out heads
+	// for 2, the second for 1.5; the third, pressed while that one
+	// flies, retargets to the base).
+	zoom.zoomIn();
+	advance(100);
 	zoom.zoomOut();
 	advance(100);
 	const reversing = states.at(-1)?.scale ?? 0;
+	zoom.zoomOut();
 	zoom.zoomOut();
 	expect(states.at(-1)?.target).toBe(VIEWER_ZOOM_BASE);
 	advance(0);
@@ -138,19 +149,19 @@ test('an input mid-animation takes over from the current interpolated scale', ()
 	expect(states.at(-1)?.scale).toBe(VIEWER_ZOOM_BASE);
 });
 
-test('the binary toggle flips between the base and the zoomed ceiling', () => {
+test('the binary toggle flips between the base and the double-click landing', () => {
 	const zoom = engine();
 
 	zoom.toggleZoom();
 	advance(300);
-	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_MAX, target: VIEWER_ZOOM_MAX });
+	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_DOUBLE, target: VIEWER_ZOOM_DOUBLE });
 
 	zoom.toggleZoom();
 	advance(300);
 	expect(states.at(-1)).toEqual({ scale: VIEWER_ZOOM_BASE, target: VIEWER_ZOOM_BASE });
 
 	// From a mid-lattice step the toggle reads "zoomed": it returns
-	// to the base, not to the ceiling.
+	// to the base, not to the landing.
 	zoom.zoomIn();
 	advance(300);
 	zoom.toggleZoom();

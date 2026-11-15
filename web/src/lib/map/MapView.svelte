@@ -25,6 +25,23 @@
 		/** The map's accessible name. */
 		label: string;
 		/**
+		 * Whether the map answers gestures. The panel's location row
+		 * is a STATIC display (the design pins it: no drag, no zoom,
+		 * no click) -- the false form keeps the same tiles, the same
+		 * pin and the same honest degradation, minus the handlers.
+		 */
+		interactive?: boolean;
+		/**
+		 * When present, one map click hands the picked coordinates
+		 * over (the edit-location dialog's pin): the pointer gesture
+		 * lands a point the caller owns. Longitude wraps into
+		 * [-180, 180]; the Web Mercator canvas already bounds the
+		 * latitude.
+		 */
+		onpick?: (at: { lat: number; lon: number }) => void;
+		/** The id of the element describing the map's gesture (the picker's hint). */
+		describedBy?: string;
+		/**
 		 * The place ids the view frames: a selected marker's places.
 		 * Null (or absent) frames every pin -- the map's resting
 		 * view. A selection change re-frames the camera around
@@ -46,6 +63,9 @@
 		point = null,
 		cluster = true,
 		label,
+		interactive = true,
+		onpick,
+		describedBy,
 		focus = null,
 		selected = null,
 		onselect,
@@ -201,6 +221,9 @@
 				container,
 				style,
 				attributionControl: false,
+				// The static form (the panel's location row) answers no
+				// gesture: one prop, the same tiles and pins behind it.
+				interactive,
 				// The map is a browse surface: no rotation, no pitch --
 				// a family looking at "where" wants north up.
 				dragRotate: false,
@@ -242,6 +265,15 @@
 				refreshMarkers();
 			});
 			instance.on('move', refreshMarkers);
+			// The picker's arm: one click hands the clicked point over
+			// (the pin follows through the point prop). The wrap keeps
+			// the longitude in the contract's range.
+			if (onpick !== undefined) {
+				instance.on('click', (event) => {
+					const at = event.lngLat.wrap();
+					onpick({ lat: at.lat, lon: at.lng });
+				});
+			}
 
 			// The map's container is a flex cell: opening the place
 			// panel narrows it, and the library's own resize listener
@@ -332,6 +364,7 @@
 	class="map relative h-full w-full overflow-hidden bg-[color-mix(in_srgb,var(--color-text)_3%,var(--color-card))]"
 	aria-label={label}
 	role="region"
+	aria-describedby={describedBy}
 >
 	<div class="map__canvas absolute inset-0" bind:this={container}></div>
 
