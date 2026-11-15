@@ -329,6 +329,7 @@
 	     outline suppression keeps that focus visually silent. -->
 	<main
 		bind:this={main}
+		id="shell-main"
 		tabindex="-1"
 		class="shell-main flex-1 min-h-0 overflow-y-auto p-0 focus-visible:outline-none"
 	>

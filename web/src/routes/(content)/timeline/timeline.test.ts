@@ -208,13 +208,14 @@ test('the first page renders sticky month and day groups of tiles', async () => 
 	expect(tiles()).toHaveLength(3);
 	expect(tiles()[0]?.querySelector('img')?.getAttribute('src')).toBe('/api/v1/assets/a1/thumbnail?size=view');
 
-	// The scrubber at rest: faint years, dots with full accessible
-	// names, the position indicator -- no year-month bubble.
-	const stops = Array.from(document.body.querySelectorAll('.scrubber__stop'));
+	// The scrubber at rest: faint years, decorative month marks, the
+	// position indicator -- the readout mounted but transparent (the
+	// fade is a transition, not a mount).
+	const marks = Array.from(document.body.querySelectorAll('.scrubber__stop'));
 	const years = Array.from(document.body.querySelectorAll('.scrubber__year'));
 	expect(years.map((year) => year.textContent)).toEqual(['2026']);
-	expect(document.body.querySelector('.scrubber__readout')).toBeNull();
-	expect(stops.map((stop) => stop.getAttribute('aria-label'))).toEqual(['November 2026', 'October 2026']);
+	expect(marks).toHaveLength(2);
+	expect(document.body.querySelector('.scrubber__readout')?.getAttribute('style')).toContain('opacity: 0');
 
 	unmount(page);
 	flushSync();
@@ -655,7 +656,7 @@ test('the wall publishes its loaded page items as the viewer sequence', async ()
 	clearWallItems();
 });
 
-test('the scrubber jumps to a month group', async () => {
+test('the scrubber walks to a month group from the keyboard', async () => {
 	vi.stubGlobal('fetch', stubFetch(timelineRoutes()));
 	const scrolled: HTMLElement[] = [];
 	Element.prototype.scrollIntoView = function (this: HTMLElement) {
@@ -664,8 +665,11 @@ test('the scrubber jumps to a month group', async () => {
 	const page = mountPage();
 	await settle();
 
-	const stops = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.scrubber__stop'));
-	stops[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	// The keyboard path is the walk: one tab stop on the rail, the
+	// arrow moves on from the month the wall reads.
+	const control = document.body.querySelector<HTMLElement>('.scrubber__rail');
+	control?.focus();
+	control?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 	flushSync();
 
 	expect(scrolled).toHaveLength(1);
@@ -703,8 +707,13 @@ test('the scrubber tracking observes the scroll root through the capture phase',
 	await new Promise((resolve) => requestAnimationFrame(resolve));
 	flushSync();
 
-	const active = document.body.querySelector('.scrubber__stop[aria-current="true"]');
-	expect(active?.getAttribute('aria-label')).toBe('October 2026');
+	const active = document.body.querySelector('.scrubber__dot.bg-accent');
+	const activeStop = active?.closest('.scrubber__stop');
+	const marks = Array.from(document.body.querySelectorAll('.scrubber__stop'));
+	expect(marks.indexOf(activeStop as Element)).toBe(1);
+	// The scrollbar's accessible month name follows the wall's
+	// reading.
+	expect(document.body.querySelector('.scrubber__rail')?.getAttribute('aria-valuetext')).toBe('October 2026');
 	unmount(page);
 	flushSync();
 });
