@@ -228,6 +228,22 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 		return
 	}
 
+	// A COMPONENT'S DELETE CHANGES ITS STILLS' SHAPE: the link nulls
+	// through the schema, so the stills are read BEFORE the row goes
+	// (afterwards nothing points at it) and each one announces its
+	// change below -- the same convergence the pair maintenance
+	// publishes, so an open wall drops the type mark instead of
+	// keeping a mark for a motion that no longer exists.
+	var orphanedStills []dbgen.ListLivePhotoStillsOfMotionRow
+	if row.IsComponent {
+		stills, err := s.queries.ListLivePhotoStillsOfMotion(r.Context(), row.ID)
+		if err != nil {
+			s.internalError(w, r, "list the component's stills", err)
+			return
+		}
+		orphanedStills = stills
+	}
+
 	// The photo row goes before its linked component video row: the
 	// component delete would otherwise trip the foreign key the photo
 	// still holds on it.
@@ -244,12 +260,25 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 	}
 
 	if row.LivePhotoVideoID.Valid {
-		component, err := s.queries.GetAssetByID(r.Context(), row.LivePhotoVideoID)
-		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			s.internalError(w, r, "load Live Photo component for delete", err)
+		// THE LAST STILL KEEPS THE MOTION. A burst (or a duplicated
+		// pair) can leave two stills pointing at one motion; the motion
+		// goes with the last of them, never with the first. The photo
+		// row is already gone, so the remaining count is exactly "does
+		// anything else still need these bytes".
+		references, err := s.queries.CountLivePhotoReferences(r.Context(), row.LivePhotoVideoID)
+		if err != nil {
+			s.internalError(w, r, "count the Live Photo references", err)
 			return
 		}
-		if err == nil {
+		var component dbgen.Asset
+		if references == 0 {
+			component, err = s.queries.GetAssetByID(r.Context(), row.LivePhotoVideoID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				s.internalError(w, r, "load Live Photo component for delete", err)
+				return
+			}
+		}
+		if references == 0 && err == nil {
 			// The component is never the client-visible asset, so it
 			// purges without its own announcement; its file answers
 			// the same reference rule through the same helper.
@@ -258,6 +287,18 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 				return
 			}
 		}
+	}
+
+	for _, still := range orphanedStills {
+		if still.DeletedAt.Valid {
+			// A trashed still has no surface to converge (the trash
+			// view renders no type mark).
+			continue
+		}
+		s.events.Publish("asset.updated", map[string]string{
+			"assetId": uuid.UUID(still.ID.Bytes).String(),
+			"kind":    string(dbgen.MediaKindImage),
+		})
 	}
 
 	s.publishAssetEvent("asset.deleted", row)

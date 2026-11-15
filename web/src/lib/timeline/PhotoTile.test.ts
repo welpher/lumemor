@@ -286,15 +286,128 @@ test('badges: favorite star, live photo mark, video mark', () => {
 	flushSync();
 
 	const live = mountTile({ livePhotoVideoId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' });
-	expect(tileRoot().querySelector('.tile__badge--live')).not.toBeNull();
+	expect(tileRoot().querySelector('.tile__live')).not.toBeNull();
 	unmount(live.tile);
 	flushSync();
 
 	const video = mountTile({ kind: 'video' });
 	expect(tileRoot().querySelector('.tile__badge--video')).not.toBeNull();
-	// A video never shows the live badge.
-	expect(tileRoot().querySelector('.tile__badge--live')).toBeNull();
+	// A video never shows the live mark.
+	expect(tileRoot().querySelector('.tile__live')).toBeNull();
 	unmount(video.tile);
+	flushSync();
+});
+
+test('the live mark is a bare type glyph at the top-right, named through the anchor', () => {
+	// The pin: no plate behind it (the selection check already owns a
+	// filled circle at the top-left; a second disc reads as a second
+	// control), a drop shadow for legibility over any photo, and the
+	// accessible name taking the type through the anchor alone.
+	const { tile } = mountTile({ livePhotoVideoId: '0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70' });
+	const mark = tileRoot().querySelector<HTMLElement>('.tile__live');
+	expect(mark).not.toBeNull();
+	expect(mark?.getAttribute('aria-hidden')).toBe('true');
+	expect(mark?.className).toContain('top-2');
+	expect(mark?.className).toContain('right-2');
+	expect(mark?.className).toContain('drop-shadow');
+	// No plate: no background utility and no night surface.
+	expect(mark?.className).not.toContain('bg-night');
+	expect(mark?.className).not.toContain('rounded-full');
+	// The anchor carries the type in its accessible name.
+	expect(tileLink().getAttribute('aria-label')).toBe('IMG_1234.jpg · Live Photo');
+
+	// A plain photo says nothing extra.
+	unmount(tile);
+	flushSync();
+	const plain = mountTile({});
+	expect(plain.tile && tileLink().getAttribute('aria-label')).toBe('IMG_1234.jpg');
+	expect(tileRoot().querySelector('.tile__live')).toBeNull();
+	unmount(plain.tile);
+	flushSync();
+});
+
+test('a hover asks for the moment: the stream mounts, plays, pushes and flips the mark', () => {
+	// The moment is not fetched at rest (the hidden video costs no
+	// byte until a hover asks); entering the tile mounts the
+	// component row's play stream, muted/looping, and only a stream
+	// that is actually PLAYING takes the push and flips the glyph.
+	const { tile } = mountTile({ livePhotoVideoId: 'c2' });
+	const root = tileRoot();
+	expect(root.querySelector('video.tile__motion')).toBeNull();
+
+	root.dispatchEvent(new MouseEvent('mouseenter'));
+	flushSync();
+	const motion = root.querySelector<HTMLVideoElement>('video.tile__motion');
+	expect(motion).not.toBeNull();
+	expect(motion?.getAttribute('src')).toBe('/api/v1/assets/c2/play');
+	expect(motion?.muted).toBe(true);
+	expect(motion?.loop).toBe(true);
+	expect(motion?.hasAttribute('autoplay')).toBe(true);
+	expect(motion?.hasAttribute('controls')).toBe(false);
+	// The push waits for the stream: nothing moves yet.
+	expect(root.querySelector('.tile__media--moving')).toBeNull();
+
+	motion?.dispatchEvent(new Event('playing'));
+	flushSync();
+	expect(root.querySelector('.tile__media--moving')).not.toBeNull();
+	// The mark flipped to the pause pair (two bars, one svg path).
+	expect(root.querySelectorAll('.tile__live path')).toHaveLength(1);
+
+	root.dispatchEvent(new MouseEvent('mouseleave'));
+	flushSync();
+	expect(root.querySelector('video.tile__motion')).toBeNull();
+	expect(root.querySelector('.tile__media--moving')).toBeNull();
+	expect(root.querySelectorAll('.tile__live circle')).toHaveLength(2);
+	unmount(tile);
+	flushSync();
+});
+
+test('a keyboard focus plays too, and losing it resets', () => {
+	const { tile } = mountTile({ livePhotoVideoId: 'c2' });
+	const root = tileRoot();
+	root.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+	flushSync();
+	expect(root.querySelector('video.tile__motion')).not.toBeNull();
+	root.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+	flushSync();
+	expect(root.querySelector('video.tile__motion')).toBeNull();
+	unmount(tile);
+	flushSync();
+});
+
+test('a moment that cannot play keeps the still and the type mark, silently', () => {
+	// The component's transcode may still be running (or its file may
+	// be gone): the stream errors, the still stays, the mark stays the
+	// type glyph, and nothing is announced. The next hover asks again
+	// -- the transcode may have landed in between.
+	const { tile } = mountTile({ livePhotoVideoId: 'c2' });
+	const root = tileRoot();
+	root.dispatchEvent(new MouseEvent('mouseenter'));
+	flushSync();
+	const motion = root.querySelector<HTMLVideoElement>('video.tile__motion');
+	motion?.dispatchEvent(new Event('error'));
+	flushSync();
+	expect(root.querySelector('video.tile__motion')).toBeNull();
+	expect(root.querySelector('.tile__media--moving')).toBeNull();
+	expect(root.querySelectorAll('.tile__live circle')).toHaveLength(2);
+	expect(root.textContent).not.toContain('error');
+
+	// Leaving forgets the refusal: the next entry asks again.
+	root.dispatchEvent(new MouseEvent('mouseleave'));
+	flushSync();
+	root.dispatchEvent(new MouseEvent('mouseenter'));
+	flushSync();
+	expect(root.querySelector('video.tile__motion')).not.toBeNull();
+	unmount(tile);
+	flushSync();
+});
+
+test('a plain photo never mounts a motion stream', () => {
+	const { tile } = mountTile({});
+	tileRoot().dispatchEvent(new MouseEvent('mouseenter'));
+	flushSync();
+	expect(tileRoot().querySelector('video.tile__motion')).toBeNull();
+	unmount(tile);
 	flushSync();
 });
 

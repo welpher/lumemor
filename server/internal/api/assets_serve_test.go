@@ -11,13 +11,16 @@
 package api
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"image/color"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -1050,4 +1053,150 @@ func TestGetAssetPlayServing(t *testing.T) {
 	if componentOriginal.Code != http.StatusOK {
 		t.Fatalf("component original status = %d, want %d (body %q)", componentOriginal.Code, http.StatusOK, componentOriginal.Body.String())
 	}
+}
+
+// TestLivePhotoDownloadAnswersOneArchive pins the Live Photo download's
+// packaging: the still alone is not the asset the family kept, so the
+// response is one ZIP of the pair. The motion that arrived as its own
+// file (the paired-upload shape) always rides along; a motion the
+// server carved out of the still's own bytes rides only when the
+// account's embedded-motion preference asks for it, and a motion whose
+// file went missing degrades the download to the still alone instead of
+// failing it.
+func TestLivePhotoDownloadAnswersOneArchive(t *testing.T) {
+	env := newAssetEnv(t, 8<<20)
+
+	stillBytes := jpegColorFixture(t, color.RGBA{R: 0x40, G: 0x50, B: 0x60, A: 0xff})
+	motionBytes := movFixture()
+	asset := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-live-download",
+		"fileName":      "IMG_9001.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_9001.jpg", content: stillBytes},
+		{field: "liveVideo", name: "IMG_9001.mov", content: motionBytes},
+	}))
+	target := "/api/v1/assets/" + asset.Id.String() + "/original"
+
+	// The paired motion is a file of its own: it rides along with no
+	// preference involved.
+	rec := env.serveGet(t, target, env.cookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("live download status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Type"); got != "application/zip" {
+		t.Errorf("content-type = %q, want application/zip", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "attachment; filename*=UTF-8''IMG_9001.zip" {
+		t.Errorf("content-disposition = %q, want the still's stem with the zip extension", got)
+	}
+	paired := unzipEntries(t, rec.Body.Bytes())
+	if len(paired) != 2 {
+		t.Fatalf("archive entries = %d, want the still and its motion", len(paired))
+	}
+	if !bytes.Equal(paired["IMG_9001.jpg"], stillBytes) {
+		t.Errorf("still entry = %d bytes, want the uploaded %d bytes", len(paired["IMG_9001.jpg"]), len(stillBytes))
+	}
+	if !bytes.Equal(paired["IMG_9001.mov"], motionBytes) {
+		t.Errorf("motion entry = %d bytes, want the uploaded %d bytes", len(paired["IMG_9001.mov"]), len(motionBytes))
+	}
+
+	// An EXTRACTED motion (carved out of the still's own bytes) is the
+	// duplicate the switch exists for: absent by default ...
+	var componentID uuid.UUID
+	if err := env.pool.QueryRow(t.Context(),
+		`SELECT live_photo_video_id FROM assets WHERE id = $1`, pgUUID(asset.Id)).Scan(&componentID); err != nil {
+		t.Fatalf("read the pair's component id: %v", err)
+	}
+	if _, err := env.pool.Exec(t.Context(),
+		`UPDATE assets SET motion_extracted = true WHERE id = $1`, pgUUID(componentID)); err != nil {
+		t.Fatalf("mark the motion extracted: %v", err)
+	}
+	extracted := unzipEntries(t, env.serveGet(t, target, env.cookie, nil).Body.Bytes())
+	if len(extracted) != 1 || !bytes.Equal(extracted["IMG_9001.jpg"], stillBytes) {
+		t.Errorf("archive with the embedded motion off = %v, want the still alone", entryNames(extracted))
+	}
+
+	// ... and present once the account asks for it.
+	patch := httptest.NewRequest(http.MethodPatch, "/api/v1/users/me",
+		bytes.NewBufferString(`{"downloadIncludeEmbeddedVideos":true}`))
+	patch.Header.Set("Content-Type", "application/json")
+	patch.AddCookie(env.cookie)
+	patchRec := httptest.NewRecorder()
+	env.router.ServeHTTP(patchRec, patch)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("preference PATCH status = %d, want %d (body %q)", patchRec.Code, http.StatusOK, patchRec.Body.String())
+	}
+	asked := unzipEntries(t, env.serveGet(t, target, env.cookie, nil).Body.Bytes())
+	if len(asked) != 2 {
+		t.Errorf("archive with the embedded motion on = %v, want both files again", entryNames(asked))
+	}
+
+	// A motion whose bytes vanished degrades the download to the still
+	// alone: the family still gets the photo, and the sweep owns the
+	// broken pair.
+	var motionPath string
+	if err := env.pool.QueryRow(t.Context(),
+		`SELECT file_path FROM assets WHERE id = $1`, pgUUID(componentID)).Scan(&motionPath); err != nil {
+		t.Fatalf("read the motion's stored path: %v", err)
+	}
+	absolute, err := storage.ResolveStoredPath(env.dataDir, motionPath)
+	if err != nil {
+		t.Fatalf("resolve the motion file: %v", err)
+	}
+	if err := os.Remove(absolute); err != nil {
+		t.Fatalf("remove the motion file: %v", err)
+	}
+	degraded := env.serveGet(t, target, env.cookie, nil)
+	if degraded.Code != http.StatusOK {
+		t.Fatalf("download with the motion gone status = %d, want %d", degraded.Code, http.StatusOK)
+	}
+	if names := entryNames(unzipEntries(t, degraded.Body.Bytes())); len(names) != 1 {
+		t.Errorf("archive entries = %v, want the still alone", names)
+	}
+
+	// A plain photo stays the plain original: the archive is the
+	// Live Photo's shape, not every download's.
+	plain := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-plain-download",
+		"fileName":      "IMG_9002.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_9002.jpg", content: jpegColorFixture(t, color.RGBA{R: 0x70, G: 0x80, B: 0x90, A: 0xff})},
+	}))
+	plainRec := env.serveGet(t, "/api/v1/assets/"+plain.Id.String()+"/original", env.cookie, nil)
+	if got := plainRec.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Errorf("plain download content-type = %q, want the stored image/jpeg", got)
+	}
+}
+
+// unzipEntries reads one archive body into a name-to-bytes map.
+func unzipEntries(t *testing.T, body []byte) map[string][]byte {
+	t.Helper()
+	reader, err := zip.NewReader(bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		t.Fatalf("read the archive: %v", err)
+	}
+	entries := make(map[string][]byte, len(reader.File))
+	for _, file := range reader.File {
+		opened, err := file.Open()
+		if err != nil {
+			t.Fatalf("open archive entry %q: %v", file.Name, err)
+		}
+		content, err := io.ReadAll(opened)
+		_ = opened.Close()
+		if err != nil {
+			t.Fatalf("read archive entry %q: %v", file.Name, err)
+		}
+		entries[file.Name] = content
+	}
+	return entries
+}
+
+// entryNames answers an archive's entry names in a stable order.
+func entryNames(entries map[string][]byte) []string {
+	names := make([]string, 0, len(entries))
+	for name := range entries {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

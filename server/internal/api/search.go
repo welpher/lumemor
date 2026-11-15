@@ -176,7 +176,7 @@ func (s *server) searchLimit(w http.ResponseWriter, limit *int) (int, bool) {
 // searchFilters validates the filter parameters and folds them onto
 // the search package's filter set.
 func (s *server) searchFilters(w http.ResponseWriter, params apigen.SearchAssetsParams, query string) (search.Filters, bool) {
-	filters := search.Filters{Query: query}
+	filters := search.Filters{Query: query, IsMotion: params.IsMotion}
 
 	if params.From != nil && params.To != nil && !params.From.Before(*params.To) {
 		s.writeValidationError(w, "from must be before to", []string{"from", "to"})

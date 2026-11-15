@@ -72,10 +72,12 @@ func (w *RetentionWorker) Work(ctx context.Context, job *river.Job[RetentionArgs
 }
 
 // periodicJobs returns the queue's full periodic bundle: the requeue
-// sweep and the trash expiry, each on its own hourly schedule. The
-// combined list is what the River client starts with.
+// sweep, the trash expiry and the Live Photo pair maintenance, each on
+// its own hourly schedule. The combined list is what the River client
+// starts with.
 func periodicJobs() []*river.PeriodicJob {
-	return append(sweepPeriodicJobs(), retentionPeriodicJobs()...)
+	jobs := append(sweepPeriodicJobs(), retentionPeriodicJobs()...)
+	return append(jobs, livePhotoSweepPeriodicJobs()...)
 }
 
 // retentionPeriodicJobs returns the periodic job registration of the

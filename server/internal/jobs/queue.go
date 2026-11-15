@@ -237,6 +237,12 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		pool:   cfg.Pool,
 		logger: logger,
 	})
+	river.AddWorker(workers, &LivePhotoSweepWorker{
+		pool:    cfg.Pool,
+		dataDir: cfg.DataDir,
+		bus:     cfg.Bus,
+		logger:  logger,
+	})
 	river.AddWorker(workers, &RetentionWorker{
 		pool:    cfg.Pool,
 		dataDir: cfg.DataDir,
@@ -368,6 +374,13 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	// injected one) is the closed seam -- the four slots'
 	// per-asset enqueues the rerun drivers wait on.
 	metadataWorker.mlDispatch = queue.EnqueueMlJobs
+	// The single-file motion photo's own pipeline: the extraction
+	// creates the component row, and this seam queues that row's
+	// metadata and transcode -- the exact pair the paired upload
+	// queues for its component. Same wiring discipline: the queue
+	// exists only now that the client does, and this runs before the
+	// client starts.
+	metadataWorker.motionDispatch = queue.enqueueMotionJobs
 	thumbnailWorker.mlDispatch = queue.EnqueueMlJobs
 	transcodeWorker.mlDispatch = queue.EnqueueMlJobs
 	faceDetectWorker.recognizeDispatch = queue.EnqueueFaceRecognize
@@ -442,6 +455,21 @@ func (q *Queue) EnqueueTranscode(ctx context.Context, assetID uuid.UUID) error {
 		return fmt.Errorf("insert transcode job: %w", err)
 	}
 	return nil
+}
+
+// enqueueMotionJobs queues one extracted motion component's pipeline:
+// its metadata row (duration and dimensions) and its transcode (the
+// playable copy the pair's motion plays through). Failures are logged
+// and swallowed -- the upload path's enqueue discipline: the row is
+// committed, the requeue sweep is the recovery, and a failed enqueue
+// must not fail the still's own job.
+func (q *Queue) enqueueMotionJobs(ctx context.Context, assetID uuid.UUID) {
+	if err := q.EnqueueMetadata(ctx, assetID); err != nil {
+		q.logger.Error("enqueue the extracted motion's metadata job", "error", err, "asset_id", assetID)
+	}
+	if err := q.EnqueueTranscode(ctx, assetID); err != nil {
+		q.logger.Error("enqueue the extracted motion's transcode job", "error", err, "asset_id", assetID)
+	}
 }
 
 // Stop drains the queue gracefully: producers stop fetching new jobs,

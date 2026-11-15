@@ -2,8 +2,8 @@
 	// The full-screen asset viewer: the media stage (an image's
 	// blurhash placeholder with the view-size and full-resolution
 	// serving copies crossfading over it, a video's transcoded
-	// stream behind its poster, a Live Photo's press-toggle between
-	// the still and the component video's play stream), the gradual
+	// stream behind its poster, a Live Photo's action-row toggle
+	// between the still and the component video's play stream), the gradual
 	// zoom, the arrow-key walk over the timeline wall's current page
 	// sequence, the floating chrome, and the layered Escape rule
 	// (the page's assign dialog first, then the drawn-face mode,
@@ -86,10 +86,13 @@
 	//   arrows are inert for it. Every navigation replaces the route
 	//   (no history spam), which keeps Escape's history-back the
 	//   one-step return to the timeline.
-	// - A Live Photo's press probes the component's play stream
-	//   through the page; ASSET_NOT_READY keeps the still photo (a
-	//   later press re-probes -- the pair's own ready event says
-	//   nothing about the component's transcode).
+	// - A Live Photo's action row leads with the play/stop toggle: the
+	//   first press probes the component's play stream through the
+	//   page and plays the motion IN PLACE, the second press (or the
+	//   stream's own end) returns the still. ASSET_NOT_READY (or a
+	//   stream that refuses) keeps the still photo with no error
+	//   surfaced; a later press re-probes, because the pair's own
+	//   ready event says nothing about the component's transcode.
 	// - Escape layers: the page's assign dialog closes first (its
 	//   own Escape), then the drawn-face mode, then the edit-people
 	//   panel, then the panel, then the route exits. Keys typed into
@@ -117,6 +120,8 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
+	import Play from '@lucide/svelte/icons/play';
+	import Pause from '@lucide/svelte/icons/pause';
 	import Star from '@lucide/svelte/icons/star';
 	import Download from '@lucide/svelte/icons/download';
 	import Info from '@lucide/svelte/icons/info';
@@ -578,15 +583,11 @@
 	// The binary zoom toggle: a double-click on the media flips
 	// 1x/2x through the same gradual animation (the engine's ceiling
 	// stays at 3x -- the steps reach it; the double-click does not
-	// jump past the readable middle). The Live Photo's press
-	// affordance owns its own clicks -- a double press is the press
-	// pair (play/stop), never a zoom toggle.
-	function handleStageDblclick(event: MouseEvent): void {
-		if (!isImage || drawOpen) {
-			return;
-		}
-		const target = event.target;
-		if (target instanceof HTMLElement && target.closest('.viewer__press') !== null) {
+	// jump past the readable middle). While a Live Photo's motion plays
+	// it owns the stage's clicks: a double-click there is a viewer
+	// double-taking at the movement, not a request to zoom.
+	function handleStageDblclick(): void {
+		if (!isImage || drawOpen || livePlaying) {
 			return;
 		}
 		zoomEngine.toggleZoom();
@@ -741,6 +742,29 @@
 			</button>
 			{#if detail !== null}
 				<div class="viewer__bar-actions ms-auto flex flex-nowrap gap-1">
+					{#if isLivePhoto}
+						<!-- The Live Photo's toggle leads the action row: one
+						     press plays the pair's motion in place, the next
+						     stops it, and the stream's own end returns the
+						     still (the icon-only arm: lucide play/pause, the
+						     pressed state and the label both follow). It
+						     renders for the shared member too -- playing is a
+						     read, not a write. -->
+						<button
+							class="viewer__icon viewer__live-toggle inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							type="button"
+							aria-label={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
+							title={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
+							aria-pressed={livePlaying}
+							onclick={() => void pressLive()}
+						>
+							{#if livePlaying}
+								<Pause size={20} />
+							{:else}
+								<Play size={20} />
+							{/if}
+						</button>
+					{/if}
 					<button
 						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 						type="button"
@@ -855,7 +879,7 @@
 				class:cursor-zoom-out={zoomTarget > VIEWER_ZOOM_BASE}
 				style:--viewer-zoom={zoomScale}
 				bind:this={stage}
-				ondblclick={handleStageDblclick}
+				ondblclick={() => handleStageDblclick()}
 			>
 				<!-- The stage's failure: the record answered but the bytes did
 				     not (a deleted file, a vanished disk), or the record
@@ -1033,32 +1057,22 @@
 
 						{#if livePlaying && detail.livePhotoVideoId !== null}
 							<!-- The Live Photo's motion: the component row's play
-							     stream, muted and looping like a camera's live
-							     capture; the end returns to the still. -->
+							     stream, muted, playing ONCE (a camera's clip, not a
+							     loop). The stage keeps the still's box: the video
+							     letterboxes inside it, so the picture never jumps
+							     when its own aspect differs from the still's. The
+							     end -- or a refused stream -- returns the still
+							     without a word. -->
 							<video
 								class="viewer__live absolute inset-0 w-full h-full object-contain z-(--z-stage-live)"
 								autoplay
 								muted
-								loop
 								playsinline
 								src={assetPlayUrl(detail.livePhotoVideoId)}
 								aria-label={$_('asset_live_photo_label')}
 								onended={() => (livePlaying = false)}
+								onerror={() => (livePlaying = false)}
 							></video>
-						{/if}
-
-						{#if isLivePhoto}
-							<!-- The press affordance (the pinned Live Photo
-							     interaction): a transparent button covering the
-							     still; pressing swaps the still for the component
-							     video's motion and pressing again swaps back. -->
-							<button
-								class="viewer__press absolute inset-0 z-(--z-stage-chrome) block p-0 bg-transparent cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-								type="button"
-								aria-label={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
-								aria-pressed={livePlaying}
-								onclick={() => void pressLive()}
-							></button>
 						{/if}
 
 						{#if faceBoxesVisible}

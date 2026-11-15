@@ -1350,3 +1350,49 @@ func TestSearchParamsValidation(t *testing.T) {
 		requireSearchError(t, rec, "personIds")
 	})
 }
+
+// TestSearchIsMotionFilterAnswersBehindTheContract pins the isMotion
+// slot the contract keeps and the interface leaves unexposed: the
+// backend answers it in both directions (a Live Photo is a still
+// carrying a motion), the motion's own component row never appears in
+// either answer, and a page of results is unchanged when the parameter
+// is absent.
+func TestSearchIsMotionFilterAnswersBehindTheContract(t *testing.T) {
+	env := newSearchEnv(t)
+	owner := env.sessionUserID(t)
+	taken := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
+	plain := searchAssetID("71")
+	still := searchAssetID("72")
+	motion := searchAssetID("73")
+	env.insertSearchAsset(t, plain, owner, taken, "plain.jpg", "", searchAssetOpts{})
+	env.insertSearchAsset(t, still, owner, taken.Add(time.Minute), "live.jpg", "", searchAssetOpts{})
+	env.insertSearchAsset(t, motion, owner, taken, "live.mp4", "",
+		searchAssetOpts{mediaKind: "video", isComponent: true})
+	env.exec(t, "UPDATE assets SET live_photo_video_id = $2 WHERE id = $1", pgUUID(still), pgUUID(motion))
+
+	// true: the Live Photo's still alone.
+	page := env.getSearch(t, env.cookie, "isMotion=true&locale=en")
+	if ids := searchItemsIDs(page); len(ids) != 1 || ids[0] != still {
+		t.Errorf("isMotion=true ids = %v, want the still alone %s", ids, still)
+	}
+	// false: everything without a motion.
+	page = env.getSearch(t, env.cookie, "isMotion=false&locale=en")
+	if ids := searchItemsIDs(page); len(ids) != 1 || ids[0] != plain {
+		t.Errorf("isMotion=false ids = %v, want the plain still alone %s", ids, plain)
+	}
+	// Absent: both stills, the component never.
+	page = env.getSearch(t, env.cookie, "locale=en")
+	if ids := searchItemsIDs(page); len(ids) != 2 {
+		t.Errorf("browse ids = %v, want the two stills and no component", ids)
+	}
+	// The facets count the filtered set with the slot applied (its
+	// kinds facet is images only), and the slot is no facet of its own:
+	// the response's facet set carries no new group.
+	page = env.getSearch(t, env.cookie, "isMotion=true&locale=en")
+	for _, kind := range page.Facets.Kinds {
+		if kind.Kind != apigen.MediaKindImage {
+			t.Errorf("kinds facet carries %q under isMotion=true, want images alone", kind.Kind)
+		}
+	}
+}

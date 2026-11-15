@@ -78,6 +78,7 @@ SELECT role FROM users WHERE id = $1;
 -- verify step -- the hash never travels past the handler's mapping.
 SELECT id, name, email, password_hash, role, locale, theme,
        download_format, download_include_videos, download_include_sidecars,
+       download_include_embedded_videos,
        is_disabled, totp_secret, created_at, updated_at
 FROM users WHERE id = $1;
 
@@ -96,10 +97,13 @@ UPDATE users SET
     download_format = COALESCE(sqlc.narg('download_format'), download_format),
     download_include_videos = COALESCE(sqlc.narg('download_include_videos'), download_include_videos),
     download_include_sidecars = COALESCE(sqlc.narg('download_include_sidecars'), download_include_sidecars),
+    download_include_embedded_videos =
+        COALESCE(sqlc.narg('download_include_embedded_videos'), download_include_embedded_videos),
     updated_at = now()
 WHERE id = sqlc.arg('id')
 RETURNING id, name, email, password_hash, role, locale, theme,
           download_format, download_include_videos, download_include_sidecars,
+          download_include_embedded_videos,
           is_disabled, totp_secret, created_at, updated_at;
 
 -- name: UpdateUserPassword :execrows

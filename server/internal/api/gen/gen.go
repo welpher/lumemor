@@ -4947,6 +4947,11 @@ type UserSelfPatch struct {
 	// whole-album downloads.
 	DownloadFormat *DownloadFormat `json:"downloadFormat,omitempty"`
 
+	// DownloadIncludeEmbeddedVideos The download packaging's embedded-motion switch (default
+	// false: the single-file motion photo's original already
+	// carries its motion).
+	DownloadIncludeEmbeddedVideos *bool `json:"downloadIncludeEmbeddedVideos,omitempty"`
+
 	// DownloadIncludeSidecars The download packaging's sidecar switch.
 	DownloadIncludeSidecars *bool `json:"downloadIncludeSidecars,omitempty"`
 
@@ -4988,6 +4993,14 @@ type UserSelfResponse struct {
 	// DownloadFormat The account's preferred archive format of batch and
 	// whole-album downloads.
 	DownloadFormat DownloadFormat `json:"downloadFormat"`
+
+	// DownloadIncludeEmbeddedVideos Whether a download adds the motion a single-file "motion
+	// photo" embeds as a separate video file. Default `false`:
+	// the still's original already carries that motion, so the
+	// extra copy is a duplicate unless the account asks for it.
+	// A paired Live Photo's own motion file always rides along
+	// and this switch never removes it.
+	DownloadIncludeEmbeddedVideos bool `json:"downloadIncludeEmbeddedVideos"`
 
 	// DownloadIncludeSidecars Whether the account's download packaging includes EXIF
 	// sidecar files (`.xmp`) beside the media.
@@ -5357,6 +5370,17 @@ type SearchAssetsParams struct {
 	// CALLER's tags. Another account's tag ids drop out of the
 	// filter (tags are per-user state).
 	TagIds *[]openapi_types.UUID `form:"tagIds,omitempty" json:"tagIds,omitempty"`
+
+	// IsMotion Restrict the results to Live Photos (`true`) or to
+	// everything else (`false`): an asset counts as a Live Photo
+	// exactly when it carries a motion. THE INTERFACE LEAVES
+	// THIS SLOT UNEXPOSED for now -- the search surface's
+	// filter bar does not render it and the web client never
+	// sends it; the parameter exists so the backend can answer
+	// the question when a surface asks, without a second
+	// contract revision. It is not a facet: the facet counts
+	// ignore it.
+	IsMotion *bool `form:"isMotion,omitempty" json:"isMotion,omitempty"`
 
 	// Locale The display locale of the places facet's names, exactly
 	// the `GET /places` locale join. Absent means `en`. A value
@@ -8409,6 +8433,19 @@ func (siw *ServerInterfaceWrapper) SearchAssets(w http.ResponseWriter, r *http.R
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagIds"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "isMotion" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "isMotion", r.URL.Query(), &params.IsMotion, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "isMotion"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "isMotion", Err: err})
 		}
 		return
 	}
