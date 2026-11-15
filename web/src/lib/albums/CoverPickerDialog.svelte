@@ -18,6 +18,7 @@
 	// from a later page must never be called missing).
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
+	import { untrack } from 'svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import Button from '$lib/components/Button.svelte';
 	import { toast } from '$lib/components/toast.svelte';
@@ -75,13 +76,23 @@
 	const goneIds = $derived(poolComplete ? currentCoverIds.filter((id) => !pool.has(id) && picked.includes(id)) : []);
 	const remaining = $derived(Math.max(0, maxItems - picked.length));
 
-	// Reseed the choice on every open: the stored pin in its own
-	// order, an unset pin empty (the automatic state).
+	// Reseed the choice on the OPEN EDGE alone: the stored pin in its
+	// own order, an unset pin empty (the automatic state). Seeding on
+	// every prop change would wipe a half-made pick the moment a
+	// live event refreshes the parent's detail -- the dialog exists
+	// to hold the in-progress pick, so the seed reads the prop
+	// through untrack and only the false-to-true transition plants
+	// it.
+	let wasOpen = false;
 	$effect(() => {
-		if (open) {
-			picked = [...currentCoverIds];
-			hadPin = currentCoverIds.length > 0;
+		const isOpen = open;
+		if (isOpen && !wasOpen) {
+			untrack(() => {
+				picked = [...currentCoverIds];
+				hadPin = currentCoverIds.length > 0;
+			});
 		}
+		wasOpen = isOpen;
 	});
 
 	/** Toggle one frame in or out of the pick; the over-full click is refused. */

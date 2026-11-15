@@ -190,14 +190,29 @@ func TestCoverSmallCollectionNeverRotates(t *testing.T) {
 	if len(first.CoverAssetIds) != 6 {
 		t.Fatalf("small-collection frames = %d, want 6 (a sample of the eleven)", len(first.CoverAssetIds))
 	}
-	instant = instant.AddDate(0, 0, 14)
-	second := wallCardOf(t, env, album)
-	if fmt.Sprint(second.CoverAssetIds) != fmt.Sprint(first.CoverAssetIds) {
-		t.Errorf("a small collection rotated: %v then %v", first.CoverAssetIds, second.CoverAssetIds)
+	// The freeze below the floor: a mid-week upload cannot move the
+	// stored group (the week row answers before any size test). The
+	// store is one row per frame, so the frozen group of six answers
+	// as six rows.
+	extra := uuid.MustParse("0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6f99")
+	env.insertTimelineAsset(t, extra, adminID, time.Date(2026, 5, 2, 9, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.addTimelineItem(t, album, extra, adminID)
+	midWeek := wallCardOf(t, env, album)
+	if fmt.Sprint(midWeek.CoverAssetIds) != fmt.Sprint(first.CoverAssetIds) {
+		t.Errorf("a mid-week upload moved the small group: %v then %v", first.CoverAssetIds, midWeek.CoverAssetIds)
 	}
 	if got := env.queryInt(t,
-		"SELECT count(*) FROM album_cover_week_picks WHERE album_id = $1", pgUUID(album)); got != 0 {
-		t.Errorf("small-collection week rows = %d, want 0 (no rotation, no store)", got)
+		"SELECT count(*) FROM album_cover_week_picks WHERE album_id = $1", pgUUID(album)); got != 6 {
+		t.Errorf("small-collection week rows = %d, want 6 (one stored group of six frames)", got)
+	}
+	// The next week re-samples over the grown pool: the collection's
+	// own truth (the new member earns its chance at the boundary),
+	// never a mid-week move -- the rotation letter's "no rotation"
+	// governs time, not the pool's membership.
+	instant = instant.AddDate(0, 0, 14)
+	second := wallCardOf(t, env, album)
+	if len(second.CoverAssetIds) != 6 {
+		t.Fatalf("the boundary re-sample frames = %d, want 6", len(second.CoverAssetIds))
 	}
 }
 
