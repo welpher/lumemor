@@ -9,8 +9,9 @@ import 'package:lumemor_api/api.dart';
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **id** | **String** | Identifier of the face row. | 
-**score** | **double** | The detector's confidence for this face. | 
+**score** | **double** | The detector's confidence for this face; a hand-drawn face (the caller's own certainty) carries 1.0.  | 
 **thumbnail** | **String** | URL of the face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with this face's id, serving the bounding-box crop of the asset's view-size derivative.  | 
+**bbox** | [**FaceBbox**](FaceBbox.md) |  | 
 **clusterId** | **String** | Identifier of the face's cluster, or null before the clustering assigned one (a face the recognition run has not grouped yet).  | 
 **label** | [**PersonLabel**](PersonLabel.md) | The caller's own label of the face's cluster, or null when the caller has not labeled it (the unnamed state) -- and null for a clusterless face, which has no cluster to label.  | 
 **birthDate** | [**Date**](Date.md) | The person's birth date (the entity's own attribute), or null when unset or the face has no cluster. The client computes the capture-time age from it and the asset's `takenAt` -- the birth date's whole purpose beside the birthday memories.  | 

@@ -16,6 +16,15 @@ void main() {
       // TODO
     });
 
+    // Add one hand-drawn face to an asset.
+    //
+    // The manual face: the owner draws a box around a face the detector missed and the drawn box becomes a face row of that asset -- the same rows detection writes, minus a detector (the row's model is null, its score 1.0 -- the caller's own certainty) and minus an embedding (the recognition never saw it, so the face joins no cluster until the caller assigns one). The box rides in the FaceBbox per-mille units; the width and height halves must be at least 1 (a zero-extent box is nothing drawn).  The refusal discipline is the face writes' own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown asset, another account's asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A bbox value outside the 0..1000 bounds, a missing half, or a body that fails to decode answers 400 `VALIDATION_FAILED`.  The write inserts the row and answers it; it publishes NO event: a face with no cluster announces no person change, and the caller's own session converges through the response (the same silence a fresh detection's rows keep until recognition names them). The caller's next step is the assign flow -- `POST /faces/{faceId}/move` or the from-face creation -- which is where the drawn face becomes someone. 
+    //
+    //Future<FaceCreated> createFace(FaceCreateRequest faceCreateRequest) async
+    test('test createFace', () async {
+      // TODO
+    });
+
     // Release one face from its person.
     //
     // The single-face detach: the face's cluster assignment goes NULL, returning it to the not-yet-grouped pool it came from (the state a freshly detected face holds before the clustering assigns it). The face row survives -- it still lists among its asset's faces, now carrying no person -- and any later assign write can re-home it.  The refusal discipline is the face move's own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned, a trashed, hidden or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is part of no person and answers the same 404: there is no membership to release.  The source cluster does NOT dissolve unless this detach emptied it; the vacated cluster re-homes its representative to the best surviving member, and an emptied cluster dissolves WITH its label rows cascading -- the same honest cost a merge pays. The whole structural change lands as ONE transaction. The write publishes `person.face_detached` with the face id, the cluster the face left and the acting user's id. 

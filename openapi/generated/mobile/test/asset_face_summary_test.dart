@@ -13,7 +13,7 @@ void main() {
       // TODO
     });
 
-    // The detector's confidence for this face.
+    // The detector's confidence for this face; a hand-drawn face (the caller's own certainty) carries 1.0. 
     // double score
     test('to test the property `score`', () async {
       // TODO
@@ -22,6 +22,11 @@ void main() {
     // URL of the face's crop: the face crop endpoint `GET /api/v1/faces/{faceId}/thumbnail` with this face's id, serving the bounding-box crop of the asset's view-size derivative. 
     // String thumbnail
     test('to test the property `thumbnail`', () async {
+      // TODO
+    });
+
+    // FaceBbox bbox
+    test('to test the property `bbox`', () async {
       // TODO
     });
 
