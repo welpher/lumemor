@@ -25,9 +25,10 @@
 //     first, folded into month groups.
 //  6. The viewer: opening a tile, the arrow keys walk the wall's
 //     sequence in both directions, Escape returns to the timeline.
-//  7. The Live Photo press: the affordance swaps the still for the
-//     component video's play stream (the component row's own id,
-//     never the photo's), and pressing again returns the still.
+//  7. The Live Photo toggle: the action row's first button swaps the
+//     still for the component video's play stream (the component row's
+//     own id, never the photo's), and pressing again returns the
+//     still.
 //  8. Batch hide moves a tile to the hidden view; unhiding from
 //     there returns it to the timeline.
 //  9. The trash page's confirmed delete removes one asset for good
@@ -118,9 +119,11 @@ let liveVideoId = '';
 let photoA = '';
 let photoB = '';
 
-/** One wall tile, addressed by its accessible name (the file name). */
+/** One wall tile, addressed by its accessible name (the file name). A
+ *  Live Photo's name carries its type as a suffix ("IMG.jpg · Live
+ *  Photo"), so the lookup anchors on the name itself. */
 function tile(page: Page, name: string) {
-	return page.getByRole('link', { name, exact: true });
+	return page.locator(`a.tile__link[aria-label="${name}"], a.tile__link[aria-label^="${name} · "]`).first();
 }
 
 /** One tile's selection checkbox (revealed on hover or keyboard focus
@@ -347,9 +350,11 @@ test.describe('the signed-in scenes', () => {
 			timeout: 60_000
 		});
 		const names = await page
-			.getByRole('link', { name: new RegExp(`^(${LIVE_PHOTO_NAME}|${PHOTO_B_NAME}|${PHOTO_A_NAME})$`) })
+			.locator('a.tile__link')
 			.evaluateAll((nodes) => nodes.map((node) => (node as HTMLAnchorElement).getAttribute('aria-label')));
-		expect(names).toEqual([LIVE_PHOTO_NAME, PHOTO_B_NAME, PHOTO_A_NAME]);
+		// The Live Photo's tile appends its type to the name; the other
+		// two are bare.
+		expect(names).toEqual([`${LIVE_PHOTO_NAME} · Live Photo`, PHOTO_B_NAME, PHOTO_A_NAME]);
 
 		// The wall folds the same order into sticky month groups (the
 		// fixtures are few -- one keyset page, no load-more to walk).
@@ -359,9 +364,10 @@ test.describe('the signed-in scenes', () => {
 			.evaluateAll((nodes) => nodes.map((node) => node.textContent));
 		expect(months).toEqual(['July 2023', 'February 2023', 'January 2023']);
 
-		// The Live Photo's tile carries the wall's live badge -- the
-		// timeline's only Live Photo affordance before the viewer.
-		await expect(tile(page, LIVE_PHOTO_NAME).locator('[title="Live Photo"]')).toBeVisible();
+		// The Live Photo's tile carries the type mark -- the timeline's
+		// own Live Photo affordance, and the only one before the viewer.
+		await expect(tile(page, LIVE_PHOTO_NAME).locator('.tile__live')).toBeVisible();
+		await expect(tile(page, PHOTO_B_NAME).locator('.tile__live')).toHaveCount(0);
 	});
 
 	test('scene 6: the viewer walks the wall and Escape returns', async ({ page }) => {
@@ -431,14 +437,15 @@ test.describe('the signed-in scenes', () => {
 		await expect(page).toHaveURL(/\/timeline$/);
 	});
 
-	test('scene 7: pressing a Live Photo plays the component stream', async ({ page }) => {
+	test('scene 7: the action row plays a Live Photo in place', async ({ page }) => {
 		await page.goto('/timeline');
 		await tile(page, LIVE_PHOTO_NAME).click();
 
-		// The press affordance exists on the still (the pair's component
-		// id is part of the photo row's detail).
-		const press = page.getByRole('button', { name: 'Play the Live Photo', exact: true });
-		await expect(press).toBeVisible();
+		// The toggle leads the action row (the pair's component id is
+		// part of the photo row's detail).
+		const press = page.locator('.viewer__bar-actions button').first();
+		await expect(press).toHaveAttribute('aria-label', 'Play the Live Photo');
+		await expect(press).toHaveAttribute('aria-pressed', 'false');
 
 		// The component never broadcasts its own readiness, and the photo
 		// row's events say nothing about the transcode -- the same range
