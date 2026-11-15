@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest';
-import { addTagAssets, createTag, listTags, type TagSummary } from './tags';
+import { addTagAssets, createTag, listTags, removeTagAssets, type TagSummary } from './tags';
 import { sessionStatus } from '$lib/auth/session.svelte';
 
 // The tags surface's data client: the vocabulary listing, the
@@ -162,4 +162,43 @@ test('the tags surface maps the failure arms: dead session, codes, broken bodies
 		vi.fn(async () => new Response('oops', { status: 502 }))
 	);
 	expect(await addTagAssets(beach.id, ['a1'])).toEqual({ ok: false, errorKey: 'internal' });
+});
+
+test('the untag half posts the DELETE body and maps the outcomes', async () => {
+	let seen: { url: string; init: RequestInit | undefined } | undefined;
+	const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		seen = { url: String(input), init };
+		return jsonResponse(200, { removed: 1, skipped: 0 });
+	});
+	expect(await removeTagAssets('t1', ['a1'], fetcher)).toEqual({
+		ok: true,
+		report: { removed: 1, skipped: 0 }
+	});
+	expect(seen?.url).toBe('/api/v1/tags/t1/assets');
+	expect(seen?.init?.method).toBe('DELETE');
+	expect(JSON.parse(String(seen?.init?.body))).toEqual({ assetIds: ['a1'] });
+
+	// The refusal and the failure mappings ride the same error
+	// convention as every other client of this module.
+	expect(
+		await removeTagAssets(
+			't1',
+			['a1'],
+			vi.fn(async () => jsonResponse(404, { code: 'TAG_NOT_FOUND' }))
+		)
+	).toEqual({ ok: false, errorKey: 'tag_not_found' });
+	expect(
+		await removeTagAssets(
+			't1',
+			['a1'],
+			vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }))
+		)
+	).toEqual({ ok: false, errorKey: 'session_expired' });
+	expect(
+		await removeTagAssets(
+			't1',
+			['a1'],
+			vi.fn(async () => Promise.reject(new Error('offline')))
+		)
+	).toEqual({ ok: false, errorKey: 'internal' });
 });

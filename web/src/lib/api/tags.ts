@@ -31,6 +31,12 @@ export type TagAssignReport = { added: number; skipped: number };
 /** The assignment add's outcome. */
 export type TagAssignResult = { ok: true; report: TagAssignReport } | { ok: false; errorKey: string };
 
+/** The untag half's report: the assignments that left, the ids that had none. */
+export type TagRemoveReport = { removed: number; skipped: number };
+
+/** The assignment remove's outcome. */
+export type TagRemoveResult = { ok: true; report: TagRemoveReport } | { ok: false; errorKey: string };
+
 /** The error-code i18n key of one failed response (the repo convention). */
 async function errorKeyFrom(response: Response): Promise<string> {
 	if (response.status === 401) {
@@ -183,4 +189,52 @@ export async function addTagAssets(
 		return { ok: false, errorKey: 'internal' };
 	}
 	return { ok: true, report: { added: report.added, skipped: report.skipped } };
+}
+
+/**
+ * DELETE /api/v1/tags/{tagId}/assets over explicit ids: the untag
+ * half of the same batch surface, `{removed, skipped}`. The caller's
+ * own assignment rows only; an id without the assignment is skipped
+ * (never was, or already removed). The viewer's chip-remove button
+ * drives it over the one open asset; the convergence is the caller's
+ * detail refetch (the tags array IS the row's truth).
+ */
+export async function removeTagAssets(
+	tagId: string,
+	assetIds: string[],
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<TagRemoveResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/tags/${encodeURIComponent(tagId)}/assets`,
+			{
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ assetIds })
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const report = body as { removed?: unknown; skipped?: unknown };
+	if (
+		typeof report.removed !== 'number' ||
+		!Number.isInteger(report.removed) ||
+		report.removed < 0 ||
+		typeof report.skipped !== 'number' ||
+		!Number.isInteger(report.skipped) ||
+		report.skipped < 0
+	) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, report: { removed: report.removed, skipped: report.skipped } };
 }
