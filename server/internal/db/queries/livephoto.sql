@@ -114,16 +114,37 @@ LIMIT 1;
 -- that an in-flight extraction cannot be mistaken for an orphan (the
 -- extraction creates the row and links it in the same job, so the
 -- grace window only has to outlast one job). Bounded per run like the
--- trash expiry, so an hourly sweep never becomes an unbounded walk. A
--- trashed component is the trash expiry's business, never this run's:
--- its pair may still be restorable.
-SELECT id, file_path, storage_kind
+-- trash expiry, so an hourly sweep never becomes an unbounded walk.
+-- The cursor rotates: a run walks components CREATED AFTER the last
+-- run's frontier, so healthy rows leave the candidate set once
+-- walked and a broken pair past the first batch is still reached
+-- (a short batch tells the run the set is exhausted and the cursor
+-- resets for the next rotation). A trashed component is the trash
+-- expiry's business, never this run's: its pair may still be
+-- restorable.
+SELECT id, file_path, storage_kind, created_at
 FROM assets
 WHERE is_component
   AND deleted_at IS NULL
   AND created_at < now() - make_interval(secs => sqlc.arg('grace_seconds')::int)
+  AND created_at > sqlc.arg('after')
 ORDER BY created_at
 LIMIT sqlc.arg('limit_count');
+
+-- name: GetLivePhotoSweepCursor :one
+-- The sweep's rotating frontier: the created_at the last run walked
+-- past. A missing row answers the dawn of time (the first rotation
+-- starts at the oldest component).
+SELECT (value->>'after')::timestamptz AS after
+FROM instance_settings
+WHERE key = 'livephoto_sweep';
+
+-- name: SetLivePhotoSweepCursor :exec
+-- The frontier's advance: one row, upserted. A short batch writes the
+-- reset (the dawn of time) so the next run starts the rotation over.
+INSERT INTO instance_settings (key, value)
+VALUES ('livephoto_sweep', jsonb_build_object('after', sqlc.arg('after')::timestamptz))
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value;
 
 -- name: ListLivePhotoStillsOfMotion :many
 -- The stills referencing one motion, live rows only: the sweep's

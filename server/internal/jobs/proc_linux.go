@@ -40,7 +40,7 @@ func exiftoolCommand(ctx context.Context, path string) *exec.Cmd {
 // constant, never a caller's string), no shell.
 func exiftoolBinaryCommand(ctx context.Context, path, tag string) *exec.Cmd {
 	argv := append([]string{"--as=" + strconv.FormatUint(exiftoolMemLimitBytes, 10), exiftoolBinary,
-		"-b", "-" + tag, "--charset", "filename=utf8"}, path)
+		"-b", "-" + tag, "-charset", "filename=utf8"}, path)
 	return exec.CommandContext(ctx, "prlimit", argv...)
 }
 

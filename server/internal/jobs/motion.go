@@ -258,6 +258,14 @@ func (w *MetadataWorker) applyMotionPhoto(ctx context.Context, assetID uuid.UUID
 		w.logger.Error("read the still for the motion photo step", "asset_id", assetID, "error", err)
 		return
 	}
+	// A watched directory's still: the extraction has nowhere honest
+	// to land -- the family's source tree never takes our writes, and
+	// the blob tree's placement rides the upload template's own
+	// machinery. The still stands alone (no error line); the paired
+	// upload remains the live path for it.
+	if still.StorageKind == "external" {
+		return
+	}
 
 	motionID, fresh, err := w.placeMotion(ctx, still, video)
 	if err != nil {
