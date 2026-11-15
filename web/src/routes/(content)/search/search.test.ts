@@ -6,15 +6,16 @@ import { sessionStatus } from '$lib/auth/session.svelte';
 import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 
 // The search page: the URL owns the state (the deep-link contract),
-// the two result modes render through the wall vocabulary (QUERY
-// mode's flat justified wall, BROWSE mode's month-grouped
-// day-block wall exactly as the timeline), the facet chips toggle
-// the seven dimensions and re-execute through a URL replacement,
-// the manual pager walks the cursor, the empty and error states
-// carry their affordances, the SSE events re-execute the current
-// search (the pinned convergence), and the loaded items publish as
-// the viewer's navigation sequence. $app/state is mocked for the
-// URL; $app/navigation captures the goto the URL sync issues; the
+// the two result states render through the wall vocabulary (QUERY
+// state's flat justified wall, BROWSE state's month-grouped
+// day-block wall exactly as the timeline), the context bar carries
+// the centered field and the honest count, an empty query is the
+// recent-photos browse (never the no-results card), the manual
+// pager walks the cursor, the empty and error states carry their
+// affordances, the SSE events re-execute the current search (the
+// pinned convergence), and the loaded items publish as the viewer's
+// navigation sequence. $app/state is mocked for the URL;
+// $app/navigation captures the goto the URL sync issues; the
 // events module is mocked with a captured handler registry.
 
 const { pageState, handlers, gotoMock } = vi.hoisted(() => ({
@@ -128,6 +129,12 @@ function tiles(): HTMLElement[] {
 	return Array.from(document.body.querySelectorAll<HTMLElement>('.tile'));
 }
 
+/** The context bar's count idiom: the wording lives on the
+ * accessible name (glyph + digits render). */
+function countLabel(): string | null {
+	return document.body.querySelector<HTMLElement>('.search-bar .count')?.getAttribute('aria-label') ?? null;
+}
+
 function buttonByText(text: string, scope: ParentNode = document.body): HTMLButtonElement {
 	const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>('button'));
 	const found = buttons.find((button) => button.textContent?.includes(text));
@@ -168,15 +175,15 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-test('no query opens the filter browse: the month-grouped wall, the chips, the count line', async () => {
+test('the empty query is the recent-photos browse: the month-grouped wall, the hint line, the total count', async () => {
 	const fetchMock = stubFetch(searchRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
 	await settle();
 
-	// The request is the pure filter browse (no query parameter).
+	// The request is the pure browse (no query parameter).
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?locale=en&limit=100', undefined);
-	// BROWSE mode: the timeline's exact month-grouped day-block wall.
+	// BROWSE state: the timeline's exact month-grouped day-block wall.
 	// (The fixture spans two months: November and October 2026.)
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 	expect(document.body.querySelectorAll('.wall__day-header')).toHaveLength(3);
@@ -189,26 +196,36 @@ test('no query opens the filter browse: the month-grouped wall, the chips, the c
 	// The loaded page items publish as the viewer's sequence.
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
 
-	// The chips of every dimension, each carrying the facet's count.
-	const chips = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.search-chip'));
-	expect(chips.map((chip) => chip.textContent)).toEqual([
-		'People · Mom 3',
-		'Places · Paris 2',
-		'Years · 2026 3',
-		'Cameras · Apple iPhone 15 2',
-		'Types · Photos 3',
-		'Albums · Trip 2',
-		'Tags · beach 2'
-	]);
-	for (const chip of chips) {
-		expect(chip.getAttribute('aria-pressed')).toBe('false');
-	}
+	// The browse hint: the one line that says what the empty query
+	// is looking at.
+	expect(document.body.querySelector('.search__hint')?.textContent).toContain(
+		'Without a keyword, these are the most recent photos.'
+	);
 
-	// The honest count line: the loaded count (a page follows, so
-	// "so far") and the facet note.
-	const meta = document.body.querySelector('.search-meta');
-	expect(meta?.textContent).toContain('3 results so far');
-	expect(meta?.textContent).toContain("Each filter's count shows the photos the other filters leave visible.");
+	// The bar's count: the browse wording over the loaded count (a
+	// page follows, so the "so far" arm).
+	expect(countLabel()).toBe('3 photos so far');
+
+	// The query is the filter: no facet affordance rides this page.
+	expect(document.body.querySelectorAll('.search-chip')).toHaveLength(0);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the context bar carries the identity, the centered field and the back link; no shell chrome', async () => {
+	vi.stubGlobal('fetch', stubFetch(searchRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// The bar's own skeleton: back link, the 20px title, the field.
+	expect(document.body.querySelector('.search-bar__back')?.getAttribute('aria-label')).toBe('Back to the timeline');
+	expect(document.body.querySelector('.search-bar__title')?.textContent).toBe('Search');
+	expect(document.body.querySelector('.search-bar__field input.search-query')).not.toBeNull();
+
+	// The wall is the body: no facet chips, no caliber note.
+	expect(document.body.querySelectorAll('.search-chip')).toHaveLength(0);
+	expect(document.body.querySelector('.search-meta')).toBeNull();
 
 	unmount(page);
 	flushSync();
@@ -319,7 +336,7 @@ test('the walls curate the per-user subset: favorite + tag on the bar, the batch
 	flushSync();
 });
 
-test('a text query renders the flat justified wall: rank order, no month or day headers', async () => {
+test('a text query renders the flat justified wall: rank order, no month or day headers, the match count', async () => {
 	const fetchMock = stubFetch(
 		searchRoutes({
 			'/api/v1/search?query=%E6%B5%B7%E8%BE%B9&locale=en&limit=100': () =>
@@ -332,7 +349,7 @@ test('a text query renders the flat justified wall: rank order, no month or day 
 	await settle();
 
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?query=%E6%B5%B7%E8%BE%B9&locale=en&limit=100', undefined);
-	// QUERY mode: the flat wall -- no month or day grouping (the
+	// QUERY state: the flat wall -- no month or day grouping (the
 	// grouping would lie about the rank order).
 	expect(document.body.querySelectorAll('.flat-wall')).toHaveLength(1);
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(0);
@@ -345,14 +362,17 @@ test('a text query renders the flat justified wall: rank order, no month or day 
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 	// The rank order is the wall's sequence (the viewer walks it).
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3']);
-	// The settled count line drops the "so far".
-	expect(document.body.querySelector('.search-meta')?.textContent).toContain('3 results');
+	// The count follows the query: the match wording, settled (the
+	// walk exhausted).
+	expect(countLabel()).toBe('3 matches');
+	// The hint line belongs to the browse state only.
+	expect(document.body.querySelector('.search__hint')).toBeNull();
 
 	unmount(page);
 	flushSync();
 });
 
-test('a one-rune query takes no text path: the request and the wall mirror the browse mode', async () => {
+test('a one-rune query takes no text path: the request and the wall mirror the browse state', async () => {
 	const fetchMock = stubFetch(searchRoutes());
 	vi.stubGlobal('fetch', fetchMock);
 	pageState.url = new URL('http://localhost/search?query=x');
@@ -366,35 +386,14 @@ test('a one-rune query takes no text path: the request and the wall mirror the b
 	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 	// The typed text stays in the box (the URL state).
 	expect((document.body.querySelector('input.search-query') as HTMLInputElement).value).toBe('x');
+	// The browse face: the hint line rides the wall.
+	expect(document.body.querySelector('.search__hint')).not.toBeNull();
 
 	unmount(page);
 	flushSync();
 });
 
-test('chips toggle their dimension through the URL (deep-linkable state)', async () => {
-	vi.stubGlobal('fetch', stubFetch(searchRoutes()));
-	const page = mountPage();
-	await settle();
-
-	buttonByText('People · Mom').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	expect(gotoMock).toHaveBeenCalledWith('/search?personIds=p1', { replaceState: true });
-
-	buttonByText('Years · 2026').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	expect(gotoMock).toHaveBeenCalledWith('/search?years=2026', { replaceState: true });
-
-	buttonByText('Types · Photos').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	expect(gotoMock).toHaveBeenCalledWith('/search?kinds=image', { replaceState: true });
-
-	buttonByText('Cameras · Apple iPhone 15').dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	// The canonical URL the params writer builds (a space encodes as
-	// the form-style '+').
-	expect(gotoMock).toHaveBeenCalledWith('/search?cameras=Apple%7CiPhone+15', { replaceState: true });
-
-	unmount(page);
-	flushSync();
-});
-
-test('a deep link with filters carries them into the request and marks the chips selected', async () => {
+test('a deep-linked filter rides the request (the URL state survives the chipless page)', async () => {
 	const fetchMock = stubFetch(
 		searchRoutes({
 			'/api/v1/search?personIds=p1&locale=en&limit=100': () =>
@@ -407,9 +406,10 @@ test('a deep link with filters carries them into the request and marks the chips
 	await settle();
 
 	expect(fetchMock).toHaveBeenCalledWith('/api/v1/search?personIds=p1&locale=en&limit=100', undefined);
-	const peopleChip = document.body.querySelector<HTMLButtonElement>('.search-chip');
-	expect(peopleChip?.textContent).toContain('People · Mom');
-	expect(peopleChip?.getAttribute('aria-pressed')).toBe('true');
+	// The filter narrows nothing on the page: no chip row renders,
+	// the wall is the browse feed over the filtered set.
+	expect(document.body.querySelectorAll('.search-chip')).toHaveLength(0);
+	expect(document.body.querySelectorAll('.wall__month-header')).toHaveLength(2);
 
 	unmount(page);
 	flushSync();
@@ -427,7 +427,7 @@ test('submitting the query box navigates with the query parameter', async () => 
 	box.value = '海边 日落';
 	box.dispatchEvent(new Event('input', { bubbles: true }));
 	flushSync();
-	const form = document.body.querySelector('form.search-form');
+	const form = document.body.querySelector('form.search-bar__field');
 	form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
 	expect(gotoMock).toHaveBeenCalledWith('/search?query=%E6%B5%B7%E8%BE%B9+%E6%97%A5%E8%90%BD', {
@@ -448,33 +448,53 @@ test('the manual pager walks the next page and appends the tiles', async () => {
 	await settle();
 	expect(tiles()).toHaveLength(4);
 	expect(wallItems().map((entry) => entry.id)).toEqual(['a1', 'a2', 'a3', 'b1']);
-	// The exhausted walk drops the pager and settles the count.
-	expect(document.body.querySelector('.search-meta')?.textContent).toContain('4 results');
+	// The exhausted walk drops the pager and settles the count: the
+	// browse wording claims the whole library it just loaded.
+	expect(countLabel()).toBe('All 4 photos');
 
 	unmount(page);
 	flushSync();
 });
 
-test('no results render the empty state with the honest suggestion', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetch({
-			'/api/v1/search?locale=en&limit=100': () =>
-				jsonResponse(200, {
-					items: [],
-					facets: { people: [], places: [], years: [], cameras: [], kinds: [], albums: [], tags: [] }
-				})
-		})
-	);
-	const page = mountPage();
-	await settle();
+test('a query that answers nothing renders the no-results card; an empty browse renders the no-data card', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
+		const url = String(input);
+		const empty = {
+			items: [],
+			facets: { people: [], places: [], years: [], cameras: [], kinds: [], albums: [], tags: [] }
+		};
+		if (url === '/api/v1/search?query=%E6%B5%B7%E8%BE%B9&locale=en&limit=100') {
+			return jsonResponse(200, empty);
+		}
+		if (url === '/api/v1/search?locale=en&limit=100') {
+			return jsonResponse(200, empty);
+		}
+		throw new Error(`unexpected fetch ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
 
+	// QUERY state, zero answers: the no-results card.
+	pageState.url = new URL('http://localhost/search?query=%E6%B5%B7%E8%BE%B9');
+	const first = mountPage();
+	await settle();
 	expect(tiles()).toHaveLength(0);
 	const empty = document.body.querySelector('.state-card');
 	expect(empty?.textContent).toContain('No matching photos');
 	expect(empty?.textContent).toContain('Try a different keyword, or drop a filter.');
+	expect(countLabel()).toBe('0 matches');
+	unmount(first);
+	flushSync();
 
-	unmount(page);
+	// BROWSE state, nothing to show: the no-data face -- an empty
+	// query is never told "no matching photos".
+	document.body.textContent = '';
+	pageState.url = new URL('http://localhost/search');
+	const second = mountPage();
+	await settle();
+	const browseEmpty = document.body.querySelector('.state-card');
+	expect(browseEmpty?.textContent).toContain('No photos yet');
+	expect(browseEmpty?.textContent).not.toContain('No matching photos');
+	unmount(second);
 	flushSync();
 });
 
@@ -535,7 +555,7 @@ test('an SSE event re-executes the current search (the refetch is the convergenc
 	flushSync();
 });
 
-test('the locale rides the request (the places facet display names)', async () => {
+test('the locale rides the request (the display names)', async () => {
 	const fetchMock = stubFetch(
 		searchRoutes({
 			'/api/v1/search?locale=zh-Hans&limit=100': () => jsonResponse(200, { items: pageOne, facets: facetsBody })
@@ -567,9 +587,11 @@ test('the zh-Hans locale renders through the shared table', async () => {
 	const page = mountPage();
 	await settle();
 
-	const chips = Array.from(document.body.querySelectorAll<HTMLButtonElement>('.search-chip'));
-	expect(chips[0]?.textContent).toContain('人物 · Mom');
-	expect(document.body.querySelector('.search-meta')?.textContent).toContain('每');
+	// The hint line and the count wording come from the shared
+	// table: the browse face reads as the recent photos, the whole
+	// library it loaded.
+	expect(document.body.querySelector('.search__hint')?.textContent).toContain('没输入关键词时');
+	expect(countLabel()).toBe('全部 3 张');
 	setLocale('en');
 
 	unmount(page);
