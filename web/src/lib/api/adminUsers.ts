@@ -1,13 +1,16 @@
 // The admin user management client: the listing behind
 // GET /admin/users, the account creation behind POST /admin/users,
-// and the disabled toggle behind PATCH /admin/users/{id}.
+// the disabled toggle behind PATCH /admin/users/{id}, and the account
+// disposal behind DELETE /admin/users/{id}.
 //
 // ERROR MAPPING (the repo-wide convention): every failure outcome
 // carries the error code's i18n key -- the envelope code lowercased
 // (auth_forbidden for a signed-in non-admin, user_email_taken for a
-// duplicate address, validation_failed for payload problems and the
-// server's self-disable guard), 'internal' for a network failure or
-// an unparseable body, and 'session_expired' for a 401.
+// duplicate address, user_last_admin and user_transfer_to_self for the
+// disposal's two conflicts, validation_failed for payload problems and
+// the server's self-disable and self-delete guards), 'internal' for a
+// network failure or an unparseable body, and 'session_expired' for a
+// 401.
 //
 // The 200/201 bodies are structurally validated: the account listing
 // is a small bounded document, but a drifted or proxied answer must
@@ -31,6 +34,15 @@ export type AdminUserCreateResult = { ok: true; user: AdminUser } | { ok: false;
 
 /** The toggle's outcome: the account after the write, or the failure's i18n key. */
 export type AdminUserUpdateResult = { ok: true; user: AdminUser } | { ok: false; errorKey: string };
+
+/**
+ * The disposition of a deleted account's photos: hand them to another
+ * account, or walk them into the caller's trash.
+ */
+export type AdminUserDisposition = { transferTo: string } | { dispose: 'trash' };
+
+/** The disposal's outcome: the account is gone, or the failure's i18n key. */
+export type AdminUserDeleteResult = { ok: true } | { ok: false; errorKey: string };
 
 const USERS_ENDPOINT = '/api/v1/admin/users';
 
@@ -179,4 +191,40 @@ export async function setAdminUserDisabled(
 		return { ok: false, errorKey: 'internal' };
 	}
 	return { ok: true, user };
+}
+
+/**
+ * DELETE /admin/users/{id}: the account disposal. The body names where
+ * the account's photos go -- `transferTo` another account, or
+ * `dispose: "trash"` into the caller's own trash. The 204 carries no
+ * body; the account is gone and the listing converges by dropping its
+ * row. The refusals map through the shared error keys: user_not_found
+ * for a stale row, user_last_admin for the instance's only
+ * administrator, user_transfer_to_self for a receiver that is the
+ * departing account, and validation_failed for the rest (the caller's
+ * own account, an unknown receiver, a malformed disposition).
+ */
+export async function deleteAdminUser(
+	id: string,
+	disposition: AdminUserDisposition,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<AdminUserDeleteResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`${USERS_ENDPOINT}/${encodeURIComponent(id)}`,
+			{
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(disposition)
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await adminErrorKey(response) };
+	}
+	return { ok: true };
 }

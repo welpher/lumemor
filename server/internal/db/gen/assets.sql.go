@@ -918,9 +918,10 @@ type UpdateAssetTakenAtParams struct {
 // stored instant and the stored zone matches nothing, so the
 // idempotent repeat is the same success, updated_at stays un-stamped
 // and the event stays silent -- the rows-affected count is the
-// handler's change signal. (The instant is the compared truth; the
-// zone rides it, so a zone-only repeat is also a no-op when the
-// instant matches.) The owner guard IS the permission check (asset
+// handler's change signal. (Both fields are compared: the instant
+// and the zone are DISTINCT from their stored values, so a
+// same-instant zone-only patch IS a change -- the zone is a served
+// field of its own.) The owner guard IS the permission check (asset
 // attribute editing is owner-only, no admin override), so a foreign
 // id matches nothing exactly like an unknown one. No state filter: a
 // trashed asset is editable like it is readable.

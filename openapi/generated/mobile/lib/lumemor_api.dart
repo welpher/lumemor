@@ -25,6 +25,7 @@ export 'package:lumemor_api/src/api/users_api.dart';
 export 'package:lumemor_api/src/model/add_album_items_response.dart';
 export 'package:lumemor_api/src/model/add_tag_assets_response.dart';
 export 'package:lumemor_api/src/model/admin_create_user_request.dart';
+export 'package:lumemor_api/src/model/admin_user_delete_request.dart';
 export 'package:lumemor_api/src/model/admin_user_list_response.dart';
 export 'package:lumemor_api/src/model/admin_user_patch.dart';
 export 'package:lumemor_api/src/model/admin_user_response.dart';

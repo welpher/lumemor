@@ -17,6 +17,7 @@ import 'package:lumemor_api/src/model/date.dart';
 import 'package:lumemor_api/src/model/add_album_items_response.dart';
 import 'package:lumemor_api/src/model/add_tag_assets_response.dart';
 import 'package:lumemor_api/src/model/admin_create_user_request.dart';
+import 'package:lumemor_api/src/model/admin_user_delete_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
@@ -174,6 +175,7 @@ part 'serializers.g.dart';
   AddAlbumItemsResponse,
   AddTagAssetsResponse,
   AdminCreateUserRequest,
+  AdminUserDeleteRequest,
   AdminUserListResponse,
   AdminUserPatch,
   AdminUserResponse,
