@@ -1563,7 +1563,7 @@
 				</span>
 				<span class="font-body font-normal text-[12px] leading-[1.5] text-text-faint">
 					{derivativesSummary === null
-						? $_('admin_rebuild_scope_missing_note')
+						? $_('admin_rebuild_scope_all_note_unavailable')
 						: $_('admin_rebuild_scope_all_note', {
 								values: {
 									count: derivativesSummary.imageCount,

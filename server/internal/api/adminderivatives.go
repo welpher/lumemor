@@ -32,7 +32,8 @@ const rebuildDerivativesKind = "rebuild_derivatives"
 // one second covers one decode plus the tile and view encodes at the
 // shipped settings, divided by the dial's concurrency. It is a
 // PLAN-OF-RECORD number the endpoint documents, not a measurement --
-// the answer's copy says 约, and the NAS-class truth moves it.
+// the answer's copy carries the approximate qualifier, and the
+// NAS-class truth moves it.
 const estimateSecondsPerAsset = 1.0
 
 // GetDerivativesSummary implements GET /api/v1/admin/derivatives/summary:

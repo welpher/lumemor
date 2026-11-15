@@ -32,6 +32,11 @@ const (
 	classTranscode = "transcode"
 	classMl        = "ml"
 	classPlaces    = "places"
+	// classRebuild is the walk's own class: it shares the thumbnail
+	// switch for pausing (a paused thumbnail class pauses the walk
+	// with it) while counting as heavy for the window -- the rebuild
+	// is the pin's own example of work that waits for the night.
+	classRebuild = "rebuild"
 )
 
 // pauseHold is the snooze granularity of a paused kind's hold: the
@@ -172,7 +177,7 @@ func (b *Budget) Release() {
 // work, so an upload stays visible whatever the window says.
 func heavyClass(class string) bool {
 	switch class {
-	case classTranscode, classMl:
+	case classTranscode, classMl, classRebuild:
 		return true
 	}
 	return false

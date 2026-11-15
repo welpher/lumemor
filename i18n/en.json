@@ -658,6 +658,7 @@
   "admin_rebuild_scope_missing_note": "Skips the derivatives already on disk",
   "admin_rebuild_scope_all": "Full rebuild",
   "admin_rebuild_scope_all_note": "Re-derives all {count} images at the saved settings · about {minutes} minutes (NAS) · the CPU belongs to it while it runs",
+  "admin_rebuild_scope_all_note_unavailable": "The library count is unavailable right now; the full rebuild re-derives every image at the saved settings",
   "admin_rebuild_warning": "Browsing is slower while it runs; pause or stop it from the jobs page.",
   "admin_rebuild_start": "Start rebuild",
   "admin_rebuild_started": "Rebuild started. Watch it on the jobs page.",

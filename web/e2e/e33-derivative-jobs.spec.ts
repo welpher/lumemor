@@ -26,12 +26,12 @@
 //     stays empty of the kind). The rebuild dialog opens over the
 //     collapsed card (the deep link), the missing scope is the
 //     default, and the started run converges on the task panel.
-//  4. The two scopes pay differently: with two photos whose AVIF
-//     derivatives are already on disk and the encoding saved as
-//     WebP, the missing rebuild skips them (the thumbnail still
-//     serves AVIF), and the full rebuild re-derives at the saved
-//     settings (the thumbnail serves WebP, the stale encoding
-//     swept).
+//  4. The two scopes pay differently: with two photos whose
+//     derivatives are already on disk at the shipped tile size and
+//     the tile setting then widened, the missing rebuild skips
+//     them (the thumbnail still serves the shipped tile), and the
+//     full rebuild re-derives at the saved settings (the thumbnail
+//     serves the widened tile, the stale size swept).
 //  5. The pause: with the thumbnail kind held, a fresh upload's
 //     thumbnail job sits held -- the asset exists, the thumbnail
 //     endpoint answers not-ready -- and lifting the pause lets it

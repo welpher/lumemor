@@ -130,7 +130,7 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 	// The dial: one pipeline slot for the whole walk. Nil budgets
 	// (the unit tests' directly constructed workers) gate nothing.
 	if w.budget != nil {
-		if err := w.budget.Acquire(ctx, classThumbnail); err != nil {
+		if err := w.budget.Acquire(ctx, classRebuild); err != nil {
 			return err
 		}
 		defer w.budget.Release()
@@ -196,7 +196,7 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 			// the return (the deferred release); the snoozed job
 			// holds nothing but its future wake-up.
 			if w.budget != nil {
-				if hold := w.budget.Hold(ctx, classThumbnail); hold > 0 {
+				if hold := w.budget.Hold(ctx, classRebuild); hold > 0 {
 					return river.JobSnooze(hold)
 				}
 			}
@@ -211,16 +211,16 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 			}
 
 			// The missing scope skips the assets whose serving copies
-			// already exist AND whose own pipeline has finished: a
-			// library that has never been rebuilt, or one that gained
-			// the full-size copy, pays only for what it lacks. A
-			// pipeline still in flight is the PIPELINE's business --
+			// already exist OR whose own pipeline is still in flight:
+			// a library that has never been rebuilt, or one that
+			// gained the full-size copy, pays only for what it lacks;
+			// a pipeline still in flight is the PIPELINE's business --
 			// its thumbnail job derives the copies at the settings
 			// live when it runs, so the rebuild neither double-pays
 			// for it nor races its half-written file set.
 			if job.Args.Scope == RebuildScopeMissing &&
-				row.PendingJobs == 0 &&
-				derivativesPresent(assetID.String(), image.Format, image.FullSize) {
+				(row.PendingJobs > 0 ||
+					derivativesPresent(assetID.String(), image.Format, image.FullSize)) {
 				done++
 				continue
 			}

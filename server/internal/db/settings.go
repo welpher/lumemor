@@ -772,6 +772,10 @@ func (b RunBudget) PausedJobOf(class string) bool {
 	switch class {
 	case "thumbnail":
 		return b.PausedJobs.Thumbnail
+	case "rebuild":
+		// The walk rides the thumbnail switch: a paused thumbnail
+		// class pauses the rebuild with it (the ledgered ruling).
+		return b.PausedJobs.Thumbnail
 	case "metadata":
 		return b.PausedJobs.Metadata
 	case "transcode":

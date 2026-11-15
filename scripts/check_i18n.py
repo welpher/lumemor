@@ -763,6 +763,7 @@ NON_ERROR_KEYS = {
     "admin_rebuild_scope_missing",
     "admin_rebuild_scope_missing_note",
     "admin_rebuild_scope_all",
+    "admin_rebuild_scope_all_note_unavailable",
     "admin_rebuild_scope_all_note",
     "admin_rebuild_warning",
     "admin_rebuild_start",

@@ -658,6 +658,7 @@
   "admin_rebuild_scope_missing_note": "跳过已有派生图",
   "admin_rebuild_scope_all": "全量重建",
   "admin_rebuild_scope_all_note": "按已保存的设置重出全部 {count} 张 · 约 {minutes} 分钟（NAS）· 期间 CPU 会被占满",
+  "admin_rebuild_scope_all_note_unavailable": "库计数暂不可用；全量重建会按已保存的设置重出全部图片",
   "admin_rebuild_warning": "重建期间浏览会变慢；可以在「任务」页暂停或停止。",
   "admin_rebuild_start": "开始重建",
   "admin_rebuild_started": "重建已开始。到「任务」页看进度。",
