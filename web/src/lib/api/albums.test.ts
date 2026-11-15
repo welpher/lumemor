@@ -65,7 +65,7 @@ const detailBody = {
 	id: ownCard.id,
 	title: ownCard.title,
 	type: 'memory',
-	coverAssetId: null,
+	coverAssetIds: [],
 	callerRole: 'owner',
 	itemCount: 2,
 	items: [
@@ -494,9 +494,10 @@ test("patchAlbum surfaces the write faces' message keys", async () => {
 				})
 		})
 	);
-	expect(await patchAlbum(ownCard.id, { coverAssetId: 'x' })).toEqual({
+	expect(await patchAlbum(ownCard.id, { coverAssetIds: ['0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6001'] })).toEqual({
 		ok: false,
-		errorKey: 'album_cover_not_member'
+		errorKey: 'album_cover_not_member',
+		invalidCount: undefined
 	});
 
 	// The deletability switch's own refusal: a memory album answers

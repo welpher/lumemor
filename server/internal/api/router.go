@@ -111,6 +111,12 @@ type Deps struct {
 	// queue wired -- tests, wiring order); production passes the
 	// jobs queue, which implements it structurally.
 	DerivativesRebuilds DerivativesRebuildEnqueuer
+	// Now is the instance's clock: the cover rotation derives its ISO
+	// week from it (the boundary is the returned instant's own
+	// location -- the instance timezone). Nil keeps time.Now, which
+	// is the production wiring; a test injects a fixed instant to
+	// walk a week boundary without waiting for one.
+	Now func() time.Time
 	// UpdateChecks is the instance's release checker: the admin face
 	// reads its cached answer and the manual run probes through it.
 	// Nil keeps those endpoints answering 500 INTERNAL (no checker
@@ -261,6 +267,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		queries: dbgen.New(deps.Pool),
 		version: deps.Version,
 		logger:  deps.Logger,
+		clock:   deps.Now,
 		events:  deps.Events,
 		dataDir: deps.DataDir,
 		// The upload limit passes through as configured: zero is a
@@ -817,6 +824,18 @@ type server struct {
 	// a 400 MB graph per request is not a cost the page shape can
 	// carry). A model switch replaces it under its mutex.
 	textTowerCache textTowerSession
+	// clock reads the instance's current instant; nil keeps time.Now
+	// (the production wiring -- tests inject one to pin a week).
+	clock func() time.Time
+}
+
+// now answers the instance's current instant: the cover rotation's
+// ISO week reads it, and the nil arm is time.Now.
+func (s *server) now() time.Time {
+	if s.clock != nil {
+		return s.clock()
+	}
+	return time.Now()
 }
 
 // writeJSON emits v as the JSON response body with the given status.

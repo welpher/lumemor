@@ -151,6 +151,7 @@
 	let editErrorKey = $state('');
 	let coverOpen = $state(false);
 	let coverErrorKey = $state('');
+	let coverInvalidCount = $state(0);
 	let deleteOpen = $state(false);
 	let deleteErrorKey = $state('');
 
@@ -589,24 +590,30 @@
 		editOpen = false;
 	}
 
-	// The cover write: the 200 proves the pin landed, so the detail
-	// adopts the picked id (the event echo refetches anyway).
-	async function submitCover(assetId: string): Promise<void> {
+	// The cover write: a full set (six frames on the memory band) or
+	// the empty set that restores the weekly rotation. The 200 proves
+	// the set landed, so the detail adopts the written order (the event
+	// echo refetches anyway); a refusal names how many frames left the
+	// album and the dialog marks them.
+	async function submitCover(assetIds: readonly string[]): Promise<void> {
 		if (writeBusy || detail === null) {
 			return;
 		}
 		writeBusy = true;
 		coverErrorKey = '';
-		const outcome = await patchAlbum(memoryId, { coverAssetId: assetId });
+		coverInvalidCount = 0;
+		const outcome = await patchAlbum(memoryId, { coverAssetIds: assetIds });
 		writeBusy = false;
 		if (!outcome.ok) {
 			coverErrorKey = outcome.errorKey;
+			coverInvalidCount = outcome.invalidCount ?? 0;
 			return;
 		}
 		if (detail !== null) {
-			detail = { ...detail, coverAssetId: assetId };
+			detail = { ...detail, coverAssetIds: [...assetIds] };
 		}
 		coverOpen = false;
+		toast($_('albums_cover_saved'));
 	}
 
 	// The delete write (the light cascade): success closes the overlay;
@@ -749,6 +756,7 @@
 								title={$_('memories_action_cover')}
 								onclick={() => {
 									coverErrorKey = '';
+									coverInvalidCount = 0;
 									coverOpen = true;
 								}}
 							>
@@ -1074,10 +1082,13 @@
 	<CoverPickerDialog
 		bind:open={coverOpen}
 		{items}
-		currentCoverId={detail.coverAssetId}
+		itemCount={detail.itemCount}
+		maxItems={6}
+		currentCoverIds={detail.coverAssetIds}
 		busy={writeBusy}
 		errorKey={coverErrorKey}
-		onsubmit={(assetId) => void submitCover(assetId)}
+		invalidCount={coverInvalidCount}
+		onsubmit={(assetIds) => void submitCover(assetIds)}
 	/>
 {/if}
 

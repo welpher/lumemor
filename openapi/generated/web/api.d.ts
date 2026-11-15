@@ -1201,18 +1201,22 @@ export interface paths {
          *     localized default-album name (en "My photos", zh-Hans
          *     "我的照片"), and the stored title never renders.
          *
-         *     `coverAssetIds` is the wall card's collage source: the
-         *     pinned `coverAssetId` as a single-element list when the
-         *     owner set one, otherwise the album's most recent live member
-         *     assets -- up to four, `takenAt` descending with the asset id
-         *     as the tiebreak, fewer when the album holds fewer members,
-         *     empty for an album with none. `itemCount` counts live
-         *     members under the same predicate: trashed, hidden and Live
-         *     Photo component rows never count (a hidden asset is
-         *     invisible to the whole family). For a shared-group `memory`
-         *     card the predicate widens the same way the detail's does:
-         *     the count and the collage tiles are the live members the
-         *     memory's owner currently sees -- the re-share ground,
+         *     `coverAssetIds` is the wall card's collage source, in render
+         *     order: the owner's pinned set when one exists (exactly as
+         *     written -- the server never re-sorts a pin), otherwise the
+         *     server's automatic group for the week (see
+         *     `AlbumSummary.coverAssetIds`). The card is the first thing
+         *     drawn and cannot see the collection, so the automatic group
+         *     is computed here; it is never the newest frames and never a
+         *     client's random pick, and an upload mid-week cannot move it.
+         *     Fewer frames than the card holds when the album has fewer
+         *     live members; empty for an album with none. `itemCount`
+         *     counts live members under the same predicate: trashed,
+         *     hidden and Live Photo component rows never count (a hidden
+         *     asset is invisible to the whole family). For a shared-group
+         *     `memory` card the predicate widens the same way the detail's
+         *     does: the count and the collage frames are the live members
+         *     the memory's owner currently sees -- the re-share ground,
          *     revalidated at read time, so a revoked photo leaves the
          *     sharee's card and collage with no snapshot residue.
          *
@@ -1479,10 +1483,14 @@ export interface paths {
          *     the owner's own view of the set, and the owner's rows can
          *     still be tidied through the membership remove.
          *
-         *     `coverAssetId` is the raw pinned column: the single asset
-         *     the owner chose, or null when unset -- the wall derives its
-         *     collage fallback from the members, the detail carries the
-         *     pin itself.
+         *     `coverAssetIds` is the owner's stored pin, in pick order: the
+         *     frames the owner picked, exactly as written, or an empty
+         *     array when the album is on the automatic weekly group. A
+         *     pinned frame that has since left the album (moved out,
+         *     trashed, hidden) still appears here -- the picker seeds from
+         *     this list and marks the cells that are no longer in the
+         *     album, so the detail answers the PIN, never the rendered
+         *     card (the wall card's `coverAssetIds` is the filled group).
          *
          *     `rootPath` rides the `directory` albums only: the album's
          *     source, the resolved absolute path the row stores -- the
@@ -1591,7 +1599,7 @@ export interface paths {
         /**
          * Patch one album's properties.
          * @description The owner's partial edit of the album's properties: `title`,
-         *     `coverAssetId` and `allowAppDeletion`, any subset,
+         *     `coverAssetIds` and `allowAppDeletion`, any subset,
          *     at least one field (a body that carries none -- JSON null counts
          *     as absent, the patch discipline of the asset surface -- is a
          *     client bug and answers 400). The response is the album's wall
@@ -1608,16 +1616,23 @@ export interface paths {
          *     may override the owner check (the admin role bypasses it, the
          *     permanent delete's own discipline).
          *
-         *     Cover validation (the application-layer check): a
-         *     present `coverAssetId` must be a LIVE member of THIS album --
-         *     the membership row exists and the asset passes the live
-         *     predicate (not trashed, not hidden, not a Live Photo
+         *     Cover validation (the application-layer check): a present
+         *     `coverAssetIds` must carry 0 or exactly N distinct ids (N is
+         *     the card's frame count: four on the album card, six on the
+         *     memory band), and every one must be a LIVE member of THIS
+         *     album -- the membership row exists and the asset passes the
+         *     live predicate (not trashed, not hidden, not a Live Photo
          *     component row). Any other id -- an asset that is no member, a
          *     trashed, hidden or component row, another account's asset --
          *     answers 400 `VALIDATION_FAILED` carrying the message key
-         *     `album_cover_not_member`. A `coverAssetId` that is absent (or
-         *     JSON null, which decodes as absent) leaves the pin
-         *     unchanged.
+         *     `album_cover_not_member` and the count of refused frames. A
+         *     length that is neither 0 nor N, and a repeated id, answer
+         *     400 `VALIDATION_FAILED` naming the field. The order is the
+         *     owner's pick order and the stored order: the server never
+         *     re-sorts a pin. An empty array clears the pin (the album
+         *     returns to the automatic weekly group); a `coverAssetIds`
+         *     that is absent (or JSON null, which decodes as absent)
+         *     leaves the pin unchanged.
          *
          *     The deletability switch (`allowAppDeletion`) is the
          *     directory album's own field: a patch that carries it on a
@@ -7643,11 +7658,34 @@ export interface components {
              */
             isShared: boolean;
             /**
-             * @description The collage source of the wall card: the pinned cover
-             *     asset as a single-element list when the owner set one,
-             *     otherwise the album's most recent live member assets (up
-             *     to four, `takenAt` descending, the asset id as the
-             *     tiebreak). Empty for an album with no live members.
+             * @description The collage source of the wall card, in render order: the
+             *     frames of the album's cover. A cover holds four frames
+             *     (the album card's 2x2 collage) or six (the memory band's
+             *     3-across 2-down strip), and the server answers the group
+             *     the card draws -- the card is the first thing rendered
+             *     and cannot see the collection, so the automatic group is
+             *     computed here, never by the client.
+             *
+             *     The owner's pinned set wins: when the owner picked a full
+             *     set, these are its frames in pick order, exactly as
+             *     written (the server never re-sorts a pin). An album
+             *     without pins renders the automatic group: a weekly
+             *     rotation, re-sampled per ISO week from the whole live
+             *     collection (never the newest frames and never a random
+             *     order), frozen for the week so an upload mid-week cannot
+             *     move a frame, and never rotating at all while the album
+             *     holds fewer than twice the frame count -- such an album
+             *     keeps one stable sample of its own. A pinned frame that
+             *     is no longer visible to the caller (moved out, trashed,
+             *     hidden) is filled silently from the caller's visible
+             *     pool; a fully dead pin falls back to the automatic group.
+             *
+             *     The order is the render order and the length is at most
+             *     the card's frame count: a collection with fewer live
+             *     members than frames answers the frames it has (one
+             *     fills, two split, three lay one large beside two small),
+             *     and an album with no live members answers an empty array
+             *     (the card's empty cover, no placeholder photo).
              */
             coverAssetIds: string[];
             /**
@@ -7744,11 +7782,18 @@ export interface components {
              */
             type: "memory" | "directory" | "sync";
             /**
-             * @description The pinned cover asset, or null when unset -- the raw
-             *     column; the wall derives its collage fallback, the detail
-             *     carries the pin itself.
+             * @description The owner's stored pin, in pick order: the frames the
+             *     owner picked, exactly as written (the server stores and
+             *     returns the order given), or an empty array when the
+             *     album is on the automatic weekly group. A pinned frame
+             *     that has since left the album (moved out, trashed,
+             *     hidden) still appears here: the picker seeds from this
+             *     list and marks the cells that are no longer in the album.
+             *     The wall card's own `coverAssetIds` is the FILLED group
+             *     (the dead pins replaced from the caller's visible pool);
+             *     this field is the pin itself, never the rendered card.
              */
-            coverAssetId: string | null;
+            coverAssetIds: string[];
             /**
              * @description The album's source directory: the RESOLVED absolute path
              *     the album row stores, present exactly on `directory`
@@ -8035,7 +8080,8 @@ export interface components {
          *     null values count as absent, the patch discipline of the
          *     asset surface -- is a client bug and answers 400), and only
          *     the fields the request carries update; the rest keep their
-         *     values. A present `coverAssetId` must be a live member of
+         *     values. A present `coverAssetIds` must carry 0 or exactly the
+         *     card's frame count of distinct ids, every one a live member of
          *     the album itself. The write publishes one `album.updated`
          *     event whatever fields changed.
          */
@@ -8047,16 +8093,25 @@ export interface components {
              */
             title?: string;
             /**
-             * Format: uuid
-             * @description The pinned cover asset. When present it must be a LIVE
-             *     member of THIS album (the membership row exists and the
-             *     asset is not trashed, not hidden, not a Live Photo
-             *     component row) -- otherwise the answer is 400 with the
-             *     message key `album_cover_not_member`. Absent (or JSON
-             *     null, which decodes as absent) leaves the pin
-             *     unchanged.
+             * @description The owner's pin, as a full set: the frames of the cover in
+             *     render order (the order the owner picked them in -- the
+             *     server stores and returns it as given, never re-sorting).
+             *     The length is 0 or exactly N, N being the card's frame
+             *     count (four on the album card, six on the memory band):
+             *     an empty array clears the pin and returns the album to
+             *     the automatic weekly group, a full set pins it, and any
+             *     other length answers 400 `VALIDATION_FAILED` (a partial
+             *     set is the picker's un-saveable state, never a stored
+             *     one). Repeated ids answer 400 too -- a cover is a set,
+             *     and one frame cannot fill two cells. Every id must be a
+             *     LIVE member of THIS album (the membership row exists and
+             *     the asset is not trashed, not hidden, not a Live Photo
+             *     component row); otherwise the answer is 400 with the
+             *     message key `album_cover_not_member` and a `count` of the
+             *     refused frames. Absent (or JSON null, which decodes as
+             *     absent) leaves the pin unchanged.
              */
-            coverAssetId?: string;
+            coverAssetIds?: string[];
             /**
              * @description The owner's deletability switch of a DIRECTORY album:
              *     whether the album's photos may be deleted through the
@@ -10535,8 +10590,10 @@ export interface operations {
              * @description The request is invalid: the body is not valid JSON or
              *     carries no field; a present title is empty,
              *     whitespace-only or spans more than 64 characters; a
-             *     present `coverAssetId` is not a live member of this
-             *     album (the message key `album_cover_not_member`); or a
+             *     present `coverAssetIds` carries a length other than 0 or
+             *     the card's frame count, repeats an id, or names an id
+             *     that is not a live member of this album (the message key
+             *     `album_cover_not_member` with the refused count); or a
              *     present `allowAppDeletion` names a non-directory album
              *     (the message key `album_deletable_not_directory`).
              */

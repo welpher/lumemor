@@ -167,41 +167,136 @@ WHERE al.type IN ('memory', 'directory')
 
 ORDER BY arm_rank, sort_at DESC, id DESC;
 
--- name: ListAlbumCoverCandidates :many
--- The derived covers of the given albums: each one's four most
--- recent live members, taken_at descending with the asset id as the
--- tiebreak -- the exact rows the wall renders for an album without a
--- pinned cover asset. The window keeps the result bounded at four
--- rows per album however many members an album holds. The memory's
--- shared-view rule rides the same predicate as the pages and the
--- counts: a sharee's collage tiles are the owner-visible live
--- members, the owner's own (the caller is the album's owner) are
--- the plain live ones, so the card's tiles never name a photo the
--- card's count already dropped.
-SELECT ranked.album_id,
-       ranked.asset_id
-FROM (
-    SELECT ai.album_id,
-           ai.asset_id,
-           row_number() OVER (
-               PARTITION BY ai.album_id
-               ORDER BY a.taken_at DESC, a.id DESC
-           ) AS recency_rank
-    FROM album_items ai
-    JOIN albums al ON al.id = ai.album_id
-    JOIN assets a ON a.id = ai.asset_id
-    WHERE ai.album_id = ANY(sqlc.arg('album_ids')::uuid[])
-      AND a.deleted_at IS NULL
-      AND a.is_hidden = false
-      AND a.is_component = false
-      AND (
-          al.type <> 'memory'
-          OR al.owner_id = sqlc.arg('user_id')
-          OR caller_asset_visible(al.owner_id, a.id)
-      )
-) ranked
-WHERE ranked.recency_rank <= 4
-ORDER BY ranked.album_id, ranked.recency_rank;
+-- Cover stores (the cover-picker rework): the owner's ordered picks
+-- and the automatic group's per-week frozen sampling. A cover is a
+-- set of frames (four on the album card, six on the memory band),
+-- so both stores are row-per-frame keyed by position -- the order is
+-- the render order and never re-sorted by the reads.
+
+-- name: ListAlbumCoverPicks :many
+-- The pinned cover sets of the given albums, in pick order. A picked
+-- frame the caller cannot see (trashed, hidden, moved out of the
+-- album) is not filtered here: the caller needs the stored list to
+-- tell the owner WHICH pinned frame died, and the renderer fills the
+-- dead cells from the pool.
+SELECT album_id, position, asset_id
+FROM album_cover_picks
+WHERE album_id = ANY(sqlc.arg('album_ids')::uuid[])
+ORDER BY album_id, position;
+
+-- name: ListAlbumCoverWeekPicks :many
+-- The frozen automatic groups of the given albums for one ISO week,
+-- in the order the sampling stored. A missing album has no row for
+-- the week yet (the resolver samples and stores one).
+SELECT album_id, position, asset_id
+FROM album_cover_week_picks
+WHERE album_id = ANY(sqlc.arg('album_ids')::uuid[])
+  AND iso_week = sqlc.arg('iso_week')
+ORDER BY album_id, position;
+
+-- name: ListAlbumLiveCoverPicks :many
+-- The LIVE subset of the given albums' pinned sets, in pick order: a
+-- pick whose membership row is gone or whose asset is trashed,
+-- hidden or a component row is dead for cover purposes. The card
+-- renders exactly these in their positions and fills the dead cells;
+-- a fully dead set falls back to the automatic group. The memory's
+-- shared-view rule rides the pool's predicate so a shared card never
+-- names a photo its viewer cannot see.
+SELECT picks.album_id, picks.position, picks.asset_id
+FROM album_cover_picks picks
+JOIN albums al ON al.id = picks.album_id
+JOIN album_items ai ON ai.album_id = picks.album_id AND ai.asset_id = picks.asset_id
+JOIN assets a ON a.id = picks.asset_id
+WHERE picks.album_id = ANY(sqlc.arg('album_ids')::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY picks.album_id, picks.position;
+
+-- name: ListAlbumLiveCoverWeekPicks :many
+-- The LIVE subset of the given albums' frozen weekly groups, in the
+-- order the sampling stored: the same liveness predicate the pins
+-- run, because a week's cell dies exactly like a pin's -- the frame
+-- leaves the album, is trashed, hidden or belongs to another
+-- account's sight.
+SELECT picks.album_id, picks.position, picks.asset_id
+FROM album_cover_week_picks picks
+JOIN albums al ON al.id = picks.album_id
+JOIN album_items ai ON ai.album_id = picks.album_id AND ai.asset_id = picks.asset_id
+JOIN assets a ON a.id = picks.asset_id
+WHERE picks.album_id = ANY(sqlc.arg('album_ids')::uuid[])
+  AND picks.iso_week = sqlc.arg('iso_week')
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY picks.album_id, picks.position;
+
+-- name: ListAlbumLiveCoverPool :many
+-- The sampling pool of the given albums: every live member the caller
+-- can see, in the timeline's own order (taken_at descending, the
+-- asset id as the tiebreak). The order is the pool's stable shape,
+-- never the sampling's ranking -- the rotation hashes these ids. The
+-- memory's shared-view rule rides the same predicate as the pages
+-- and the counts: a sharee's pool is the owner-visible live members,
+-- the owner's own is the plain live ones, so a cover never names a
+-- photo the card's count already dropped.
+SELECT ai.album_id, ai.asset_id
+FROM album_items ai
+JOIN albums al ON al.id = ai.album_id
+JOIN assets a ON a.id = ai.asset_id
+WHERE ai.album_id = ANY(sqlc.arg('album_ids')::uuid[])
+  AND a.deleted_at IS NULL
+  AND a.is_hidden = false
+  AND a.is_component = false
+  AND (
+      al.type <> 'memory'
+      OR al.owner_id = sqlc.arg('user_id')
+      OR caller_asset_visible(al.owner_id, a.id)
+  )
+ORDER BY ai.album_id, a.taken_at DESC, a.id DESC;
+
+-- name: DeleteAlbumCoverPicks :exec
+-- The pin's full-set write: the stored picks go before the request's
+-- set lands, so a shorter set never leaves a stale trailing position.
+DELETE FROM album_cover_picks
+WHERE album_id = sqlc.arg('album_id');
+
+-- name: InsertAlbumCoverPicks :exec
+-- The pin's full-set write: the request's ids land at their pick
+-- positions (0-based, first pick first). The ids arrive already
+-- validated as live members of the album.
+INSERT INTO album_cover_picks (album_id, position, asset_id)
+SELECT sqlc.arg('album_id'), (picked.ord - 1)::smallint, picked.asset_id
+FROM unnest(sqlc.arg('asset_ids')::uuid[]) WITH ORDINALITY AS picked (asset_id, ord);
+
+-- name: InsertAlbumCoverWeekPicks :exec
+-- The automatic group's frozen rows: the resolver's sampling lands at
+-- the week's positions. ON CONFLICT keeps two concurrent resolutions
+-- of the same week convergent -- both computed the same deterministic
+-- sampling, so the first write wins without an error.
+INSERT INTO album_cover_week_picks (album_id, iso_week, position, asset_id)
+SELECT sqlc.arg('album_id'), sqlc.arg('iso_week'), (picked.ord - 1)::smallint, picked.asset_id
+FROM unnest(sqlc.arg('asset_ids')::uuid[]) WITH ORDINALITY AS picked (asset_id, ord)
+ON CONFLICT DO NOTHING;
+
+-- name: DeleteAlbumCoverWeek :exec
+-- The frozen group's reset: used when the album's sampling can no
+-- longer be filled from its pool (the group is shorter than the
+-- frame count and no candidate remains), so the next read samples
+-- afresh instead of rendering a stale short group forever.
+DELETE FROM album_cover_week_picks
+WHERE album_id = sqlc.arg('album_id')
+  AND iso_week = sqlc.arg('iso_week');
 
 -- name: GetAlbumForCaller :one
 -- The album the caller may see, with the caller's role, the live
@@ -393,37 +488,37 @@ WHERE al.id = sqlc.arg('album_id');
 -- name: UpdateAlbumFields :one
 -- The property patch: every field COALESCEs over the stored value,
 -- so an absent (NULL) parameter keeps it and a present one replaces
--- it. The cover rides the same discipline -- a coverAssetId of JSON
--- null decodes as absent, the patch convention of the asset surface,
--- so the pin can change through this face but never clear. The
--- deletability switch joins the property fields: present
+-- it. The deletability switch joins the property fields: present
 -- updates the owner's allow-app-deletion posture of the directory
 -- album, absent keeps it, with the type arm that keeps
--- the switch off memory albums living in the handler. updated_at
--- moves with the write: the wall orders the own group by it. No
--- owner guard and no type guard here: the handler's gate already
--- resolved the caller's right to this write, and an album deleted
--- between the gate and the statement answers no row -- the honest
--- 404 of a gone album.
+-- the switch off memory albums living in the handler. The cover does
+-- NOT ride this statement: a cover is a set with an order, and its
+-- store is its own full-set write (the picks' delete-and-insert
+-- pair). updated_at moves with the write: the wall orders the own
+-- group by it. No owner guard and no type guard here: the handler's
+-- gate already resolved the caller's right to this write, and an
+-- album deleted between the gate and the statement answers no row --
+-- the honest 404 of a gone album.
 UPDATE albums
 SET title = COALESCE(sqlc.narg('title'), title),
-    cover_asset_id = COALESCE(sqlc.arg('cover_asset_id'), cover_asset_id),
     allow_app_deletion = COALESCE(sqlc.narg('allow_app_deletion'), allow_app_deletion),
     updated_at = now()
 WHERE id = sqlc.arg('album_id')
 RETURNING id;
 
--- name: CountLiveAlbumMember :one
--- The cover validation (the application-layer check): does the
--- given asset sit in this album as a LIVE member? The membership row
--- must exist AND the asset must pass the live predicate -- a hidden,
--- trashed or Live Photo component member is a member no more for
--- cover purposes, and an asset outside the album never was one.
+-- name: CountLiveAlbumMembers :one
+-- The cover write's validation: how many of the requested ids sit in
+-- this album as LIVE members? The membership row must exist AND the
+-- asset must pass the live predicate -- a hidden, trashed or Live
+-- Photo component member is a member no more for cover purposes, and
+-- an asset outside the album never was one. The handler compares the
+-- count with the request's length: a shortfall names the refused
+-- write's dead ids.
 SELECT count(*) AS matches
 FROM album_items ai
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = sqlc.arg('album_id')
-  AND ai.asset_id = sqlc.arg('asset_id')
+  AND ai.asset_id = ANY(sqlc.arg('asset_ids')::uuid[])
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false;

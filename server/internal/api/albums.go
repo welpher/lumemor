@@ -91,18 +91,22 @@ func (s *server) writeAlbumNotFound(w http.ResponseWriter) {
 }
 
 // albumSummaryCard maps one album row plus its honest companions
-// onto the wall card shape: the collage source (the pinned cover or
-// the derived candidates), the live member count, the share badge,
-// the caller's role and the caller's timeline preference. The wall's
-// own mapping and the write face's responses share this one
-// authority, so a write's answer is the card the wall lists.
-func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, derived []uuid.UUID, inTimeline *bool) apigen.AlbumSummary {
+// onto the wall card shape: the cover's frames (the caller's ordered
+// pinned set or the server's automatic group), the live member count,
+// the share badge, the caller's role and the caller's timeline
+// preference. The wall's own mapping and the write face's responses
+// share this one authority, so a write's answer is the card the wall
+// lists.
+func albumSummaryCard(album dbgen.Album, isShared bool, itemCount int64, role apigen.AlbumSummaryCallerRole, cover []uuid.UUID, inTimeline *bool) apigen.AlbumSummary {
+	if cover == nil {
+		cover = []uuid.UUID{}
+	}
 	return apigen.AlbumSummary{
 		Id:            uuid.UUID(album.ID.Bytes),
 		Title:         album.Title,
 		Type:          apigen.AlbumSummaryType(album.Type),
 		IsShared:      isShared,
-		CoverAssetIds: coverAssetIds(album.CoverAssetID, derived),
+		CoverAssetIds: cover,
 		ItemCount:     int(itemCount),
 		UpdatedAt:     album.UpdatedAt.Time.UTC(),
 		CallerRole:    role,
@@ -143,20 +147,6 @@ func assetTileThumbnailPath(assetID uuid.UUID) string {
 	return "/api/v1/assets/" + assetID.String() + "/thumbnail?size=tile"
 }
 
-// coverAssetIds resolves one wall card's collage source: the pinned
-// cover asset as the single-element list when the owner set one,
-// otherwise the derived candidates (up to the four most recent live
-// members). The answer is never nil -- an album without live members
-// renders an empty collage, not a null.
-func coverAssetIds(pinned pgtype.UUID, derived []uuid.UUID) []uuid.UUID {
-	if pinned.Valid {
-		return []uuid.UUID{uuid.UUID(pinned.Bytes)}
-	}
-	ids := make([]uuid.UUID, 0, len(derived))
-	ids = append(ids, derived...)
-	return ids
-}
-
 // ListAlbums implements GET /api/v1/albums: the caller's wall. The
 // query answers all three groups in one statement -- the pinned
 // sync card (the caller's own core stream, the default album)
@@ -180,31 +170,25 @@ func (s *server) ListAlbums(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// The derived covers: only the albums without a pinned cover need
-	// candidates, and the query bounds itself at four rows per album.
-	// The candidates query carries the wall's caller: a shared
-	// memory's collage tiles are the owner-visible live members (the
-	// shared-view rule), an own album's are the plain live ones.
-	derived := make([]pgtype.UUID, 0, len(rows))
+	// The covers: each card's ordered frames, resolved in one pass --
+	// the pinned sets and the week's frozen groups ride bounded
+	// reads, and only an album that needs a sample loads its pool.
+	// The resolver carries the wall's caller: a shared memory's
+	// frames are the owner-visible live members (the shared-view
+	// rule), an own album's are the plain live ones.
+	coverInputs := make([]coverType, 0, len(rows))
 	for _, row := range rows {
-		if !row.Album.CoverAssetID.Valid {
-			derived = append(derived, row.Album.ID)
-		}
-	}
-	covers := make(map[uuid.UUID][]uuid.UUID)
-	if len(derived) > 0 {
-		candidates, err := s.queries.ListAlbumCoverCandidates(r.Context(), dbgen.ListAlbumCoverCandidatesParams{
-			AlbumIds: derived,
-			UserID:   pgUUID(requester.userID),
+		coverInputs = append(coverInputs, coverType{
+			ID:        uuid.UUID(row.Album.ID.Bytes),
+			Type:      row.Album.Type,
+			ItemCount: row.ItemCount,
+			OwnerID:   uuid.UUID(row.Album.OwnerID.Bytes),
 		})
-		if err != nil {
-			s.internalError(w, r, "load album covers", err)
-			return
-		}
-		for _, candidate := range candidates {
-			id := uuid.UUID(candidate.AlbumID.Bytes)
-			covers[id] = append(covers[id], uuid.UUID(candidate.AssetID.Bytes))
-		}
+	}
+	covers, err := s.coverGroups(r.Context(), requester.userID, coverInputs)
+	if err != nil {
+		s.internalError(w, r, "load album covers", err)
+		return
 	}
 
 	albums := make([]apigen.AlbumSummary, 0, len(rows))
@@ -289,14 +273,13 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 	}
 
 	detail := apigen.AlbumDetail{
-		Id:           albumId,
-		Title:        album.Album.Title,
-		Type:         apigen.AlbumDetailType(album.Album.Type),
-		CoverAssetId: nil,
-		CallerRole:   apigen.AlbumDetailCallerRole(album.CallerRole),
-		ItemCount:    int(album.ItemCount),
-		Items:        make([]apigen.AlbumItem, 0, len(rows)),
-		InTimeline:   timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
+		Id:         albumId,
+		Title:      album.Album.Title,
+		Type:       apigen.AlbumDetailType(album.Album.Type),
+		CallerRole: apigen.AlbumDetailCallerRole(album.CallerRole),
+		ItemCount:  int(album.ItemCount),
+		Items:      make([]apigen.AlbumItem, 0, len(rows)),
+		InTimeline: timelinePrefField(album.Album.Type, album.CallerRole, album.InTimeline),
 	}
 	// The source line of the edit dialog: the directory album's
 	// stored root, present exactly on the directory type (fixtures
@@ -346,10 +329,18 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		}
 		detail.Shares = &shares
 	}
-	if album.Album.CoverAssetID.Valid {
-		cover := uuid.UUID(album.Album.CoverAssetID.Bytes)
-		detail.CoverAssetId = &cover
+	// The stored pin, in pick order: the detail answers the OWNER's
+	// set exactly as written -- dead frames included -- because the
+	// picker seeds this list and names the frames that left the album.
+	// The empty list is the automatic state (the card renders the
+	// server's group; this field is what the owner pinned, not what
+	// the card draws).
+	picks, err := s.coverStoredPicks(r.Context(), albumId)
+	if err != nil {
+		s.internalError(w, r, "load album cover picks", err)
+		return
 	}
+	detail.CoverAssetIds = picks
 	if len(rows) > limit {
 		rows = rows[:limit]
 		last := rows[limit-1]

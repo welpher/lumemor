@@ -1503,11 +1503,34 @@ type AlbumCreateResponse struct {
 	// owner's).
 	CallerRole AlbumCreateResponseCallerRole `json:"callerRole"`
 
-	// CoverAssetIds The collage source of the wall card: the pinned cover
-	// asset as a single-element list when the owner set one,
-	// otherwise the album's most recent live member assets (up
-	// to four, `takenAt` descending, the asset id as the
-	// tiebreak). Empty for an album with no live members.
+	// CoverAssetIds The collage source of the wall card, in render order: the
+	// frames of the album's cover. A cover holds four frames
+	// (the album card's 2x2 collage) or six (the memory band's
+	// 3-across 2-down strip), and the server answers the group
+	// the card draws -- the card is the first thing rendered
+	// and cannot see the collection, so the automatic group is
+	// computed here, never by the client.
+	//
+	// The owner's pinned set wins: when the owner picked a full
+	// set, these are its frames in pick order, exactly as
+	// written (the server never re-sorts a pin). An album
+	// without pins renders the automatic group: a weekly
+	// rotation, re-sampled per ISO week from the whole live
+	// collection (never the newest frames and never a random
+	// order), frozen for the week so an upload mid-week cannot
+	// move a frame, and never rotating at all while the album
+	// holds fewer than twice the frame count -- such an album
+	// keeps one stable sample of its own. A pinned frame that
+	// is no longer visible to the caller (moved out, trashed,
+	// hidden) is filled silently from the caller's visible
+	// pool; a fully dead pin falls back to the automatic group.
+	//
+	// The order is the render order and the length is at most
+	// the card's frame count: a collection with fewer live
+	// members than frames answers the frames it has (one
+	// fills, two split, three lay one large beside two small),
+	// and an album with no live members answers an empty array
+	// (the card's empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.
@@ -1611,10 +1634,17 @@ type AlbumDetail struct {
 	// write affordances, a viewer is read-only.
 	CallerRole AlbumDetailCallerRole `json:"callerRole"`
 
-	// CoverAssetId The pinned cover asset, or null when unset -- the raw
-	// column; the wall derives its collage fallback, the detail
-	// carries the pin itself.
-	CoverAssetId *openapi_types.UUID `json:"coverAssetId"`
+	// CoverAssetIds The owner's stored pin, in pick order: the frames the
+	// owner picked, exactly as written (the server stores and
+	// returns the order given), or an empty array when the
+	// album is on the automatic weekly group. A pinned frame
+	// that has since left the album (moved out, trashed,
+	// hidden) still appears here: the picker seeds from this
+	// list and marks the cells that are no longer in the album.
+	// The wall card's own `coverAssetIds` is the FILLED group
+	// (the dead pins replaced from the caller's visible pool);
+	// this field is the pin itself, never the rendered card.
+	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Deletable The wall's delete-affordance derivation, computed
 	// server-side and carried as one boolean: the caller is
@@ -1801,7 +1831,8 @@ type AlbumOwnerRef struct {
 // null values count as absent, the patch discipline of the
 // asset surface -- is a client bug and answers 400), and only
 // the fields the request carries update; the rest keep their
-// values. A present `coverAssetId` must be a live member of
+// values. A present `coverAssetIds` must carry 0 or exactly the
+// card's frame count of distinct ids, every one a live member of
 // the album itself. The write publishes one `album.updated`
 // event whatever fields changed.
 type AlbumPatch struct {
@@ -1819,14 +1850,24 @@ type AlbumPatch struct {
 	// stored value converges.
 	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
 
-	// CoverAssetId The pinned cover asset. When present it must be a LIVE
-	// member of THIS album (the membership row exists and the
-	// asset is not trashed, not hidden, not a Live Photo
-	// component row) -- otherwise the answer is 400 with the
-	// message key `album_cover_not_member`. Absent (or JSON
-	// null, which decodes as absent) leaves the pin
-	// unchanged.
-	CoverAssetId *openapi_types.UUID `json:"coverAssetId,omitempty"`
+	// CoverAssetIds The owner's pin, as a full set: the frames of the cover in
+	// render order (the order the owner picked them in -- the
+	// server stores and returns it as given, never re-sorting).
+	// The length is 0 or exactly N, N being the card's frame
+	// count (four on the album card, six on the memory band):
+	// an empty array clears the pin and returns the album to
+	// the automatic weekly group, a full set pins it, and any
+	// other length answers 400 `VALIDATION_FAILED` (a partial
+	// set is the picker's un-saveable state, never a stored
+	// one). Repeated ids answer 400 too -- a cover is a set,
+	// and one frame cannot fill two cells. Every id must be a
+	// LIVE member of THIS album (the membership row exists and
+	// the asset is not trashed, not hidden, not a Live Photo
+	// component row); otherwise the answer is 400 with the
+	// message key `album_cover_not_member` and a `count` of the
+	// refused frames. Absent (or JSON null, which decodes as
+	// absent) leaves the pin unchanged.
+	CoverAssetIds *[]openapi_types.UUID `json:"coverAssetIds,omitempty"`
 
 	// Title The album's display title, trimmed server-side; when
 	// present it must span 1-64 Unicode characters after the
@@ -1914,11 +1955,34 @@ type AlbumSummary struct {
 	// owner's).
 	CallerRole AlbumSummaryCallerRole `json:"callerRole"`
 
-	// CoverAssetIds The collage source of the wall card: the pinned cover
-	// asset as a single-element list when the owner set one,
-	// otherwise the album's most recent live member assets (up
-	// to four, `takenAt` descending, the asset id as the
-	// tiebreak). Empty for an album with no live members.
+	// CoverAssetIds The collage source of the wall card, in render order: the
+	// frames of the album's cover. A cover holds four frames
+	// (the album card's 2x2 collage) or six (the memory band's
+	// 3-across 2-down strip), and the server answers the group
+	// the card draws -- the card is the first thing rendered
+	// and cannot see the collection, so the automatic group is
+	// computed here, never by the client.
+	//
+	// The owner's pinned set wins: when the owner picked a full
+	// set, these are its frames in pick order, exactly as
+	// written (the server never re-sorts a pin). An album
+	// without pins renders the automatic group: a weekly
+	// rotation, re-sampled per ISO week from the whole live
+	// collection (never the newest frames and never a random
+	// order), frozen for the week so an upload mid-week cannot
+	// move a frame, and never rotating at all while the album
+	// holds fewer than twice the frame count -- such an album
+	// keeps one stable sample of its own. A pinned frame that
+	// is no longer visible to the caller (moved out, trashed,
+	// hidden) is filled silently from the caller's visible
+	// pool; a fully dead pin falls back to the automatic group.
+	//
+	// The order is the render order and the length is at most
+	// the card's frame count: a collection with fewer live
+	// members than frames answers the frames it has (one
+	// fills, two split, three lay one large beside two small),
+	// and an album with no live members answers an empty array
+	// (the card's empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.
@@ -3121,11 +3185,34 @@ type MemoryCreateResponse struct {
 	// owner's).
 	CallerRole MemoryCreateResponseCallerRole `json:"callerRole"`
 
-	// CoverAssetIds The collage source of the wall card: the pinned cover
-	// asset as a single-element list when the owner set one,
-	// otherwise the album's most recent live member assets (up
-	// to four, `takenAt` descending, the asset id as the
-	// tiebreak). Empty for an album with no live members.
+	// CoverAssetIds The collage source of the wall card, in render order: the
+	// frames of the album's cover. A cover holds four frames
+	// (the album card's 2x2 collage) or six (the memory band's
+	// 3-across 2-down strip), and the server answers the group
+	// the card draws -- the card is the first thing rendered
+	// and cannot see the collection, so the automatic group is
+	// computed here, never by the client.
+	//
+	// The owner's pinned set wins: when the owner picked a full
+	// set, these are its frames in pick order, exactly as
+	// written (the server never re-sorts a pin). An album
+	// without pins renders the automatic group: a weekly
+	// rotation, re-sampled per ISO week from the whole live
+	// collection (never the newest frames and never a random
+	// order), frozen for the week so an upload mid-week cannot
+	// move a frame, and never rotating at all while the album
+	// holds fewer than twice the frame count -- such an album
+	// keeps one stable sample of its own. A pinned frame that
+	// is no longer visible to the caller (moved out, trashed,
+	// hidden) is filled silently from the caller's visible
+	// pool; a fully dead pin falls back to the automatic group.
+	//
+	// The order is the render order and the length is at most
+	// the card's frame count: a collection with fewer live
+	// members than frames answers the frames it has (one
+	// fills, two split, three lay one large beside two small),
+	// and an album with no live members answers an empty array
+	// (the card's empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.

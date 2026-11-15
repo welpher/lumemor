@@ -53,6 +53,7 @@
 	import CountLabel from '$lib/components/CountLabel.svelte';
 	import CreateMemoryDialog from '$lib/memories/CreateMemoryDialog.svelte';
 	import MemoryOverlay, { type MemoryMode } from '$lib/memories/MemoryOverlay.svelte';
+	import { memoryCoverCell, memoryCoverGrid } from '$lib/albums/cover-layout';
 	import Plus from '@lucide/svelte/icons/plus';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -373,20 +374,23 @@
 		type="button"
 		onclick={() => openMemory(memory.id)}
 	>
-		<span class="memory-card__cover relative block aspect-[3/1] overflow-hidden bg-accent-soft" aria-hidden="true">
+		<span
+			class="memory-card__cover relative block aspect-[3/1] overflow-hidden bg-accent-soft"
+			role={frames.length > 0 ? 'img' : undefined}
+			aria-label={frames.length > 0 ? $_('cover_collage_label', { values: { count: frames.length } }) : undefined}
+			aria-hidden={frames.length === 0 ? 'true' : undefined}
+		>
 			{#if frames.length > 0}
-				<!-- One frame fills the band, two split it, three or more
-				     fill the 3x2 strip in order; every cell crops its
-				     frame (object-cover), so the strip never letterboxes. -->
-				<span
-					class="memory-card__frames absolute inset-0 grid gap-px {frames.length === 1
-						? 'grid-cols-1'
-						: frames.length === 2
-							? 'grid-cols-2'
-							: 'grid-cols-3 grid-rows-2'}"
-				>
-					{#each frames as coverId (coverId)}
-						<span class="memory-card__frame relative overflow-hidden">
+				<!-- The band's degradation ladder: one frame fills, two
+				     split, three sit in one row, four make a 2x2, five sit
+				     three-over-two, six are the 3-across 2-down strip.
+				     Every cell crops its frame (object-cover), so the strip
+				     never letterboxes. -->
+				<span class="memory-card__frames absolute inset-0 gap-px {memoryCoverGrid(frames.length)}">
+					{#each frames as coverId, index (coverId)}
+						<span
+							class="memory-card__frame {memoryCoverCell(frames.length, index)} relative overflow-hidden"
+						>
 							<img
 								class="w-full h-full object-cover"
 								src={`/api/v1/assets/${encodeURIComponent(coverId)}/thumbnail?size=tile`}
