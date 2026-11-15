@@ -598,6 +598,10 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/admin/users", wrapper.ListUsers)
 				r.Post("/admin/users", wrapper.CreateUser)
 				r.Patch("/admin/users/{id}", wrapper.UpdateUser)
+				// The account disposal: the two-step delete's
+				// transaction (both arms settle the departing
+				// account's content before the row goes).
+				r.Delete("/admin/users/{id}", wrapper.DeleteUser)
 				// The storage settings face (the storage-template
 				// feature): the template read and the three-stage
 				// validated save -- one bounded setting row read or
