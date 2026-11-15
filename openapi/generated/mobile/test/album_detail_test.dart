@@ -61,9 +61,15 @@ void main() {
       // TODO
     });
 
-    // The album's live member count, the same predicate as the items below. 
+    // The album's live member count, the same predicate as the items below (every media kind). 
     // int itemCount
     test('to test the property `itemCount`', () async {
+      // TODO
+    });
+
+    // The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
+    // int photoCount
+    test('to test the property `photoCount`', () async {
       // TODO
     });
 

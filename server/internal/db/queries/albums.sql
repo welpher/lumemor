@@ -63,6 +63,12 @@ ON CONFLICT DO NOTHING;
 -- albums only (a sync album a share row names -- nothing can
 -- produce one -- feeds no wall card for the sharee).
 --
+-- Every arm's item_count is the card's live member count and its
+-- photo_count the image-kind members among them: the card's count
+-- idiom carries the image glyph and the word "photos", so it
+-- renders photo_count (a video is a member, never a photo), while
+-- item_count stays the collection's own size.
+--
 -- in_timeline is the caller's raw timeline preference row of the
 -- card's album (the exclusion toggle's stored state): NULL means no
 -- row, which the handler maps to the default of feeding the timeline
@@ -92,6 +98,16 @@ SELECT sqlc.embed(al),
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline,
        0::int AS arm_rank,
        al.updated_at AS sort_at
@@ -120,6 +136,16 @@ SELECT sqlc.embed(al),
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline,
        1::int AS arm_rank,
        al.updated_at AS sort_at
@@ -155,6 +181,17 @@ SELECT sqlc.embed(al),
              AND a.is_component = false
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+             AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
+       ) AS photo_count,
        p.in_timeline,
        2::int AS arm_rank,
        s.granted_at AS sort_at
@@ -320,7 +357,10 @@ WHERE album_id = sqlc.arg('album_id')
 -- count is the live members the memory's owner currently sees (the
 -- re-share ground, revalidated at read time), while the owner's own
 -- count is the plain live membership -- the owner's curation is
--- their own view of the set.
+-- their own view of the set. photo_count is the same count narrowed
+-- to image-kind members: the count idiom beside the image glyph
+-- says "photos", so the bar reads this field (a video is a member,
+-- never a photo).
 SELECT sqlc.embed(al),
        CASE
            WHEN al.owner_id = sqlc.arg('user_id') THEN 'owner'::text
@@ -340,6 +380,21 @@ SELECT sqlc.embed(al),
                  OR caller_asset_visible(al.owner_id, a.id)
              )
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+             AND (
+                 al.type <> 'memory'
+                 OR al.owner_id = sqlc.arg('user_id')
+                 OR caller_asset_visible(al.owner_id, a.id)
+             )
+       ) AS photo_count,
        p.in_timeline
 FROM albums al
 LEFT JOIN user_album_prefs p
@@ -460,8 +515,9 @@ RETURNING id;
 
 -- name: GetAlbumSummary :one
 -- The album row with the wall card's honest companions: whether any
--- share row exists, the live member count, and the caller's raw
--- timeline preference row (the write face's caller is the owner, so a
+-- share row exists, the live member count, the live photo count
+-- (the image-kind members -- the card's "N photos" number), and the
+-- caller's raw timeline preference row (the write face's caller is the owner, so a
 -- memory album's card carries no preference field; the handler maps
 -- NULL to the default the same way the wall does). The write face's
 -- responses build their cards off this row; the derived cover
@@ -479,6 +535,16 @@ SELECT sqlc.embed(al),
              AND a.is_hidden = false
              AND a.is_component = false
        ) AS item_count,
+       (
+           SELECT count(*)
+           FROM album_items ai
+           JOIN assets a ON a.id = ai.asset_id
+           WHERE ai.album_id = al.id
+             AND a.deleted_at IS NULL
+             AND a.is_hidden = false
+             AND a.is_component = false
+             AND a.media_kind = 'image'
+       ) AS photo_count,
        p.in_timeline
 FROM albums al
 LEFT JOIN user_album_prefs p

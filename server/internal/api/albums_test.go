@@ -580,7 +580,12 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		fixtureWallAssetID("53"),
 	}
 	for i, id := range syncLive {
-		env.insertTimelineAsset(t, id, adminID, syncBase.Add(time.Duration(3-i)*time.Hour), timelineAssetOpts{})
+		// The third member is a VIDEO: a live member, never a photo.
+		// The card's two counts must part ways here (itemCount 3,
+		// photoCount 2) -- the bar's "N photos" idiom reads the
+		// photo count, the cover pool consults the member count.
+		env.insertTimelineAsset(t, id, adminID, syncBase.Add(time.Duration(3-i)*time.Hour),
+			timelineAssetOpts{video: i == 2})
 		env.addTimelineItem(t, ownSync, id, adminID)
 	}
 	for _, row := range []struct {
@@ -722,6 +727,10 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	if syncAlbum.ItemCount != 3 {
 		t.Errorf("sync card itemCount = %d, want 3 (the live members only)", syncAlbum.ItemCount)
 	}
+	if syncAlbum.PhotoCount != 2 {
+		t.Errorf("sync card photoCount = %d, want 2 (the live members MINUS the video: "+
+			"the card's image-glyph count says photos)", syncAlbum.PhotoCount)
+	}
 	if len(syncAlbum.CoverAssetIds) != len(syncLive) {
 		t.Fatalf("sync card coverAssetIds = %v, want the 3 live members %v",
 			syncAlbum.CoverAssetIds, syncLive)
@@ -734,6 +743,14 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		if !syncGot[id] {
 			t.Errorf("sync card coverAssetIds = %v, want %s among them", syncAlbum.CoverAssetIds, id)
 		}
+	}
+
+	// The sync album's own detail parts the two counts the same way:
+	// three live members, two of them photos.
+	syncDetail := env.getAlbumDetail(t, env.cookie, ownSync, "")
+	if syncDetail.ItemCount != 3 || syncDetail.PhotoCount != 2 {
+		t.Errorf("sync detail itemCount/photoCount = %d/%d, want 3/2",
+			syncDetail.ItemCount, syncDetail.PhotoCount)
 	}
 
 	// The detail carries the stored pin in pick order (the wall

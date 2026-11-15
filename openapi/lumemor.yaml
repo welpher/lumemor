@@ -3270,11 +3270,13 @@ paths:
         client's random pick, and an upload mid-week cannot move it.
         Fewer frames than the card holds when the album has fewer
         live members; empty for an album with none. `itemCount`
-        counts live members under the same predicate: trashed,
+        counts live members under the same predicate and
+        `photoCount` the image-kind ones among them (the card's
+        image-glyph count renders `photoCount`): trashed,
         hidden and Live Photo component rows never count (a hidden
         asset is invisible to the whole family). For a shared-group
         `memory` card the predicate widens the same way the detail's
-        does: the count and the collage frames are the live members
+        does: both counts and the collage frames are the live members
         the memory's owner currently sees -- the re-share ground,
         revalidated at read time, so a revoked photo leaves the
         sharee's card and collage with no snapshot residue.
@@ -3326,6 +3328,7 @@ paths:
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6078
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6079
                         itemCount: 1204
+                        photoCount: 1197
                         updatedAt: '2026-11-05T07:30:00Z'
                         callerRole: owner
                       - id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
@@ -3341,6 +3344,7 @@ paths:
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6076
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6077
                         itemCount: 128
+                        photoCount: 126
                         updatedAt: '2026-11-04T18:20:00Z'
                         callerRole: owner
                       - id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6081
@@ -3350,6 +3354,7 @@ paths:
                         isShared: false
                         coverAssetIds: []
                         itemCount: 2048
+                        photoCount: 2048
                         updatedAt: '2026-11-03T09:00:00Z'
                         callerRole: owner
                       - id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6091
@@ -3365,6 +3370,7 @@ paths:
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6096
                           - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6097
                         itemCount: 17
+                        photoCount: 17
                         updatedAt: '2026-11-02T14:05:00Z'
                         callerRole: viewer
                         owner:
@@ -3488,8 +3494,9 @@ paths:
         The response is the created album's wall card -- the summary
         exactly as `GET /albums` lists it: `callerRole` `owner`,
         `type` `directory`, an empty `coverAssetIds` array (never
-        null) and `itemCount` 0, nothing being a member yet -- plus
-        the honest audience report and the `sourceWritable` fact.
+        null), `itemCount` 0 and `photoCount` 0, nothing being a
+        member yet -- plus the honest audience report and the
+        `sourceWritable` fact.
         The card's `inTimeline` carries the exclusion's landed state.
         The write publishes one `album.created` event and one
         `album.shared` event per audience row that landed.
@@ -3546,6 +3553,7 @@ paths:
                     isShared: true
                     coverAssetIds: []
                     itemCount: 0
+                    photoCount: 0
                     updatedAt: '2026-11-05T10:15:00Z'
                     callerRole: owner
                     inTimeline: true
@@ -3560,6 +3568,7 @@ paths:
                     isShared: false
                     coverAssetIds: []
                     itemCount: 0
+                    photoCount: 0
                     updatedAt: '2026-11-05T10:15:00Z'
                     callerRole: owner
                     inTimeline: true
@@ -3836,7 +3845,10 @@ paths:
         revoked before the request simply sits in that same invisible
         region.
 
-        `itemCount` counts the album's live members; `items` is one
+        `itemCount` counts the album's live members and
+        `photoCount` the image-kind members among them (the bar's
+        "N photos" idiom reads the latter -- a video is a member,
+        never a photo); `items` is one
         keyset page of them, ordered `takenAt` descending with the
         asset id as the tiebreak -- the timeline's own ordering and
         cursor pair, so the album grid pages with the timeline's
@@ -3969,6 +3981,7 @@ paths:
                       - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6075
                     callerRole: owner
                     itemCount: 128
+                    photoCount: 125
                     items:
                       - assetId: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6072
                         addedAt: '2026-11-04T18:19:00Z'
@@ -4000,6 +4013,7 @@ paths:
                     rootPath: /Volumes/Photos/family
                     callerRole: viewer
                     itemCount: 0
+                    photoCount: 0
                     items: []
         '400':
           description: |
@@ -4171,6 +4185,7 @@ paths:
                       - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6076
                       - 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6077
                     itemCount: 128
+                    photoCount: 126
                     updatedAt: '2026-11-05T11:02:00Z'
                     callerRole: owner
         '400':
@@ -5308,8 +5323,9 @@ paths:
         The response is the created memory's wall card -- the
         summary exactly as `GET /albums` lists it: `callerRole`
         `owner`, `type` `memory`, an empty `coverAssetIds` array
-        (never null), `itemCount` 0 (nothing is a member yet), no
-        `inTimeline` field (an own memory card omits it) -- widened
+        (never null), `itemCount` 0 and `photoCount` 0 (nothing is a
+        member yet), no `inTimeline` field (an own memory card omits
+        it) -- widened
         with the honest audience report. The write publishes one
         `album.created` event and one `album.shared` event per
         audience row that landed.
@@ -5354,6 +5370,7 @@ paths:
                     isShared: true
                     coverAssetIds: []
                     itemCount: 0
+                    photoCount: 0
                     updatedAt: '2026-11-11T10:15:00Z'
                     callerRole: owner
                     skipped: []
@@ -5366,6 +5383,7 @@ paths:
                     isShared: false
                     coverAssetIds: []
                     itemCount: 0
+                    photoCount: 0
                     updatedAt: '2026-11-11T10:15:00Z'
                     callerRole: owner
                     skipped:
@@ -16714,10 +16732,10 @@ components:
       type: object
       description: |
         One album card of the wall: the metadata, the live member
-        count and the collage source, plus the `callerRole`
-        discriminator the client keys each card's face by (a viewer
-        card carries the read-only mark; an own card its own shared
-        state). Shared
+        count, the live PHOTO count and the collage source, plus the
+        `callerRole` discriminator the client keys each card's face
+        by (a viewer card carries the read-only mark; an own card
+        its own shared state). Shared
         items carry `owner`, the honest attribution of another
         account's album; own items omit it.
       required:
@@ -16727,6 +16745,7 @@ components:
         - isShared
         - coverAssetIds
         - itemCount
+        - photoCount
         - updatedAt
         - callerRole
       properties:
@@ -16799,7 +16818,20 @@ components:
           description: |
             The album's live member count: trashed, hidden and Live
             Photo component rows never count (a hidden asset is
-            invisible to the whole family).
+            invisible to the whole family). The members of every
+            media kind count here -- this is the collection's own
+            size, the number the cover pool and the removal's
+            arithmetic consult.
+        photoCount:
+          type: integer
+          description: |
+            The album's live PHOTO count: the same live-member
+            predicate narrowed to `kind: image` members. The
+            interface's count idiom beside the image glyph reads
+            this field (it says "12 photos", so it counts photos);
+            a video is a member but never a photo, and the wall
+            marks it with its own glyph instead. Equal to
+            `itemCount` for an album holding no videos.
         updatedAt:
           type: string
           format: date-time
@@ -16870,8 +16902,8 @@ components:
       type: object
       description: |
         One album's detail as the calling user sees it: the metadata,
-        the caller's role, the live member count and one keyset page
-        of the live items.
+        the caller's role, the live member count, the live photo
+        count and one keyset page of the live items.
       required:
         - id
         - title
@@ -16879,6 +16911,7 @@ components:
         - coverAssetIds
         - callerRole
         - itemCount
+        - photoCount
         - items
       properties:
         id:
@@ -16976,7 +17009,16 @@ components:
           type: integer
           description: |
             The album's live member count, the same predicate as the
-            items below.
+            items below (every media kind).
+        photoCount:
+          type: integer
+          description: |
+            The album's live photo count: the live-item predicate
+            narrowed to image-kind members. The contextual bar's
+            count idiom renders this field (the image glyph says
+            "photos"); the wall beside it carries videos as their
+            own tiles, never as photos. Equal to `itemCount` when
+            the album holds no videos.
         items:
           type: array
           description: |
@@ -17160,7 +17202,7 @@ components:
         probe's `sourceWritable` fact. The card's companions are the
         creation-time constants: `callerRole` `owner`, `isShared`
         true exactly when the audience landed a row, an empty
-        `coverAssetIds`, `itemCount` 0.
+        `coverAssetIds`, `itemCount` 0, `photoCount` 0.
       allOf:
         - $ref: '#/components/schemas/AlbumSummary'
         - type: object
@@ -17230,9 +17272,9 @@ components:
         audience report. The card's companions are the creation-time
         constants: `callerRole` `owner`, `type` `memory`, `isShared`
         true exactly when the audience landed a row, an empty
-        `coverAssetIds`, `itemCount` 0, no `inTimeline` field (an
-        own memory card omits it -- the memory never feeds its
-        creator's timeline).
+        `coverAssetIds`, `itemCount` 0, `photoCount` 0, no
+        `inTimeline` field (an own memory card omits it -- the
+        memory never feeds its creator's timeline).
       allOf:
         - $ref: '#/components/schemas/AlbumSummary'
         - type: object
