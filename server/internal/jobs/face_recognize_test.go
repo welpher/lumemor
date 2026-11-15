@@ -178,7 +178,7 @@ func (e *env) seedFace(t *testing.T, assetID uuid.UUID, modelID string, bbox [4]
 		AssetID: pgUUID(assetID),
 		BboxX:   bbox[0], BboxY: bbox[1], BboxW: bbox[2], BboxH: bbox[3],
 		Score:   score,
-		ModelID: modelID,
+		ModelID: pgtype.Text{String: modelID, Valid: true},
 	}); err != nil {
 		t.Fatalf("seed face: %v", err)
 	}
