@@ -29,7 +29,7 @@ func exiftoolCommand(ctx context.Context, path string) *exec.Cmd {
 // one binary tag's bytes: the same template plus the tag flag (a
 // package-internal constant, never a caller's string), no shell.
 func exiftoolBinaryCommand(ctx context.Context, path, tag string) *exec.Cmd {
-	argv := append([]string{exiftoolBinary, "-b", "-" + tag, "--charset", "filename=utf8"}, path)
+	argv := append([]string{exiftoolBinary, "-b", "-" + tag, "-charset", "filename=utf8"}, path)
 	return exec.CommandContext(ctx, exiftoolBinary, argv...)
 }
 

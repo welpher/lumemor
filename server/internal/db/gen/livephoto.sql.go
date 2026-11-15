@@ -241,36 +241,60 @@ func (q *Queries) GetLivePhotoCIDMatch(ctx context.Context, arg GetLivePhotoCIDM
 	return i, err
 }
 
+const getLivePhotoSweepCursor = `-- name: GetLivePhotoSweepCursor :one
+SELECT (value->>'after')::timestamptz AS after
+FROM instance_settings
+WHERE key = 'livephoto_sweep'
+`
+
+// The sweep's rotating frontier: the created_at the last run walked
+// past. A missing row answers the dawn of time (the first rotation
+// starts at the oldest component).
+func (q *Queries) GetLivePhotoSweepCursor(ctx context.Context) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, getLivePhotoSweepCursor)
+	var after pgtype.Timestamptz
+	err := row.Scan(&after)
+	return after, err
+}
+
 const listLivePhotoComponents = `-- name: ListLivePhotoComponents :many
-SELECT id, file_path, storage_kind
+SELECT id, file_path, storage_kind, created_at
 FROM assets
 WHERE is_component
   AND deleted_at IS NULL
   AND created_at < now() - make_interval(secs => $1::int)
+  AND created_at > $2
 ORDER BY created_at
-LIMIT $2
+LIMIT $3
 `
 
 type ListLivePhotoComponentsParams struct {
-	GraceSeconds int32 `json:"grace_seconds"`
-	LimitCount   int32 `json:"limit_count"`
+	GraceSeconds int32              `json:"grace_seconds"`
+	After        pgtype.Timestamptz `json:"after"`
+	LimitCount   int32              `json:"limit_count"`
 }
 
 type ListLivePhotoComponentsRow struct {
-	ID          pgtype.UUID `json:"id"`
-	FilePath    string      `json:"file_path"`
-	StorageKind StorageKind `json:"storage_kind"`
+	ID          pgtype.UUID        `json:"id"`
+	FilePath    string             `json:"file_path"`
+	StorageKind StorageKind        `json:"storage_kind"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 // The maintenance sweep's candidates: LIVE component rows old enough
 // that an in-flight extraction cannot be mistaken for an orphan (the
 // extraction creates the row and links it in the same job, so the
 // grace window only has to outlast one job). Bounded per run like the
-// trash expiry, so an hourly sweep never becomes an unbounded walk. A
-// trashed component is the trash expiry's business, never this run's:
-// its pair may still be restorable.
+// trash expiry, so an hourly sweep never becomes an unbounded walk.
+// The cursor rotates: a run walks components CREATED AFTER the last
+// run's frontier, so healthy rows leave the candidate set once
+// walked and a broken pair past the first batch is still reached
+// (a short batch tells the run the set is exhausted and the cursor
+// resets for the next rotation). A trashed component is the trash
+// expiry's business, never this run's: its pair may still be
+// restorable.
 func (q *Queries) ListLivePhotoComponents(ctx context.Context, arg ListLivePhotoComponentsParams) ([]ListLivePhotoComponentsRow, error) {
-	rows, err := q.db.Query(ctx, listLivePhotoComponents, arg.GraceSeconds, arg.LimitCount)
+	rows, err := q.db.Query(ctx, listLivePhotoComponents, arg.GraceSeconds, arg.After, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +302,12 @@ func (q *Queries) ListLivePhotoComponents(ctx context.Context, arg ListLivePhoto
 	var items []ListLivePhotoComponentsRow
 	for rows.Next() {
 		var i ListLivePhotoComponentsRow
-		if err := rows.Scan(&i.ID, &i.FilePath, &i.StorageKind); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.FilePath,
+			&i.StorageKind,
+			&i.CreatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -388,5 +417,18 @@ type SetAssetLivePhotoVideoParams struct {
 // refetch meaningful -- the event only matters if the row changed.
 func (q *Queries) SetAssetLivePhotoVideo(ctx context.Context, arg SetAssetLivePhotoVideoParams) error {
 	_, err := q.db.Exec(ctx, setAssetLivePhotoVideo, arg.ID, arg.VideoID)
+	return err
+}
+
+const setLivePhotoSweepCursor = `-- name: SetLivePhotoSweepCursor :exec
+INSERT INTO instance_settings (key, value)
+VALUES ('livephoto_sweep', jsonb_build_object('after', $1::timestamptz))
+ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+`
+
+// The frontier's advance: one row, upserted. A short batch writes the
+// reset (the dawn of time) so the next run starts the rotation over.
+func (q *Queries) SetLivePhotoSweepCursor(ctx context.Context, after pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, setLivePhotoSweepCursor, after)
 	return err
 }

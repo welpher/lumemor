@@ -2,12 +2,15 @@ package jobs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
@@ -69,9 +72,24 @@ type LivePhotoSweepCounts struct {
 // still references goes with its bytes.
 func RunLivePhotoSweep(ctx context.Context, pool *pgxpool.Pool, dataDir string, bus *events.Bus, logger *slog.Logger) (LivePhotoSweepCounts, error) {
 	queries := dbgen.New(pool)
+	// The rotating frontier: this run walks components created after
+	// the last run's cursor, so the healthy ones leave the candidate
+	// set once walked (a fixed oldest-first window would re-walk the
+	// same batch forever once a library outgrows it).
+	cursor, err := queries.GetLivePhotoSweepCursor(ctx)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return LivePhotoSweepCounts{}, fmt.Errorf("live photo sweep: read the cursor: %w", err)
+	}
+	if errors.Is(err, pgx.ErrNoRows) || !cursor.Valid {
+		// The first rotation (or a reset round): the dawn of time, not
+		// the zero value -- a NULL cursor compares false against every
+		// row and the sweep would see nothing at all.
+		cursor = pgtype.Timestamptz{Time: time.Unix(0, 0), Valid: true}
+	}
 	rows, err := queries.ListLivePhotoComponents(ctx, dbgen.ListLivePhotoComponentsParams{
 		GraceSeconds: livePhotoSweepGraceSeconds,
 		LimitCount:   livePhotoSweepBatch,
+		After:        cursor,
 	})
 	if err != nil {
 		return LivePhotoSweepCounts{}, fmt.Errorf("live photo sweep: list components: %w", err)
@@ -127,6 +145,18 @@ func RunLivePhotoSweep(ctx context.Context, pool *pgxpool.Pool, dataDir string, 
 				})
 			}
 		}
+	}
+
+	// The frontier's advance: a full batch parks the cursor at the
+	// last walked row's age (the query orders oldest-first, so the
+	// next run continues past it); a SHORT batch exhausted the set and
+	// the cursor resets for the next rotation.
+	next := pgtype.Timestamptz{}
+	if len(rows) == livePhotoSweepBatch {
+		next = rows[len(rows)-1].CreatedAt
+	}
+	if err := queries.SetLivePhotoSweepCursor(ctx, next); err != nil {
+		return counts, fmt.Errorf("live photo sweep: advance the cursor: %w", err)
 	}
 	return counts, nil
 }
