@@ -48,9 +48,10 @@
 //     the count wording says "3 matches".
 //  4. The browse state: the bare /search (no query) IS the
 //     recent-photos feed -- the field empties, the hint line says
-//     what the wall is, the timeline's exact month-grouped wall
-//     renders, the count wording says "All 3 photos", and no facet
-//     affordance rides the page (the query is the filter).
+//     what the wall is, the one flat wall renders (the same rank
+//     order the query state wears), the count wording says
+//     "All 3 photos", and no facet affordance rides the page (the
+//     query is the filter).
 //  5. Any two-rune query answers the library (the semantic arm
 //     ranks it -- there is no similarity cutoff), while a one-rune
 //     deep link (the server drops it) lands on the browse face -- an
@@ -305,12 +306,10 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.search__hint')).toBeVisible();
 		await expect(page.locator('.search-bar .count')).toHaveAttribute('aria-label', 'All 3 photos');
 
-		// The month-grouped wall (the timeline's exact form) over the
-		// three photos.
+		// The ONE flat wall over the three photos -- the recent feed
+		// wears the rank order, no month grouping.
 		await expect(page.locator('.tile')).toHaveCount(3);
-		for (const month of ['July 2026', 'June 2026', 'May 2026']) {
-			await expect(page.locator('.wall__month-header', { hasText: month })).toBeVisible();
-		}
+		await expect(page.locator('.wall__month-header')).toHaveCount(0);
 
 		// No facet affordance rides the page in either state.
 		await expect(page.locator('.search-chip')).toHaveCount(0);
