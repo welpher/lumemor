@@ -21,6 +21,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,6 +36,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
+	"github.com/welpher/lumemor/server/internal/db"
+	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/ml"
 )
@@ -580,5 +584,47 @@ func TestModelDownloadJobCountsFailures(t *testing.T) {
 	}
 	if n != 0 {
 		t.Errorf("the tampered model is registered (%d rows, want 0)", n)
+	}
+}
+
+// TestDownloadTransportJoinsTheMirrorHost pins the transport gate's
+// mirror join: the deployment's env mirror (a host:port pair, the
+// acceptance chains' offline form) and the settings' mirror base
+// alike name a host the rewrite sends the pinned hostnames at -- the
+// gate must admit that host, or the source chain (32699df) silently
+// falls back to the real internet.
+func TestDownloadTransportJoinsTheMirrorHost(t *testing.T) {
+	e := newEnv(t)
+	w := &ModelDownloadWorker{
+		pool:     e.pool,
+		hfMirror: "offline-mirror:8443",
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+
+	mirror, allowed := w.downloadTransport(context.Background())
+	if mirror != "offline-mirror:8443" {
+		t.Errorf("mirror = %q, want the deployment's env mirror", mirror)
+	}
+	if !ml.HostAllowed(allowed, "offline-mirror") {
+		t.Errorf("allowed hosts %v refuse the mirror's own host -- the rewrite's first hop fails and the walk falls back to the real internet", allowed)
+	}
+
+	// The settings' mirror base wins over the env, and its host joins
+	// the same way (the settings save's auto-join, mirrored here for
+	// the run's own read).
+	if err := db.SaveModelSettings(context.Background(), dbgen.New(e.pool), db.ModelSettings{
+		AutoDownload:  true,
+		AllowedHosts:  []string{"huggingface.co"},
+		MirrorBaseUrl: "https://mirror.example.net",
+		Params:        db.MlModelParamsDefault,
+	}); err != nil {
+		t.Fatalf("save the model settings: %v", err)
+	}
+	mirror, allowed = w.downloadTransport(context.Background())
+	if mirror != "https://mirror.example.net" {
+		t.Errorf("mirror = %q, want the settings' mirror base", mirror)
+	}
+	if !ml.HostAllowed(allowed, "mirror.example.net") {
+		t.Errorf("allowed hosts %v refuse the settings mirror's own host", allowed)
 	}
 }

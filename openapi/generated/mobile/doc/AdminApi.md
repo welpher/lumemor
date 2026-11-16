@@ -10,6 +10,7 @@ All URIs are relative to */api/v1*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**activateModel**](AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
+[**cancelJobRun**](AdminApi.md#canceljobrun) | **POST** /admin/jobs/{runId}/cancel | Cancel one in-flight job run.
 [**createUser**](AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [**deleteModel**](AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [**deleteUser**](AdminApi.md#deleteuser) | **DELETE** /admin/users/{id} | Delete one account, disposing of its content.
@@ -92,6 +93,52 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
  - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **cancelJobRun**
+> cancelJobRun(runId)
+
+Cancel one in-flight job run.
+
+The task panel's cancel (E41): asks the named run to end at its next chunk boundary. The request itself flags the run only -- the run's driver checks the flag BETWEEN chunks (a walk page, a rescan batch, one model of a download group) and closes the run `cancelled` there, so:  - The committed portion stays: every chunk already finished keeps its work on disk and its count in the run's `done`. The response makes no promise about work that has not committed yet. - An in-flight asset-level job (one decode, one inference, one encode) runs to its own end -- the boundary is between chunks, never mid-asset. - The run's state flips to `cancelled` when the driver closes it, and the close rides the task panel's existing events (`job.finished`) -- the listing converges through the same stream it always converges through. A QUEUED run cancels at once (its driver checks the flag before the first chunk). - A run that already finished -- succeeded, failed or cancelled -- answers 409 `JOB_NOT_CANCELLABLE`: nothing is in flight to cancel, and the row's own state is the honest answer. An unknown run id answers 404 `JOB_RUN_NOT_FOUND`.  The cancel takes no request body and answers no body: the 204 is the flag's whole receipt. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+final String runId = 0192f8b2-6c7d-8e9f-a0b1-2c3d4e5f6070; // String | The `job_runs` row identifier of the run to cancel.
+
+try {
+    api.cancelJobRun(runId);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->cancelJobRun: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **runId** | **String**| The `job_runs` row identifier of the run to cancel. | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -419,7 +466,7 @@ Name | Type | Description  | Notes
 
 Read the model download settings.
 
-The model store's one policy switch: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own.  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the default (on) with the corruption logged server-side. 
+The model store's policy switch, download sources and pipeline params: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own, where the bytes may travel, and the two steering params the ML jobs read at their own dispatch (see `ModelParams`).  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the defaults (the policy on, the shipped hosts, the pipeline's own params) with the corruption logged server-side. 
 
 ### Example
 ```dart
@@ -1174,7 +1221,7 @@ This endpoint does not need any parameter.
 
 Stop the in-flight derivative rebuild run.
 
-The task panel's stop for a rebuild in flight: the run's row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild's `missing` scope skips them.  The run closes `failed` with `failed` counting nothing: the task panel renders the reason line as stopped, not as a broken run -- the admin asked for this ending.  A stop with no rebuild in flight (the run finished between the panel's listing and the click, or none ever started) answers 409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on. 
+The task panel's stop for a rebuild in flight: the run's row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild's `missing` scope skips them.  The run closes `cancelled` -- the task panel renders the cancelled state, not a broken run: the admin asked for this ending (E41 shared the flag-closed ending with the task panel's per-run cancel, and the two speak one state).  A stop with no rebuild in flight (the run finished between the panel's listing and the click, or none ever started) answers 409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on. 
 
 ### Example
 ```dart
@@ -1313,7 +1360,7 @@ Name | Type | Description  | Notes
 
 Save the model download settings and download sources.
 
-The settings save. `autoDownload`, `allowedHosts` and `mirrorBaseUrl` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
+The settings save. `autoDownload`, `allowedHosts`, `mirrorBaseUrl` and `params` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. `params` carries the two pipeline steering values, each validated against the closed 0-1 domain -- a value outside it answers 400 `VALIDATION_FAILED` naming the field, and nothing is written.  The values take effect on the next dispatch (the download's next run; the ML jobs' next per-asset enqueue) -- no run is started or cancelled by the save itself, and work already in flight runs to completion on the values it read. 
 
 ### Example
 ```dart
@@ -1324,7 +1371,7 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getAdminApi();
-final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false,"allowedHosts":["huggingface.co","*.hf.co","hf-mirror.com"],"mirrorBaseUrl":""}; // ModelSettingsUpdateRequest | 
+final ModelSettingsUpdateRequest modelSettingsUpdateRequest = {"autoDownload":false,"allowedHosts":["huggingface.co","*.hf.co","hf-mirror.com"],"mirrorBaseUrl":"","params":{"faceDetectMinScore":0.6,"faceRecognizeThreshold":0.55}}; // ModelSettingsUpdateRequest | 
 
 try {
     final response = api.updateModelSettings(modelSettingsUpdateRequest);

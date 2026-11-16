@@ -315,11 +315,14 @@ test.describe('the administrator scenes', () => {
 		expect([200, 202]).toContain(rescan.status());
 
 		// The run closes failed: the panel renders the reason, the
-		// danger bar, and NO retry (the rescan's trigger belongs to the
-		// album page -- this listing carries no album id to re-post).
+		// danger bar, and NO retry (the rescan's trigger belongs to
+		// the album page -- this listing carries no album id to
+		// re-post). The row SPEAKS its subject (E41): even the failure
+		// names the album it walked.
 		await page.goto('/admin/jobs');
 		const failedRow = page.locator('article.jobs__row').filter({ hasText: 'Album rescan' }).first();
 		await expect(failedRow).toBeVisible({ timeout: 60_000 });
+		await expect(failedRow).toContainText('Album rescan · E20 vanishing source');
 		await expect(failedRow.locator('.jobs__badge--failed')).toHaveText('Failed');
 		const reason = failedRow.getByTestId('job-reason');
 		await expect(reason).toContainText('The run stopped before it got through its work');

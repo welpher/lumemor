@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'job_run_state.g.dart';
 
-/// The lifecycle of a job run: `queued` from creation until the driver picks it up, `running` while it works, then `succeeded` or `failed`. 
+/// The lifecycle of a job run: `queued` from creation until the driver picks it up, `running` while it works, then `succeeded`, `failed` -- or `cancelled` when the administrator's cancel ended it at a chunk boundary (the committed portion keeps its counts; a cancelled run is the admin's own deliberate ending, never a broken one). 
 class JobRunState extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'queued')
@@ -20,6 +20,8 @@ class JobRunState extends EnumClass {
   static const JobRunState succeeded = _$succeeded;
   @BuiltValueEnumConst(wireName: r'failed')
   static const JobRunState failed = _$failed;
+  @BuiltValueEnumConst(wireName: r'cancelled')
+  static const JobRunState cancelled = _$cancelled;
 
   static Serializer<JobRunState> get serializer => _$jobRunStateSerializer;
 

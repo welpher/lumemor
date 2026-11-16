@@ -73,6 +73,7 @@ import (
 	"github.com/pgvector/pgvector-go"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
@@ -135,6 +136,20 @@ type FaceRecognizeWorker struct {
 // Timeout is the job's execution envelope; see faceRecognizeTimeout.
 func (w *FaceRecognizeWorker) Timeout(job *river.Job[FaceRecognizeArgs]) time.Duration {
 	return faceRecognizeTimeout
+}
+
+// clusteringEps reads the clustering radius this job clusters at: the
+// admin's threshold (E41's model params, read at THIS job's dispatch
+// -- an in-flight job keeps what it read) overrides the recognize
+// model's own manifest entry for the knob. A corrupt settings row
+// answers the pipeline default through the accessor -- the read
+// never fails the job.
+func (w *FaceRecognizeWorker) clusteringEps(ctx context.Context) float64 {
+	settings, err := db.ModelSettingsOf(ctx, dbgen.New(w.pool))
+	if err != nil {
+		w.logger.Warn("read the model params; answering the pipeline default", "error", err)
+	}
+	return settings.Params.FaceRecognizeThreshold
 }
 
 // Work executes one face recognition job and, when the rerun driver
@@ -271,7 +286,7 @@ func (w *FaceRecognizeWorker) work(ctx context.Context, job *river.Job[FaceRecog
 		}
 	}
 
-	totalClusters, labeledClusters, err := applyFaceClustering(ctx, queries, recognizeModel)
+	totalClusters, labeledClusters, err := applyFaceClustering(ctx, queries, recognizeModel, w.clusteringEps(ctx))
 	if err != nil {
 		return err
 	}
@@ -400,8 +415,8 @@ type existingCluster struct {
 // larger overlap. Candidate clusters with no overlap are invisible;
 // the best-overlapping candidate wins, ties resolved by the listing
 // order (the smaller id).
-func applyFaceClustering(ctx context.Context, queries *dbgen.Queries, recognizeModel *ml.Model) (totalClusters, labeledClusters int, err error) {
-	eps, minPts := mlface.ClusterOptionsOf(recognizeModel.Params)
+func applyFaceClustering(ctx context.Context, queries *dbgen.Queries, recognizeModel *ml.Model, eps float64) (totalClusters, labeledClusters int, err error) {
+	_, minPts := mlface.ClusterOptionsOf(recognizeModel.Params)
 
 	rows, err := queries.ListEmbeddedFacesByEmbedModel(ctx, pgtype.Text{String: recognizeModel.ID, Valid: true})
 	if err != nil {

@@ -31,9 +31,14 @@
 	// answers, never a disabled button pretending they are impossible.
 	//
 	// THE GEOMETRY is the admin content column's: the 760 column, the
-	// page-header row, and the table inside its own card shell
-	// (`overflow-x-auto`), so a narrow viewport scrolls the table
-	// inside the card instead of pushing the page sideways.
+	// page-header row, and the list inside its own card shell, so a
+	// narrow viewport compresses the rows instead of pushing the page
+	// sideways. THE ROWS BREATHE (E41): each account is one list row --
+	// the avatar, the stacked identity (the name bold with the role
+	// and status chips inline, the email soft under it), the joined
+	// date hidden on narrow (its WRAPPER span carries the hidden, the
+	// E37 review's N7 lesson), and the actions right. Every confirm
+	// the table carried survives the reshape unchanged.
 	//
 	// THE 403 PAGE: a signed-in non-admin landing on this route sees
 	// the mapped auth_forbidden message -- the tool shell has no
@@ -173,6 +178,11 @@
 	/** Locale-aware creation date of one account. */
 	function createdLabel(user: AdminUser): string {
 		return new Intl.DateTimeFormat(activeLocale, { dateStyle: 'medium' }).format(new Date(user.createdAt));
+	}
+
+	/** The avatar's initial: the name's first grapheme. */
+	function initialOf(user: AdminUser): string {
+		return Array.from(user.name)[0] ?? '?';
 	}
 
 	async function handleSubmit(event: SubmitEvent): Promise<void> {
@@ -409,135 +419,104 @@
 				</Button>
 			{/snippet}
 		</AdminPageHeader>
-		<section class="users__list" aria-label={$_('admin_users_title')}>
-			<!-- The table's card shell: the wide table scrolls INSIDE the
-			     card (`overflow-x-auto`) instead of pushing the page
-			     sideways, and `relative` keeps the screen-reader-only
-			     heading of the actions column clipped inside it. -->
-			<div class="users__table-shell relative overflow-x-auto rounded-card border border-border shadow-card">
-				<table class="users__table w-full border-collapse bg-card">
-					<thead>
-						<tr>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-								>{$_('admin_users_name')}</th
+		<section class="users__list-section" aria-label={$_('admin_users_title')}>
+			<!-- The list's card shell: the rounded card the rows live in.
+			     The rows breathe instead of a six-column shell squeezing
+			     (E41): the identity is stacked (the name bold with the
+			     role/status chips inline, the email soft under it), the
+			     joined date hides on narrow, and the actions sit right. -->
+			<div class="users__list-shell relative rounded-card border border-border shadow-card">
+				<ul
+					class="users__list flex flex-col bg-card overflow-hidden rounded-card border border-border m-0 p-0 list-none"
+				>
+					{#each users as user (user.id)}
+						<li
+							class="users__row flex items-center gap-4 px-4 py-3 border-b border-border last:border-b-0"
+							class:users__row--disabled={user.isDisabled}
+							data-user-email={user.email}
+						>
+							<!-- The avatar: the name's initial on the soft accent
+							     ground. Decorative (the name speaks beside it). -->
+							<span
+								class="users__avatar w-10 h-10 shrink-0 rounded-full bg-accent-soft text-accent-soft-text flex items-center justify-center font-bold text-[14px]"
+								aria-hidden="true"
 							>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-								>{$_('admin_users_email')}</th
-							>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-								>{$_('admin_users_role')}</th
-							>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-								>{$_('admin_users_status')}</th
-							>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-								>{$_('admin_users_created')}</th
-							>
-							<th
-								scope="col"
-								class="px-3.5 py-2.5 font-body font-semibold text-[12px] leading-[1.4] tracking-[0.04em] uppercase text-left text-text-faint border-b border-border"
-							>
-								<!-- The actions column's heading is for screen readers; the
-							     buttons' own labels name the actions. -->
-								<span
-									class="users__actions-heading absolute w-px h-px overflow-hidden [clip-path:inset(50%)] whitespace-nowrap"
-									>{$_('admin_users_actions')}</span
-								>
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each users as user (user.id)}
-							<!-- The group class feeds the last-row border removal
-						     (group-last) on the cells below. -->
-							<tr class="group" class:users__row--disabled={user.isDisabled}>
-								<td
-									class="px-3.5 py-2.5 font-body font-semibold text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
-									>{user.name}</td
-								>
-								<td
-									class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0"
-									>{user.email}</td
-								>
-								<td
-									class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
-								>
+								{initialOf(user)}
+							</span>
+							<div class="users__identity min-w-0 flex-1">
+								<div class="users__identity-top flex flex-wrap items-center gap-2">
 									<span
-										class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] bg-accent-soft rounded-control"
-										class:users__badge--admin={user.role === 'admin'}
-										class:text-accent-soft-text={user.role === 'admin'}
-										class:text-text-soft={user.role !== 'admin'}
+										class="users__name font-body font-semibold text-[15px] leading-[1.4] text-text"
+										>{user.name}</span
+									>
+									<span
+										class="users__badge users__badge--role inline-block px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.role ===
+										'admin'
+											? 'bg-accent-soft text-accent-soft-text'
+											: 'border border-border text-text-soft'}"
 									>
 										{user.role === 'admin' ? $_('admin_role_admin') : $_('admin_role_user')}
 									</span>
-								</td>
-								<td
-									class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
-								>
 									<span
-										class="users__badge inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.isDisabled
-											? 'text-danger-text bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)]'
-											: 'text-text-soft bg-accent-soft'}"
-										class:users__badge--disabled={user.isDisabled}
+										class="users__badge users__badge--status inline-block px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.6] rounded-control {user.isDisabled
+											? 'bg-[color-mix(in_srgb,var(--color-danger)_12%,transparent)] text-danger-text'
+											: 'border border-border text-text-soft'}"
 									>
 										{user.isDisabled ? $_('admin_user_disabled') : $_('admin_user_active')}
 									</span>
-								</td>
-								<td
-									class="px-3.5 py-2.5 font-body font-normal text-[14px] leading-[1.5] text-text-soft border-b border-border group-last:border-b-0"
-									>{createdLabel(user)}</td
+								</div>
+								<div
+									class="users__email truncate font-body font-normal text-[13px] leading-[1.5] text-text-soft"
 								>
-								<td
-									class="users__actions px-3.5 py-2.5 text-right font-body font-normal text-[14px] leading-[1.5] text-text border-b border-border group-last:border-b-0"
+									{user.email}
+								</div>
+							</div>
+							<!-- The joined date hides on narrow. The WRAPPER carries
+							     the hidden (the E37 review's N7 lesson): a component's
+							     base display class must never be in a position to eat
+							     a caller's `hidden`, so the wrapper is a plain span
+							     with no display rules of its own. -->
+							<span
+								class="users__joined hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-faint whitespace-nowrap tabular-nums"
+							>
+								{$_('admin_users_joined', { values: { date: createdLabel(user) } })}
+							</span>
+							<div class="users__actions flex items-center gap-1.5">
+								{#if user.isDisabled}
+									<Button
+										variant="ghost"
+										disabled={busy || deleting}
+										onclick={() => void enable(user)}
+									>
+										<Check size={20} aria-hidden="true" />
+										{$_('admin_users_enable')}
+									</Button>
+								{:else}
+									<Button
+										variant="danger"
+										disabled={busy || deleting}
+										onclick={() => askDisable(user)}
+									>
+										<UserX size={20} aria-hidden="true" />
+										{$_('admin_users_disable')}
+									</Button>
+								{/if}
+								<!-- The disposal entry: a text button in the danger
+							     tone beside an everyday Disable -- a solid fill
+							     would make the two read alike at a glance. -->
+								<Button
+									variant="danger-text"
+									disabled={busy || deleting}
+									aria-label={$_('user_delete_action', { values: { name: user.name } })}
+									onclick={() => openDelete(user)}
 								>
-									<div class="users__action-row flex items-center justify-end gap-2">
-										{#if user.isDisabled}
-											<Button
-												variant="ghost"
-												disabled={busy || deleting}
-												onclick={() => void enable(user)}
-											>
-												<Check size={20} aria-hidden="true" />
-												{$_('admin_users_enable')}
-											</Button>
-										{:else}
-											<Button
-												variant="danger"
-												disabled={busy || deleting}
-												onclick={() => askDisable(user)}
-											>
-												<UserX size={20} aria-hidden="true" />
-												{$_('admin_users_disable')}
-											</Button>
-										{/if}
-										<!-- The disposal entry: a text button in the danger
-									     tone beside an everyday Disable -- a solid fill
-									     would make the two read alike at a glance. -->
-										<Button
-											variant="danger-text"
-											disabled={busy || deleting}
-											aria-label={$_('user_delete_action', { values: { name: user.name } })}
-											onclick={() => openDelete(user)}
-										>
-											<UserMinus size={20} aria-hidden="true" />
-											{$_('user_delete')}
-										</Button>
-									</div>
-								</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
+									<UserMinus size={20} aria-hidden="true" />
+									{$_('user_delete')}
+								</Button>
+							</div>
+						</li>
+					{/each}
+				</ul>
 			</div>
 			{#if actionErrorKey !== ''}
 				<p
@@ -771,9 +750,11 @@
 </Modal>
 
 <style>
-	/* Residual style (verbatim): a disabled row's state class reaches
-	 * its table cells. */
-	.users__row--disabled td {
-		color: var(--color-text-faint);
+	/* Residual style (verbatim in spirit): a disabled account's row
+	 * reads quieter -- the identity and the joined date dim, the
+	 * actions keep their colors (they still work). */
+	.users__row--disabled .users__identity,
+	.users__row--disabled .users__joined {
+		opacity: 0.6;
 	}
 </style>

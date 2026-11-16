@@ -31,7 +31,7 @@ const JOB_RUN_KINDS: readonly string[] = [
 ];
 
 /** The run lifecycle states of the contract's JobRunState enum. */
-const JOB_RUN_STATES: readonly string[] = ['queued', 'running', 'succeeded', 'failed'];
+const JOB_RUN_STATES: readonly string[] = ['queued', 'running', 'succeeded', 'failed', 'cancelled'];
 
 /** The listing's outcome: the runs newest first, or the failure's i18n key. */
 export type JobRunListResult = { ok: true; jobs: JobRun[] } | { ok: false; errorKey: string };
@@ -65,6 +65,37 @@ export function jobRunFrom(body: unknown): JobRun | null {
 		return null;
 	}
 	return body as JobRun;
+}
+
+/**
+ * POST /api/v1/admin/jobs/{runId}/cancel: ask the run to end at its
+ * next chunk boundary (E41). The 204 is the flag's whole receipt --
+ * the driver's close and its finished event own the row's
+ * convergence. A finished run answers 409 job_not_cancellable, an
+ * unknown id 404 job_run_not_found.
+ */
+export async function cancelJobRun(
+	runId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<{ ok: true } | { ok: false; errorKey: string }> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/admin/jobs/${encodeURIComponent(runId)}/cancel`,
+			{ method: 'POST' },
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (response.status === 401) {
+		return { ok: false, errorKey: 'session_expired' };
+	}
+	if (response.status === 204) {
+		return { ok: true };
+	}
+	const envelope = await errorEnvelope(response);
+	return { ok: false, errorKey: envelope !== null ? envelope.code.toLowerCase() : 'internal' };
 }
 
 /**

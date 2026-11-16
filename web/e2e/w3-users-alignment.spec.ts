@@ -1,10 +1,10 @@
 // The admin users page's alignment and disposal story, walked end to
-// end against the real compose stack: the 760 column with the table
-// scrolling inside its own card, the two-step account disposal on
-// both arms (transfer to another member, the trash with the
-// instance's retention window), the last-administrator refusal in the
-// dialog, and the surface at 520/760/1280 in both themes and both
-// locales.
+// end against the real compose stack: the 760 column with the
+// breathing list rows (E41's reshape of the six-column table), the
+// two-step account disposal on both arms (transfer to another member,
+// the trash with the instance's retention window), the
+// last-administrator refusal in the dialog, and the surface at
+// 520/760/1280 in both themes and both locales.
 //
 // THE STACK ARRANGEMENT: one fresh lifetime owns this spec (the
 // first-run bootstrap below creates the administrator, so a second
@@ -21,9 +21,10 @@
 // THE SCENES (in order):
 //
 //  1. The administrator signs in through the form and lands on the
-//     users page: the 760 column, the page-header row, the table
-//     inside its own scroll card, and the danger TEXT button on every
-//     row (transparent ground, ember border -- never a solid fill).
+//     users page: the 760 column, the page-header row, the list rows
+//     inside their own card shell, and the danger TEXT button on
+//     every row (transparent ground, ember border -- never a solid
+//     fill).
 //  2. The last-administrator refusal: the administrator's own row's
 //     disposal reaches the server and comes back with the refusal in
 //     the second dialog; nothing is faked as a disabled button.
@@ -34,9 +35,9 @@
 //     way -- the photos land in the ADMINISTRATOR's trash under the
 //     instance's retention countdown.
 //  5. The widths (520/760/1280) and the two faces: no sideways page
-//     overflow anywhere, the table scrolling inside the card at 520,
-//     the dark theme keeping the same shapes, and the zh-Hans locale
-//     rendering the dialog's copy.
+//     overflow anywhere, the joined date hiding on its wrapper at
+//     520, the dark theme keeping the same shapes, and the zh-Hans
+//     locale rendering the dialog's copy.
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -79,9 +80,9 @@ let graceId = '';
 let photoId = '';
 let sharedAlbumId = '';
 
-/** One account's row on the users table, addressed by its email. */
+/** One account's row on the users list, addressed by its email. */
 function rowOf(page: Page, email: string) {
-	return page.locator('.users__table tbody tr').filter({ hasText: email }).first();
+	return page.locator('.users__row').filter({ hasText: email }).first();
 }
 
 /** The disposal entry of one row (its accessible name names the account). */
@@ -199,29 +200,40 @@ test('scene 1: the administrator lands on the aligned users page', async ({ page
 	expect(column!.width).toBeLessThanOrEqual(760);
 	expect(await page.locator('.users').evaluate((node) => getComputedStyle(node).marginLeft)).not.toBe('0px');
 
-	// The table rides its own card shell: the card's border, radius and
-	// shadow belong to the shell, and the shell is the scroller.
-	const shell = page.locator('.users__table-shell');
+	// The list rows ride their own card shell: the card's border,
+	// radius and shadow belong to the shell, and the rows breathe
+	// inside it (E41) -- the identity stacked, the chips inline.
+	const shell = page.locator('.users__list-shell');
 	await expect(shell).toBeVisible();
 	const shellFacts = await shell.evaluate((node) => {
 		const styles = getComputedStyle(node);
 		return {
-			overflowX: styles.overflowX,
 			position: styles.position,
 			radius: styles.borderTopLeftRadius,
 			shadow: styles.boxShadow
 		};
 	});
-	expect(shellFacts.overflowX).toBe('auto');
 	expect(shellFacts.position).toBe('relative');
 	expect(shellFacts.radius).not.toBe('0px');
 	expect(shellFacts.shadow).not.toBe('none');
-	const tableFacts = await page.locator('.users__table').evaluate((node) => {
+	const listFacts = await page.locator('.users__list').evaluate((node) => {
 		const styles = getComputedStyle(node);
 		return { radius: styles.borderTopLeftRadius, shadow: styles.boxShadow };
 	});
-	expect(tableFacts.radius).toBe('0px');
-	expect(tableFacts.shadow).toBe('none');
+	// The list itself carries the card chrome too (the design
+	// specimen's ul: its own border, radius and overflow clip).
+	expect(listFacts.radius).not.toBe('0px');
+
+	// THE BREATHING ROW: the email sits under the name (the stacked
+	// identity -- the reshape's decisive fact), and the joined date's
+	// wrapper spans between them.
+	const graceRow = rowOf(page, GRACE_EMAIL);
+	await expect(graceRow.locator('.users__name')).toHaveText(GRACE_NAME);
+	await expect(graceRow.locator('.users__email')).toHaveText(GRACE_EMAIL);
+	const nameBox = await graceRow.locator('.users__name').boundingBox();
+	const emailBox = await graceRow.locator('.users__email').boundingBox();
+	expect(emailBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1);
+	await expect(graceRow.locator('.users__joined')).toContainText('Joined');
 
 	// Every row carries the disposal entry, and it is a TEXT button:
 	// the ember border and the ember text over a transparent ground --
@@ -379,25 +391,22 @@ test.describe('the administrator scenes', () => {
 	});
 
 	test('scene 5: the widths hold and both faces render', async ({ page }) => {
-		// 520: the page never scrolls sideways, and the table's card
-		// scrolls inside itself instead.
+		// 520: the page never scrolls sideways, and the joined date's
+		// wrapper hides (the row compresses instead of scrolling).
 		await page.setViewportSize({ width: 520, height: 900 });
 		await page.goto('/admin/users');
-		await expect(page.locator('.users__table-shell')).toBeVisible();
+		await expect(page.locator('.users__list-shell')).toBeVisible();
 		expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(1);
-		const scroller = await page.locator('.users__table-shell').evaluate((node) => ({
-			scrollWidth: node.scrollWidth,
-			clientWidth: node.clientWidth
-		}));
-		expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth);
+		await expect(page.locator('.users__joined').first()).toBeHidden();
 
-		// 760 and 1280: the same promise, and the column still reads at
-		// its bound.
+		// 760 and 1280: the same promise, the column still reads at
+		// its bound, and the joined date shows again.
 		for (const width of [760, 1280]) {
 			await page.setViewportSize({ width, height: 900 });
 			await page.goto('/admin/users');
-			await expect(page.locator('.users__table-shell')).toBeVisible();
+			await expect(page.locator('.users__list-shell')).toBeVisible();
 			expect(await sidewaysOverflow(page)).toBeLessThanOrEqual(1);
+			await expect(page.locator('.users__joined').first()).toBeVisible();
 			const box = await page.locator('.users').boundingBox();
 			expect(box!.width).toBeLessThanOrEqual(760);
 		}

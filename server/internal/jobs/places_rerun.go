@@ -116,8 +116,24 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 	jobRunID := job.Args.JobRunID
 	queries := dbgen.New(w.pool)
 
-	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
 		return fmt.Errorf("mark the places rerun run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the places rerun run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
 	}
 	// The started event echoes the row's enqueue-time total -- the
 	// durable truth the endpoint handed out -- not a recount.
@@ -141,7 +157,21 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 	done, failed := 0, 0
 	lastEvent := time.Now()
 	cursor := pgUUID(uuid.Nil) // the zero value starts the walk
+	cancelled := false
 	for {
+		// The cancel boundary (E41): the flag check rides the page
+		// edge -- the walk stops at the next page boundary, the rows
+		// already written keep their answers. The first call reads
+		// too: a queued-then-cancelled run closes at its pickup.
+		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("check the stop flag of places rerun run %s: %w", jobRunID, err)
+		}
+		if stop {
+			cancelled = true
+			w.logger.Info("places rerun run cancelled at its own page boundary", "job_run_id", jobRunID, "done", done)
+			break
+		}
 		rows, err := queries.ListGpsAssetPage(ctx, dbgen.ListGpsAssetPageParams{
 			Cursor:     cursor,
 			LimitCount: placesRerunPageSize,
@@ -187,7 +217,12 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 	}
 
 	state := dbgen.JobStateSucceeded
-	if failed > 0 {
+	if cancelled {
+		// The admin's own deliberate ending (E41): the pages already
+		// resolved keep their writes, the state reads cancelled --
+		// never a broken run.
+		state = dbgen.JobStateCancelled
+	} else if failed > 0 {
 		state = dbgen.JobStateFailed
 	}
 	return w.finishRerun(ctx, jobRunID, total, done, failed, state)

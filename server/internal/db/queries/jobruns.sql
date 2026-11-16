@@ -85,13 +85,18 @@ WHERE kind = $1
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
--- name: MarkJobRunRunning :exec
+-- name: MarkJobRunRunning :execrows
 -- Flips the run to running when its job picks it up. started_at keeps
 -- the FIRST attempt's start (a retry does not move it): the task
--- panel's honest start time.
+-- panel's honest start time. The guard is the cancel's race-safety
+-- (E41): a run the cancel closed while QUEUED matches no row here --
+-- rows answers zero and the driver returns without starting (the
+-- row stays cancelled; a running run is never re-closed by this
+-- write, so the endpoint's queued close and the pickup cannot
+-- interleave into a zombie).
 UPDATE job_runs
 SET state = 'running', started_at = COALESCE(started_at, now()), updated_at = now()
-WHERE id = $1;
+WHERE id = $1 AND state = 'queued';
 
 -- name: UpdateJobRunProgress :exec
 -- Records one progress report of the run's worker. The model download
@@ -171,7 +176,45 @@ WHERE id = $1
   AND state IN ('queued', 'running');
 
 -- name: GetJobRunStopRequested :one
--- The rebuild driver's per-page stop check: one boolean read.
+-- The drivers' per-chunk stop check: one boolean read.
 SELECT stop_requested
 FROM job_runs
 WHERE id = $1;
+
+-- name: RequestJobRunCancel :execrows
+-- The task panel's cancel (E41): marks the in-flight run
+-- asked-to-stop, the same flag the rebuild's stop writes -- the
+-- drivers check it between chunks (a walk page, a rescan batch) and
+-- close the run cancelled with the committed work kept. RowsAffected
+-- answers zero when the run finished between the caller's state read
+-- and this write: the endpoint re-reads and answers 409, never a
+-- silent no-op. A QUEUED run flags the same way -- its driver checks
+-- before the first chunk and closes the run at once.
+UPDATE job_runs
+SET stop_requested = true, updated_at = now()
+WHERE id = $1
+  AND state IN ('queued', 'running');
+
+-- name: GetJobRunSubject :one
+-- One run's subject label (E41): the directory album a rescan run
+-- walks, by title. The task panel's rows speak -- a rescan row names
+-- its album; every other kind has no subject (the instance-wide
+-- reruns never name one) and answers no row here.
+SELECT a.title AS subject
+FROM job_runs jr
+JOIN albums a ON a.id = jr.album_id
+WHERE jr.id = $1;
+
+-- name: ListJobRunsWithSubject :many
+-- The task panel's listing with the runs' subjects: the newest runs
+-- across every kind, in creation order (the uuidv7 id as the
+-- tiebreak), each joined to its subject album's title when the run
+-- carries one (the album_rescan kind's rows; every other kind's
+-- album_id is NULL and the join answers NULL). The limit is the page
+-- bound the admin surface pins (default 50, maximum 200).
+SELECT jr.id, jr.kind, jr.total, jr.done, jr.failed, jr.state, jr.started_at, jr.finished_at, jr.created_at, jr.updated_at, jr.album_id, jr.resume_from, jr.stop_requested,
+       a.title AS subject
+FROM job_runs jr
+LEFT JOIN albums a ON a.id = jr.album_id
+ORDER BY jr.created_at DESC, jr.id DESC
+LIMIT $1;

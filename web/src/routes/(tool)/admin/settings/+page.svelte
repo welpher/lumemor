@@ -222,7 +222,12 @@
 	let formAutoDownload = $state(true);
 	/** The model settings' read document, the sources included: the
 	 * card's save is the whole object (the PUT replaces wholesale). */
-	let formModels = $state<ModelSettings>({ autoDownload: true, allowedHosts: [], mirrorBaseUrl: '' });
+	let formModels = $state<ModelSettings>({
+		autoDownload: true,
+		allowedHosts: [],
+		mirrorBaseUrl: '',
+		params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
+	});
 	let savingModels = $state(false);
 	let modelsErrorKey = $state('');
 	let modelsSaved = $state(false);
