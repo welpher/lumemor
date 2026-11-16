@@ -117,7 +117,8 @@
 //  5. The rescan: the trigger POSTs the run, the aria-live progress
 //     line converges to complete through the job events, and the
 //     album's membership becomes honest -- two tiles, two photos,
-//     the wall ready.
+//     the wall ready. The bar's count holds at a narrow viewport
+//     too (it rides the title's truncation instead of vanishing).
 //  6. The task panel: the rescan's job_runs row lists with its own
 //     label (the contract's JobRunKind carries album_rescan -- the
 //     row must never fall to the panel's generic failure).
@@ -612,6 +613,24 @@ test.describe('the administrator scenes', () => {
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 120_000 });
 		await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
+
+		// The bar's count is unconditional: a narrow window keeps it
+		// beside the truncating title (the one numeric statement the
+		// bar carries at every width).
+		await page.setViewportSize({ width: 560, height: 800 });
+		const barCount = page.locator('.album-bar .album-detail__count');
+		await expect(barCount).toBeVisible();
+		await expect(barCount).toHaveAttribute('aria-label', '2 photos');
+		await page.setViewportSize({ width: 1280, height: 720 });
+		// At the desktop width the count rides the bar as the sample
+		// draws it: the glyph BESIDE the digits on one line (the
+		// retired gate blockified the count here -- the variant's
+		// display:inline beat the component's inline-flex and stacked
+		// the svg over the number; the computed style is the decisive
+		// assertion, the height the visual one).
+		await expect(barCount).toBeVisible();
+		expect(await barCount.evaluate((el) => getComputedStyle(el).display)).toBe('inline-flex');
+		expect(await barCount.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
 
 		// And the scan's pipeline ran to its end: the source ingest
 		// enqueued the same fan-out an upload's does, and both files
