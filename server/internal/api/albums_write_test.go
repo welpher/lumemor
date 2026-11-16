@@ -673,15 +673,44 @@ func TestUpdateAlbum(t *testing.T) {
 		requireAlbumCoverNotMember(t, rec, 1)
 	})
 
-	t.Run("RejectsCoverOfNonLiveMember", func(t *testing.T) {
-		// A hidden, trashed or component member row is a member no
-		// more: the cover must be a LIVE member.
-		for _, asset := range []uuid.UUID{hiddenMember, trashedMember, componentMember} {
+	t.Run("RejectsCoverOfUnrenderableMember", func(t *testing.T) {
+		// A trashed or component member row is a member no more for
+		// cover purposes: the cover must be a renderable member.
+		for _, asset := range []uuid.UUID{trashedMember, componentMember} {
 			rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, older, third, asset))
 			requireAlbumCoverNotMember(t, rec, 1)
 		}
 		// Two dead frames name two.
-		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, hiddenMember, trashedMember, older))
+		rec := env.patchAlbumRaw(t, env.cookie, album, pinBody(member, trashedMember, componentMember, older))
+		requireAlbumCoverNotMember(t, rec, 2)
+	})
+
+	t.Run("AcceptsCoverOfArchivedContainerMember", func(t *testing.T) {
+		// The container rule: an album keeps its archived members, so
+		// a directory album may pin one as a cover frame.
+		summary := env.patchAlbum(t, env.cookie, album, pinBody(member, older, third, hiddenMember))
+		if len(summary.CoverAssetIds) != 4 || uuid.UUID(summary.CoverAssetIds[3]) != hiddenMember {
+			t.Errorf("coverAssetIds = %v, want the archived member %s among the four picks",
+				summary.CoverAssetIds, hiddenMember)
+		}
+		env.patchAlbum(t, env.cookie, album, pinBody(member, older, third, fourth)) // leave the scene's pin
+	})
+
+	t.Run("RejectsArchivedMemoryCover", func(t *testing.T) {
+		// A memory is a family-flow surface: its archived members are
+		// members no more for its covers and its pages (the memory
+		// band pins six frames, so the full-set shape is six ids).
+		memory := fixtureWriteAlbumID("72")
+		env.insertWallAlbum(t, memory, adminID, "memory", "Archived cover", wallAlbumOpts{})
+		extra := fixtureWallAssetID("7a")
+		extra2 := fixtureWallAssetID("7b")
+		env.insertTimelineAsset(t, extra, adminID, base.Add(-4*time.Hour), timelineAssetOpts{})
+		env.insertTimelineAsset(t, extra2, adminID, base.Add(-5*time.Hour), timelineAssetOpts{})
+		for _, asset := range []uuid.UUID{member, older, extra, extra2, hiddenMember} {
+			env.addTimelineItem(t, memory, asset, adminID)
+		}
+		rec := env.patchAlbumRaw(t, env.cookie, memory,
+			pinBody(member, older, extra, extra2, hiddenMember, nonMember))
 		requireAlbumCoverNotMember(t, rec, 2)
 	})
 
