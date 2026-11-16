@@ -11,6 +11,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -210,6 +211,56 @@ func (e *assetEnv) restoreAsset(t *testing.T, cookie *http.Cookie, id uuid.UUID)
 func (e *assetEnv) deleteAsset(t *testing.T, cookie *http.Cookie, id uuid.UUID) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/assets/"+id.String(), nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// restoreAllTrash fires the whole-trash restore and returns the
+// recorder.
+func (e *assetEnv) restoreAllTrash(t *testing.T, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trash/restore-all", nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// emptyTrash fires the whole-trash empty and returns the recorder.
+func (e *assetEnv) emptyTrash(t *testing.T, cookie *http.Cookie) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trash/empty", nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	return rec
+}
+
+// trashBatch fires one trash batch request (the action plus the id
+// list) and returns the recorder.
+func (e *assetEnv) trashBatch(t *testing.T, cookie *http.Cookie, action string, ids ...uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	payload := map[string]any{"action": action}
+	if ids != nil {
+		values := make([]string, len(ids))
+		for i, id := range ids {
+			values[i] = id.String()
+		}
+		payload["ids"] = values
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal the trash batch body: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trash/batch", bytes.NewReader(body))
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -732,17 +783,27 @@ func TestTrashListSemantics(t *testing.T) {
 	}
 
 	// The countdown follows the retention setting: default 30, a
-	// custom 1, and a corrupt value degrading to the default.
+	// custom 1, and a corrupt value degrading to the default. The
+	// note's number rides the response on the same reading.
 	if items[0].RemainingDays != 30 {
 		t.Errorf("remainingDays with no setting = %d, want the default 30", items[0].RemainingDays)
+	}
+	if raw := env.getTrashRaw(t, env.cookie); decodeRetentionDays(t, raw) != 30 {
+		t.Errorf("retentionDays with no setting = %d, want the default 30", decodeRetentionDays(t, raw))
 	}
 	env.setRetention(t, "1")
 	if items = env.getTrash(t, env.cookie).Items; items[0].RemainingDays != 1 {
 		t.Errorf("remainingDays with retention 1 = %d, want 1", items[0].RemainingDays)
 	}
+	if raw := env.getTrashRaw(t, env.cookie); decodeRetentionDays(t, raw) != 1 {
+		t.Errorf("retentionDays with retention 1 = %d, want 1", decodeRetentionDays(t, raw))
+	}
 	env.setRetention(t, `"not a number"`)
 	if items = env.getTrash(t, env.cookie).Items; items[0].RemainingDays != 30 {
 		t.Errorf("remainingDays with a corrupt setting = %d, want the fallback default 30", items[0].RemainingDays)
+	}
+	if raw := env.getTrashRaw(t, env.cookie); decodeRetentionDays(t, raw) != 30 {
+		t.Errorf("retentionDays with a corrupt setting = %d, want the fallback default 30", decodeRetentionDays(t, raw))
 	}
 
 	// A deadline already passed (before the job's next run) counts
@@ -827,6 +888,19 @@ func TestTrashListSemantics(t *testing.T) {
 	if ids := trashItemIDs(items); ids[0] == uuid.UUID(pair.Id) || ids[0] == uuid.UUID(newer.Id) || ids[0] == uuid.UUID(older.Id) {
 		t.Errorf("the bounded listing's first item is a fixture row, want a newer bulk row")
 	}
+}
+
+// decodeRetentionDays reads the listing's retentionDays field off a
+// 200 body (the note's number, the same setting the countdowns use).
+func decodeRetentionDays(t *testing.T, rec *httptest.ResponseRecorder) int {
+	t.Helper()
+	var body struct {
+		RetentionDays int `json:"retentionDays"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode the trash listing body %q: %v", rec.Body.String(), err)
+	}
+	return body.RetentionDays
 }
 
 // insertBulkTrashed seeds n directly-trashed rows of one owner in one
@@ -915,5 +989,319 @@ func TestDeletingOneStillKeepsTheSharedMotion(t *testing.T) {
 	}
 	if motionRows != 0 {
 		t.Errorf("motion rows after the last still's delete = %d, want the motion purged", motionRows)
+	}
+}
+
+// TestTrashRestoreAll pins the whole-trash restore: every trashed row
+// of the caller returns to the live views, the count of actually
+// restored rows is the response's affected, the idempotent repeat and
+// the empty-trash call answer 0 with no events, another account's
+// trashed rows are never touched (the owner scope), and each restored
+// row announces exactly one asset.restored.
+func TestTrashRestoreAll(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "trash-restore-all-grace@example.com")
+
+	taken := time.Date(2026, 6, 8, 10, 0, 0, 0, time.UTC)
+	first := env.uploadPhotoAs(t, env.cookie, "restore-all-1", taken, jpegColorFixture(t, color.RGBA{R: 0x90, G: 0x91, B: 0x92, A: 0xff}))
+	second := env.uploadPhotoAs(t, env.cookie, "restore-all-2", taken.Add(time.Minute), jpegColorFixture(t, color.RGBA{R: 0x93, G: 0x94, B: 0x95, A: 0xff}))
+	graceAsset := env.uploadPhotoAs(t, graceCookie, "restore-all-grace", taken, jpegColorFixture(t, color.RGBA{R: 0x96, G: 0x97, B: 0x98, A: 0xff}))
+
+	// The idempotent empty-trash call: 0, and no events.
+	if rec := env.restoreAllTrash(t, env.cookie); rec.Code != http.StatusOK {
+		t.Fatalf("restore-all over an empty trash status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var empty apigen.TrashSweepResponse
+	if err := json.Unmarshal(env.restoreAllTrash(t, env.cookie).Body.Bytes(), &empty); err != nil {
+		t.Fatalf("decode the empty restore-all body: %v", err)
+	}
+	if empty.Affected != 0 {
+		t.Errorf("restore-all over an empty trash affected = %d, want 0", empty.Affected)
+	}
+
+	env.softDeleteAsset(t, uuid.UUID(first.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(second.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(graceAsset.Id), graceID)
+
+	rec := env.restoreAllTrash(t, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("restore-all status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var sweep apigen.TrashSweepResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &sweep); err != nil {
+		t.Fatalf("decode restore-all body %q: %v", rec.Body.String(), err)
+	}
+	// Only the caller's OWN rows count: grace's trashed row is
+	// invisible to the admin's sweep.
+	if sweep.Affected != 2 {
+		t.Errorf("restore-all affected = %d, want 2 (the caller's rows alone)", sweep.Affected)
+	}
+	if items := env.getTrash(t, env.cookie).Items; len(items) != 0 {
+		t.Errorf("trash after restore-all holds %v, want empty", trashItemIDs(items))
+	}
+	if items := env.getTrash(t, graceCookie).Items; len(items) != 1 || uuid.UUID(items[0].Id) != uuid.UUID(graceAsset.Id) {
+		t.Errorf("grace's trash after the admin's restore-all = %v, want her row untouched", trashItemIDs(items))
+	}
+	page := env.getTimeline(t, env.cookie, "")
+	if ids := timelineItemIDs(page.Items); len(ids) != 2 {
+		t.Errorf("timeline after restore-all holds %v, want both restored assets", ids)
+	}
+
+	// Each restored row announced itself exactly once.
+	restored := busEventsOf(t, env.bus, "asset.restored")
+	restoredIDs := make([]string, 0, len(restored))
+	for _, payload := range restored {
+		restoredIDs = append(restoredIDs, payload["assetId"])
+	}
+	if len(restoredIDs) != 2 ||
+		restoredIDs[0] != first.Id.String() || restoredIDs[1] != second.Id.String() {
+		t.Errorf("asset.restored events = %v, want exactly the two restored rows", restoredIDs)
+	}
+
+	// The idempotent repeat: the trash is empty, the answer is 0 and
+	// no further events publish.
+	if rec := env.restoreAllTrash(t, env.cookie); rec.Code != http.StatusOK {
+		t.Fatalf("restore-all repeat status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if restored = busEventsOf(t, env.bus, "asset.restored"); len(restored) != 2 {
+		t.Errorf("asset.restored events after the repeat = %d, want still 2 (the no-op stays silent)", len(restored))
+	}
+}
+
+// TestTrashEmpty pins the whole-trash delete: every trashed row of
+// the caller goes for good (row, file, derived tree -- the permanent
+// delete's rules), the Live Photo pair goes together while counting
+// once, each purged row announces exactly one asset.deleted, the
+// idempotent repeat and the empty-trash call answer 0, and another
+// account's rows are never touched.
+func TestTrashEmpty(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "trash-empty-grace@example.com")
+
+	taken := time.Date(2026, 6, 9, 10, 0, 0, 0, time.UTC)
+	unique := jpegColorFixture(t, color.RGBA{R: 0xa0, G: 0xa1, B: 0xa2, A: 0xff})
+	first := env.uploadPhotoAs(t, env.cookie, "empty-1", taken, unique)
+	second := env.uploadPhotoAs(t, env.cookie, "empty-2", taken.Add(time.Minute), jpegColorFixture(t, color.RGBA{R: 0xa3, G: 0xa4, B: 0xa5, A: 0xff}))
+	graceAsset := env.uploadPhotoAs(t, graceCookie, "empty-grace", taken, jpegColorFixture(t, color.RGBA{R: 0xa6, G: 0xa7, B: 0xa8, A: 0xff}))
+
+	firstRow := env.assetRowOf(t, uuid.UUID(first.Id))
+	firstFile := env.storedFileOf(t, firstRow)
+	firstThumbs := env.writeThumbFixture(t, uuid.UUID(first.Id))
+	secondRow := env.assetRowOf(t, uuid.UUID(second.Id))
+	secondFile := env.storedFileOf(t, secondRow)
+
+	env.softDeleteAsset(t, uuid.UUID(first.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(second.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(graceAsset.Id), graceID)
+
+	// The Live Photo pair: the pair counts once, its component row
+	// goes with the photo.
+	pairBody, pairContentType := buildUploadBody(t, map[string]string{
+		"deviceAssetId":   "empty-pair",
+		"fileName":        "pair.jpg",
+		"deviceCreatedAt": taken.Add(2 * time.Minute).Format(time.RFC3339),
+	}, []assetUploadFile{
+		{field: uploadPartPhoto, name: "pair.jpg", content: jpegColorFixture(t, color.RGBA{R: 0xa9, G: 0xaa, B: 0xab, A: 0xff})},
+		{field: uploadPartLiveVideo, name: "pair.mov", content: movFixture()},
+	})
+	pairReq := httptest.NewRequest(http.MethodPost, "/api/v1/assets", pairBody)
+	pairReq.Header.Set("Content-Type", pairContentType)
+	pairReq.AddCookie(env.cookie)
+	pairRec := httptest.NewRecorder()
+	env.router.ServeHTTP(pairRec, pairReq)
+	if pairRec.Code != http.StatusCreated {
+		t.Fatalf("live photo upload status = %d, want %d", pairRec.Code, http.StatusCreated)
+	}
+	pair := decodeAsset(t, pairRec)
+	env.softDeleteAsset(t, uuid.UUID(pair.Id), adminID)
+	var componentRaw pgtype.UUID
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT live_photo_video_id FROM assets WHERE id = $1", pgUUID(uuid.UUID(pair.Id))).Scan(&componentRaw); err != nil {
+		t.Fatalf("load the pair's component link: %v", err)
+	}
+	componentID := uuid.UUID(componentRaw.Bytes)
+	componentRow := env.assetRowOf(t, componentID)
+	componentFile := env.storedFileOf(t, componentRow)
+
+	rec := env.emptyTrash(t, env.cookie)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var sweep apigen.TrashSweepResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &sweep); err != nil {
+		t.Fatalf("decode empty body %q: %v", rec.Body.String(), err)
+	}
+	// The three trash-view rows (the pair is one) purged; the pair's
+	// component row went with its photo without counting.
+	if sweep.Affected != 3 {
+		t.Errorf("empty affected = %d, want 3 (the pair counts once)", sweep.Affected)
+	}
+	env.requireNoAssetRow(t, uuid.UUID(first.Id))
+	env.requireNoAssetRow(t, uuid.UUID(second.Id))
+	env.requireNoAssetRow(t, uuid.UUID(pair.Id))
+	env.requireNoAssetRow(t, componentID)
+	requireFileState(t, firstFile, false)
+	requireFileState(t, secondFile, false)
+	requireFileState(t, componentFile, false)
+	requireFileState(t, firstThumbs, false)
+	if items := env.getTrash(t, env.cookie).Items; len(items) != 0 {
+		t.Errorf("trash after empty holds %v, want empty", trashItemIDs(items))
+	}
+
+	// Grace's row is never the admin's sweep's business.
+	if items := env.getTrash(t, graceCookie).Items; len(items) != 1 || uuid.UUID(items[0].Id) != uuid.UUID(graceAsset.Id) {
+		t.Errorf("grace's trash after the admin's empty = %v, want her row untouched", trashItemIDs(items))
+	}
+
+	// One asset.deleted per purged trash row; the component's purge
+	// stays silent (the trash view never listed it).
+	deleted := busEventsOf(t, env.bus, "asset.deleted")
+	deletedIDs := make([]string, 0, len(deleted))
+	for _, payload := range deleted {
+		deletedIDs = append(deletedIDs, payload["assetId"])
+	}
+	if len(deletedIDs) != 3 {
+		t.Fatalf("asset.deleted events = %v, want exactly 3 (the pair announces once)", deletedIDs)
+	}
+	for _, want := range []string{first.Id.String(), second.Id.String(), pair.Id.String()} {
+		found := false
+		for _, id := range deletedIDs {
+			if id == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("asset.deleted events %v miss the purged row %s", deletedIDs, want)
+		}
+	}
+
+	// The idempotent repeat: nothing left, the answer is 0, no more
+	// events.
+	if rec := env.emptyTrash(t, env.cookie); rec.Code != http.StatusOK {
+		t.Fatalf("empty repeat status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if deleted = busEventsOf(t, env.bus, "asset.deleted"); len(deleted) != 3 {
+		t.Errorf("asset.deleted events after the repeat = %d, want still 3 (the no-op stays silent)", len(deleted))
+	}
+}
+
+// TestTrashBatch pins the trash view's multi-select surface: the
+// trash-scoped resolution (a live or purged or foreign or unknown id
+// lands in missing, never a 404), the set-semantics report
+// partitioning the request's ids, the per-row events of the restored
+// and purged rows, the validation bounds, and the restore's
+// trash-scoped difference from the assets batch (restoring an
+// already-live row is a missing row, not an idempotent no-op).
+func TestTrashBatch(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "trash-batch-grace@example.com")
+
+	taken := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
+	trashedA := env.uploadPhotoAs(t, env.cookie, "batch-a", taken, jpegColorFixture(t, color.RGBA{R: 0xb0, G: 0xb1, B: 0xb2, A: 0xff}))
+	trashedB := env.uploadPhotoAs(t, env.cookie, "batch-b", taken.Add(time.Minute), jpegColorFixture(t, color.RGBA{R: 0xb3, G: 0xb4, B: 0xb5, A: 0xff}))
+	keptLive := env.uploadPhotoAs(t, env.cookie, "batch-live", taken.Add(2*time.Minute), jpegColorFixture(t, color.RGBA{R: 0xb6, G: 0xb7, B: 0xb8, A: 0xff}))
+	foreign := env.uploadPhotoAs(t, graceCookie, "batch-grace", taken, jpegColorFixture(t, color.RGBA{R: 0xb9, G: 0xba, B: 0xbb, A: 0xff}))
+	unknown := uuid.MustParse("31000000-0000-0000-0000-000000000003")
+
+	env.softDeleteAsset(t, uuid.UUID(trashedA.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(trashedB.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(foreign.Id), graceID)
+
+	// The validation bounds first: an empty id list, an unknown
+	// action and an over-limit list are client bugs, never batches.
+	if rec := env.trashBatch(t, env.cookie, "restore"); rec.Code != http.StatusBadRequest {
+		t.Errorf("batch with no ids status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if rec := env.trashBatch(t, env.cookie, "favorite", uuid.UUID(trashedA.Id)); rec.Code != http.StatusBadRequest {
+		t.Errorf("batch with an unknown action status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	many := make([]uuid.UUID, 0, batchIDLimit+1)
+	for i := 0; i <= batchIDLimit; i++ {
+		many = append(many, bulkAssetID(i))
+	}
+	if rec := env.trashBatch(t, env.cookie, "restore", many...); rec.Code != http.StatusBadRequest {
+		t.Errorf("batch over the limit status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+
+	// The restore arm: two trash rows restore, the foreign and the
+	// unknown ids land in missing (indistinguishable), and the
+	// already-live row is missing too -- the trash-scoped guard, the
+	// deliberate difference from the assets batch's state-agnostic
+	// resolution.
+	rec := env.trashBatch(t, env.cookie, "restore", uuid.UUID(trashedA.Id), uuid.UUID(trashedB.Id), uuid.UUID(keptLive.Id), uuid.UUID(foreign.Id), unknown)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("batch restore status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var report apigen.TrashBatchResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode batch restore body %q: %v", rec.Body.String(), err)
+	}
+	if report.Affected != 2 {
+		t.Errorf("batch restore affected = %d, want 2", report.Affected)
+	}
+	if len(report.Missing) != 3 ||
+		uuid.UUID(report.Missing[0]) != uuid.UUID(keptLive.Id) ||
+		uuid.UUID(report.Missing[1]) != uuid.UUID(foreign.Id) ||
+		uuid.UUID(report.Missing[2]) != unknown {
+		t.Errorf("batch restore missing = %v, want the live, the foreign and the unknown ids", report.Missing)
+	}
+	page := env.getTimeline(t, env.cookie, "")
+	if ids := timelineItemIDs(page.Items); len(ids) != 3 {
+		t.Errorf("timeline after the batch restore holds %v, want the two restored rows plus the kept one", ids)
+	}
+	if items := env.getTrash(t, graceCookie).Items; len(items) != 1 || uuid.UUID(items[0].Id) != uuid.UUID(foreign.Id) {
+		t.Errorf("grace's trash after the admin's batch restore = %v, want her row untouched", trashItemIDs(items))
+	}
+	restored := busEventsOf(t, env.bus, "asset.restored")
+	if len(restored) != 2 {
+		t.Fatalf("asset.restored events = %d, want exactly 2", len(restored))
+	}
+	for _, payload := range restored {
+		if payload["assetId"] != trashedA.Id.String() && payload["assetId"] != trashedB.Id.String() {
+			t.Errorf("asset.restored payload %v names a row outside the restored pair", payload)
+		}
+	}
+
+	// The delete arm: the still-trashed row purges (counted, and one
+	// asset.deleted announced), the already-restored row and the
+	// unknown id land in missing, and grace's trashed row is never
+	// the admin caller's to delete.
+	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedB.Id), uuid.UUID(trashedA.Id), unknown)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("batch delete status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode batch delete body %q: %v", rec.Body.String(), err)
+	}
+	if report.Affected != 1 {
+		t.Errorf("batch delete affected = %d, want 1", report.Affected)
+	}
+	if len(report.Missing) != 2 ||
+		uuid.UUID(report.Missing[0]) != uuid.UUID(trashedA.Id) ||
+		uuid.UUID(report.Missing[1]) != unknown {
+		t.Errorf("batch delete missing = %v, want the already-restored and the unknown ids", report.Missing)
+	}
+	env.requireNoAssetRow(t, uuid.UUID(trashedB.Id))
+	batchDeleted := busEventsOf(t, env.bus, "asset.deleted")
+	if len(batchDeleted) != 1 || batchDeleted[0]["assetId"] != trashedB.Id.String() {
+		t.Errorf("asset.deleted events = %v, want exactly one for the batch delete's row", batchDeleted)
+	}
+
+	// A repeated delete finds the row gone from the trash: missing,
+	// not an error (the row already left the view, the same
+	// reading the single-row delete's already-cleaned arm pins).
+	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedB.Id))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("repeated batch delete status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
+		t.Fatalf("decode repeated batch delete body: %v", err)
+	}
+	if report.Affected != 0 || len(report.Missing) != 1 || uuid.UUID(report.Missing[0]) != uuid.UUID(trashedB.Id) {
+		t.Errorf("repeated batch delete report = affected %d missing %v, want the row in missing", report.Affected, report.Missing)
 	}
 }
