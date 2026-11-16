@@ -140,3 +140,76 @@ func TestPositionRowsMigrationDown(t *testing.T) {
 		t.Error("asset_library_representative(blob) = false, want the lone live row to represent")
 	}
 }
+
+// TestLibraryRepresentativeDeadTarget pins the predicate's dead-target
+// guard: a DEAD source row (trashed, in the trash view) must never
+// represent its content group while a LIVE twin exists -- even a twin
+// that ingested LATER, which the (created_at, id) ranking alone would
+// not catch for an earlier dead row. Every library face carries its
+// own live filter, so the corner is shielded in practice; the guard
+// makes the function honest standalone. The mirror case (a live
+// earlier source row beating a later dead one) rounds the matrix.
+func TestLibraryRepresentativeDeadTarget(t *testing.T) {
+	pool := dbtest.New(t)
+	ctx := t.Context()
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+
+	var owner string
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (id, name, email, password_hash)
+		VALUES (gen_random_uuid(), 'Rank', 'rank@migration.invalid', 'x')
+		RETURNING id::text`).Scan(&owner); err != nil {
+		t.Fatalf("insert the fixture owner: %v", err)
+	}
+
+	insert := func(path, checksum string, dead bool) string {
+		t.Helper()
+		var id string
+		err := pool.QueryRow(ctx, `
+			INSERT INTO assets (
+				id, owner_id, storage_kind, file_path, checksum, original_filename,
+				file_size, mime_type, media_kind, width, height, taken_at,
+				taken_at_source, pending_jobs, deleted_at
+			) VALUES (gen_random_uuid(), $1, 'external', $2, $3, 'a.jpg', 10,
+				'image/jpeg', 'image', 0, 0, now(), 'import', 0,
+				CASE WHEN $4 THEN now() - interval '1 day' ELSE NULL END)
+			RETURNING id::text`, owner, path, checksum, dead).Scan(&id)
+		if err != nil {
+			t.Fatalf("insert the source row %s: %v", path, err)
+		}
+		return id
+	}
+
+	represents := func(id string) bool {
+		t.Helper()
+		var ok bool
+		if err := pool.QueryRow(ctx,
+			`SELECT asset_library_representative($1::uuid)`, id).Scan(&ok); err != nil {
+			t.Fatalf("ask the predicate for %s: %v", id, err)
+		}
+		return ok
+	}
+
+	// The corner: the dead row ingested FIRST, the live twin LATER.
+	deadFirst := insert("folders/first/a.jpg", "sum-corner", true)
+	liveLater := insert("folders/second/a.jpg", "sum-corner", false)
+	if represents(deadFirst) {
+		t.Errorf("the dead earlier source row represents its group, want it silent")
+	}
+	if !represents(liveLater) {
+		t.Errorf("the live later source row does not represent, want it to")
+	}
+
+	// The mirror: the live row FIRST, a dead twin LATER -- the live
+	// one represents, the dead one never does.
+	liveFirst := insert("folders/third/b.jpg", "sum-mirror", false)
+	deadLater := insert("folders/fourth/b.jpg", "sum-mirror", true)
+	if !represents(liveFirst) {
+		t.Errorf("the live earlier source row does not represent, want it to")
+	}
+	if represents(deadLater) {
+		t.Errorf("the dead later source row represents its group, want it silent")
+	}
+}

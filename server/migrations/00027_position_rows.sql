@@ -86,6 +86,7 @@ AS $$
          AND x.deleted_at IS NULL
          AND (
              x.storage_kind = 'blob'
+             OR a.deleted_at IS NOT NULL
              OR (
                  a.storage_kind = 'external'
                  AND (x.created_at, x.id) < (a.created_at, a.id)
