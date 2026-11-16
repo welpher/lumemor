@@ -44,11 +44,12 @@
 //     /mnt/e2e-source-rw: the probe's true arm and the deletability
 //     chain (see that fixture's README). The bootstrap below seeds
 //     its photos per run -- genuinely distinct bytes (the
-//     cross-person portraits, never the read-only fixture's pair, so
-//     the rescan's owner+checksum dedup never links the two stories'
-//     rows) -- and the trash scene's restore returns them, so the
-//     tree self-heals; the removal scene later asserts the same
-//     files byte for byte on the host after the un-ingest.
+//     cross-person portraits, never the read-only fixture's pair: the
+//     scan keys rows by source POSITION, so identical bytes elsewhere
+//     would land a second row of one content and blur the two
+//     stories' identities) -- and the trash scene's restore returns
+//     them, so the tree self-heals; the removal scene later asserts
+//     the same files byte for byte on the host after the un-ingest.
 // The models ride the SAME storage bind mount the chained
 // acceptances downloaded into -- ./lumemor persists across stack
 // lifetimes, so the download run the bootstrap triggers is warm (a
@@ -266,8 +267,8 @@ const SOURCE_DIR = '/mnt/e2e-source/coastal-week';
 // The writable sibling (the stack arrangement above): the bind
 // without :ro, and the seeded photos the deletability chain walks.
 // The seed bytes are the cross-person portrait pair -- genuinely
-// distinct from the read-only fixture's pair, so the rescan's
-// owner+checksum dedup never links the two stories' rows.
+// distinct from the read-only fixture's pair, so the scan's
+// position-keyed rows keep the two stories' identities apart.
 const RW_MOUNT_ROOT = '/mnt/e2e-source-rw';
 const RW_SEED_A = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other.jpg');
 const RW_SEED_B = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other-second.jpg');
@@ -276,8 +277,8 @@ const RW_SOURCE_HOST_DIR = path.join(specDir, 'fixtures/m3-source-rw');
 // The folder sync scene's dropped photo: a plain PNG with no faces
 // (the story's people assertions count the portrait pairs' faces
 // alone), and bytes no other scene of this stack ever ingests -- the
-// owner+checksum dedup would otherwise resolve the drop into an
-// existing row instead of a fresh tile.
+// tile's name is the file's, so a collision would blur the counts the
+// folder-sync scene reads.
 const FOLDER_SYNC_PHOTO = path.join(specDir, 'fixtures/tile-256.png');
 const PHOTO_SYNC_NAME = 'IMG_SYNC_0001.png';
 
@@ -285,7 +286,7 @@ const PHOTO_SYNC_NAME = 'IMG_SYNC_0001.png';
 // bound read-only at the mount root. The album card holds four frames,
 // so the cover scene needs a collection of exactly that size -- the
 // scan ingests the four files in place (no other story in this stack
-// references them, so the dedup finds nothing to skip).
+// references them, so the card's four frames are the album's own).
 const COVER_SOURCE_DIR = '/mnt/e2e-source/trip-2026';
 const COVER_ALBUM_TITLE = 'Trip frames 2026';
 
