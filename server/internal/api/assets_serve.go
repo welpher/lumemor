@@ -692,7 +692,9 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 // applied values surface exactly as the GET endpoint serves them,
 // faces, tags, albums and place included (the caller passes the same
 // reads' answers). The place face rides the read's own locale join:
-// a null place_id (no GPS, no baked data) answers null.
+// a null place_id (no GPS, no baked data) answers null. contentCopies
+// is the read's own twin count -- the OTHER live rows of the owner
+// carrying the same content, the delete toast's note.
 func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef, includePath bool) apigen.AssetDetail {
 	detail := apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
@@ -714,6 +716,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		Height:           dimensionValue(row.Height),
 		DurationMs:       int4Value(row.DurationMs),
 		Blurhash:         textValue(row.Blurhash),
+		ContentCopies:    int(row.ContentCopies),
 		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),
 		Exif:             exifSummaryFrom(row),
 		Faces:            faces,

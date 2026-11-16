@@ -40,6 +40,7 @@ const detailBody = {
 	height: 3024,
 	durationMs: null,
 	blurhash: 'UHL6aAof00WBWB00ayWB00',
+	contentCopies: 0,
 	livePhotoVideoId: null,
 	// The caller's tags array: part of the detail's fixed shape.
 	tags: [],
