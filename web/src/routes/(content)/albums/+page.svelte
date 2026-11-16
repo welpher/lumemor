@@ -228,16 +228,17 @@
 		createSkipped = outcome.skipped;
 		createWritable = outcome.sourceWritable;
 		void runLoad(true);
-		// The honest answers hold the dialog: any skipped id, or the
-		// read-only source fact, keeps the report face until the
-		// Done affordance acknowledges it.
-		if (outcome.skipped.length === 0 && outcome.sourceWritable) {
+		// The creation's confirmation is the toast (the sample's
+		// create button is the design): the clean write says so, and
+		// the read-only source's fact rides the SAME organ -- the
+		// toast text carries both sentences, one acknowledgment,
+		// never two. The skipped-audience report alone still holds
+		// the dialog: a LIST of who did not land is the dialog's
+		// business (with the read-only fact beside it when both
+		// answers came back), and a toast cannot carry a list.
+		if (outcome.skipped.length === 0) {
 			createOpen = false;
-			// The clean creation's confirmation is the toast (§7.14):
-			// the report face says the same sentence when it holds the
-			// dialog, so the toast belongs to the path that closes it
-			// (one acknowledgment, never two).
-			toast($_('albums_created'));
+			toast($_(outcome.sourceWritable ? 'albums_created' : 'albums_create_readonly'));
 		}
 	}
 
