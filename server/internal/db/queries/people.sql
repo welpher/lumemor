@@ -22,7 +22,15 @@
 -- visible to the caller when caller_asset_visible says so -- the
 -- caller's own sync and directory albums plus every album shared to
 -- them -- AND it is live (not trashed, not archived, no Live Photo
--- component row), the same live-asset filters the timeline applies.
+-- component row), the same live-asset filters the timeline applies,
+-- AND it represents its content (asset_library_representative): one
+-- photo held as an uploaded copy and as a directory album's position
+-- row was detected twice, but a person's photo grid is a wall of
+-- PHOTOS -- the twin's faces never list, so the same person's two
+-- detections of one photo never count as two. The faces keep
+-- existing (clustering, the crop reads and the asset detail's own
+-- face array are row-level facts); it is the people LISTS and their
+-- counts that speak for the library's display.
 -- A cluster is visible to the caller when at least one of its faces
 -- sits on a visible asset; face counts count ONLY those faces (honest
 -- counts per caller, so the same cluster can show different counts
@@ -71,6 +79,7 @@ SELECT fc.id AS cluster_id,
              AND a2.deleted_at IS NULL
              AND a2.is_hidden = false
              AND a2.is_component = false
+             AND asset_library_representative(a2.id)
              AND caller_asset_visible(sqlc.arg('user_id'), a2.id)
            ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
            LIMIT 1
@@ -82,6 +91,7 @@ JOIN assets a ON a.id = f.asset_id
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 GROUP BY fc.id, l.name
 ORDER BY lower(l.name), fc.id;
@@ -107,6 +117,7 @@ FROM (
                  AND a2.deleted_at IS NULL
                  AND a2.is_hidden = false
                  AND a2.is_component = false
+                 AND asset_library_representative(a2.id)
                  AND caller_asset_visible(sqlc.arg('user_id'), a2.id)
                ORDER BY (f2.id = fc.avatar_face_id) DESC, f2.score DESC, f2.id
                LIMIT 1
@@ -118,6 +129,7 @@ FROM (
     WHERE a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND asset_library_representative(a.id)
       AND caller_asset_visible(sqlc.arg('user_id'), a.id)
       AND NOT EXISTS (
           SELECT 1 FROM user_face_labels l
@@ -149,6 +161,7 @@ WHERE EXISTS (
       AND a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND asset_library_representative(a.id)
       AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 )
 AND NOT EXISTS (
@@ -174,6 +187,7 @@ WHERE f.cluster_id = sqlc.arg('cluster_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible(sqlc.arg('user_id'), a.id);
 
 -- name: GetClusterForCaller :one
@@ -205,6 +219,7 @@ WHERE f.cluster_id = sqlc.arg('cluster_id')
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
 ORDER BY f.score DESC, f.id;
 
