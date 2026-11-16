@@ -49,6 +49,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -226,6 +227,20 @@ func RunFolderSync(ctx context.Context, pool *pgxpool.Pool, snapshots *AlbumSnap
 		albumID := uuid.UUID(album.ID.Bytes)
 		live[albumID] = struct{}{}
 		root := album.RootPath.String
+		// The scan's own root guard, mirrored on the sweep's side: a
+		// root that now resolves elsewhere (a symlink swapped in
+		// after creation) fails every scan this sweep could enqueue
+		// -- the walk would see the swapped target's tree, the diff
+		// would ask for a scan, and the scan would refuse the root,
+		// once per tick, forever. Guarding here keeps the sweep from
+		// enqueueing a run that can only fail.
+		resolved, resolveErr := filepath.EvalSymlinks(root)
+		if resolveErr != nil || resolved != root {
+			logger.Warn("the folder sync skips a source root the scan would refuse",
+				"album_id", albumID, "root", root, "error", resolveErr)
+			counts.Skipped++
+			continue
+		}
 		files, err := walkSource(root)
 		if err != nil {
 			logger.Warn("the folder sync could not walk a source root",

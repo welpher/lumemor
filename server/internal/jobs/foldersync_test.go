@@ -459,3 +459,51 @@ func TestFolderSyncPeriodicRegistration(t *testing.T) {
 		t.Errorf("the overlapping tick decided %d scans, want it dropped whole", decision)
 	}
 }
+
+// TestFolderSyncSkipsASwappedSymlinkRoot pins the sweep's root guard:
+// a root replaced by a symlink after creation would fail every scan
+// the sweep could enqueue (the scan's own guard refuses the swapped
+// target) -- the sweep must skip it BEFORE walking, never enqueueing
+// the run that can only fail, once per tick, forever.
+func TestFolderSyncSkipsASwappedSymlinkRoot(t *testing.T) {
+	requireExiftool(t)
+	requireThumbnails(t)
+	e := newEnv(t)
+
+	source := filepath.Join(t.TempDir(), "family")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create the source directory: %v", err)
+	}
+	writeSourceFile(t, filepath.Join(source, "a.jpg"), jpegBytes(t), time.Date(2026, 9, 15, 11, 0, 0, 0, time.UTC))
+
+	album := e.createDirectoryAlbum(t, "Family archive", source)
+	e.waitCreationScan(t, album)
+
+	// Swap the root for a symlink pointing at a DIFFERENT tree: the
+	// scan would refuse this root, so the sweep must not enqueue it.
+	if err := os.RemoveAll(source); err != nil {
+		t.Fatalf("remove the source root: %v", err)
+	}
+	other := filepath.Join(t.TempDir(), "swapped")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatalf("create the swap target: %v", err)
+	}
+	writeSourceFile(t, filepath.Join(other, "intruder.jpg"), jpegBytes(t), time.Date(2026, 9, 16, 9, 0, 0, 0, time.UTC))
+	if err := os.Symlink(other, source); err != nil {
+		t.Fatalf("swap the root for a symlink: %v", err)
+	}
+
+	counts := e.syncNow(t)
+	if counts.Enqueued != 0 || counts.Skipped != 1 {
+		t.Errorf("the sweep over a swapped root = %+v, want it skipped and nothing enqueued", counts)
+	}
+	var runs int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM job_runs WHERE album_id = $1", pgUUID(album)).Scan(&runs); err != nil {
+		t.Fatalf("count the album's runs: %v", err)
+	}
+	// Only the creation scan's own run: the sweep never added one.
+	if runs != 1 {
+		t.Errorf("the swapped-root album holds %d runs, want the creation scan's alone", runs)
+	}
+}
