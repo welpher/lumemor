@@ -29,6 +29,14 @@ CREATE UNIQUE INDEX assets_owner_device_asset_id_live_uq
 -- race. The save-as-new outcome of the trash re-upload decision
 -- stays reachable: it removes the trashed row before inserting the
 -- replacement, in one transaction.
+--
+-- 2026-11-16: this index now speaks for the BLOB domain alone
+-- (storage_kind = 'blob'; migration 00027). The reasoning above is
+-- the upload's -- content addressing, one physical file per
+-- checksum -- and a directory-source position row is not an upload:
+-- it references a file the server does not own, keyed by where that
+-- file lies. The total-uniqueness argument still holds inside the
+-- blob domain unchanged.
 DROP INDEX assets_owner_checksum_live_uq;
 CREATE UNIQUE INDEX assets_owner_checksum_uq
     ON assets (owner_id, checksum);
