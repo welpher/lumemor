@@ -16,6 +16,15 @@ void main() {
       // TODO
     });
 
+    // Cancel one in-flight job run.
+    //
+    // The task panel's cancel (E41): asks the named run to end at its next chunk boundary. The request itself flags the run only -- the run's driver checks the flag BETWEEN chunks (a walk page, a rescan batch, one model of a download group) and closes the run `cancelled` there, so:  - The committed portion stays: every chunk already finished keeps its work on disk and its count in the run's `done`. The response makes no promise about work that has not committed yet. - An in-flight asset-level job (one decode, one inference, one encode) runs to its own end -- the boundary is between chunks, never mid-asset. - The run's state flips to `cancelled` when the driver closes it, and the close rides the task panel's existing events (`job.finished`) -- the listing converges through the same stream it always converges through. A QUEUED run cancels at once (its driver checks the flag before the first chunk). - A run that already finished -- succeeded, failed or cancelled -- answers 409 `JOB_NOT_CANCELLABLE`: nothing is in flight to cancel, and the row's own state is the honest answer. An unknown run id answers 404 `JOB_RUN_NOT_FOUND`.  The cancel takes no request body and answers no body: the 204 is the flag's whole receipt. 
+    //
+    //Future cancelJobRun(String runId) async
+    test('test cancelJobRun', () async {
+      // TODO
+    });
+
     // Create one account.
     //
     // The account creation of the admin surface, the management counterpart of the first-run wizard: an administrator provisions another account -- a family member's login, or a second administrator. The account rules mirror the wizard's exactly: the email is parsed and lower-cased as the login identity, the password is stored only as an Argon2id hash and never appears in any response, the id is a fresh UUIDv7, and the account's sync album -- the core backup stream every upload lands in and the timeline aggregates -- is created in the SAME transaction, so the new account can take uploads the moment it exists (a second creation point of the same wiring the wizard uses). The wizard's one-time guarantee is NOT part of this endpoint; it exists exactly because an administrator already does.  The role defaults to `user` when omitted; creating another administrator is the same request with `role: \"admin\"`. A duplicate email answers 409 USER_EMAIL_TAKEN -- the address is the account identity, unique instance-wide, and the login lookup depends on that uniqueness. 
@@ -81,7 +90,7 @@ void main() {
 
     // Read the model download settings.
     //
-    // The model store's one policy switch: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own.  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the default (on) with the corruption logged server-side. 
+    // The model store's policy switch, download sources and pipeline params: whether an AI job whose slot is configured but whose weights are missing may start the model group's download on its own, where the bytes may travel, and the two steering params the ML jobs read at their own dispatch (see `ModelParams`).  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face's download button remain the administrator's active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the defaults (the policy on, the shipped hosts, the pipeline's own params) with the corruption logged server-side. 
     //
     //Future<ModelSettingsResponse> getModelSettings() async
     test('test getModelSettings', () async {
@@ -234,7 +243,7 @@ void main() {
 
     // Stop the in-flight derivative rebuild run.
     //
-    // The task panel's stop for a rebuild in flight: the run's row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild's `missing` scope skips them.  The run closes `failed` with `failed` counting nothing: the task panel renders the reason line as stopped, not as a broken run -- the admin asked for this ending.  A stop with no rebuild in flight (the run finished between the panel's listing and the click, or none ever started) answers 409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on. 
+    // The task panel's stop for a rebuild in flight: the run's row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild's `missing` scope skips them.  The run closes `cancelled` -- the task panel renders the cancelled state, not a broken run: the admin asked for this ending (E41 shared the flag-closed ending with the task panel's per-run cancel, and the two speak one state).  A stop with no rebuild in flight (the run finished between the panel's listing and the click, or none ever started) answers 409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on. 
     //
     //Future<RebuildDerivativesResponse> stopDerivativesRebuild() async
     test('test stopDerivativesRebuild', () async {
@@ -261,7 +270,7 @@ void main() {
 
     // Save the model download settings and download sources.
     //
-    // The settings save. `autoDownload`, `allowedHosts` and `mirrorBaseUrl` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
+    // The settings save. `autoDownload`, `allowedHosts`, `mirrorBaseUrl` and `params` are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  `allowedHosts` replaces the stored list wholesale; every entry must be a hostname, optionally with a leading `*.` wildcard label and an optional port. `mirrorBaseUrl`, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins `allowedHosts` automatically, so saving a mirror never leaves it refusing its own first hop. `params` carries the two pipeline steering values, each validated against the closed 0-1 domain -- a value outside it answers 400 `VALIDATION_FAILED` naming the field, and nothing is written.  The values take effect on the next dispatch (the download's next run; the ML jobs' next per-asset enqueue) -- no run is started or cancelled by the save itself, and work already in flight runs to completion on the values it read. 
     //
     //Future<ModelSettingsResponse> updateModelSettings(ModelSettingsUpdateRequest modelSettingsUpdateRequest) async
     test('test updateModelSettings', () async {

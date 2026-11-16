@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -81,6 +82,13 @@ func (w *ModelDownloadWorker) Timeout(job *river.Job[ModelDownloadArgs]) time.Du
 // deployment's environment fallback answers only when no mirror is
 // configured in the admin face -- the same rewrite either way, owned
 // by the surface that edits it.
+//
+// The mirror's OWN host joins the gate either way: the rewrite sends
+// the pinned hostnames at it, so a mirror the list refuses would
+// fail on its own first hop and silently fall back to the real
+// internet (the source chain's host validation, 32699df, walks the
+// REWRITTEN urls) -- the settings save's auto-join discipline,
+// applied to the deployment's environment mirror too.
 func (w *ModelDownloadWorker) downloadTransport(ctx context.Context) (mirror string, allowed []string) {
 	queries := dbgen.New(w.pool)
 	settings, err := db.ModelSettingsOf(ctx, queries)
@@ -93,7 +101,33 @@ func (w *ModelDownloadWorker) downloadTransport(ctx context.Context) (mirror str
 	if settings.MirrorBaseUrl != "" {
 		mirror = settings.MirrorBaseUrl
 	}
-	return mirror, settings.AllowedHosts
+	allowed = settings.AllowedHosts
+	if host := mirrorHostOf(mirror); host != "" && !ml.HostAllowed(allowed, host) {
+		allowed = append(allowed, host)
+	}
+	return mirror, allowed
+}
+
+// mirrorHostOf answers the host a mirror string names: a bare host,
+// a host:port pair (the deployment's env form -- a scheme-less parse
+// would misread the port as the scheme, so the authority form rides
+// the // prefix), or a full http(s) URL. The empty string for
+// anything that names no host.
+func mirrorHostOf(mirror string) string {
+	if mirror == "" {
+		return ""
+	}
+	hostOf := func(raw string) string {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		return parsed.Hostname()
+	}
+	if host := hostOf(mirror); host != "" {
+		return host
+	}
+	return hostOf("//" + mirror)
 }
 
 // Work executes one model download attempt: the row flips to running
@@ -105,18 +139,53 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 	jobRunID := job.Args.JobRunID
 	queries := dbgen.New(w.pool)
 
-	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
 		return fmt.Errorf("mark the model download run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the model download run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
 	}
 	total := w.manifest.PinnedBytes()
 	w.bus.Publish("job.started", jobEventPayload(jobRunID, ModelDownloadKind, total, 0, 0, dbgen.JobStateRunning))
 
-	// One row update and one job.progress event per progress report;
-	// the download service throttles the reports themselves, so the
-	// events inherit the bound. A progress update that fails (the job
-	// context dying mid-download) logs and moves on: the run's final
-	// bookkeeping below is where the row converges.
+	// The cancel boundary (E41): the flag check rides the download
+	// service's own throttled report cadence -- one flag read per
+	// report, and a set flag cancels the DERIVED context, which stops
+	// the transfer at the file that owns it. The parent context stays
+	// alive, so the interruption branch below cannot mistake the
+	// admin's ending for an envelope death; the post-run flag read
+	// closes the run cancelled with the row's own counts.
+	downloadCtx, cancelDownload := context.WithCancel(ctx)
+	defer cancelDownload()
+	cancelRequested := func() bool {
+		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		if err != nil {
+			// A failed flag read never aborts the download on a
+			// guess: the log line carries it, the transfer continues.
+			w.logger.Warn("check the model download run's stop flag", "error", err, "job_run_id", jobRunID)
+			return false
+		}
+		return stop
+	}
 	progress := func(done, total int) {
+		if cancelRequested() {
+			w.logger.Info("model download cancelled at its own boundary", "job_run_id", jobRunID, "bytes_done", done)
+			cancelDownload()
+			return
+		}
 		if err := queries.UpdateJobRunProgress(ctx, dbgen.UpdateJobRunProgressParams{
 			ID:   pgUUID(jobRunID),
 			Done: int32(done),
@@ -128,7 +197,7 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 	}
 
 	mirror, allowed := w.downloadTransport(ctx)
-	report, runErr := ml.RunDownload(ctx, ml.RunDownloadDeps{
+	report, runErr := ml.RunDownload(downloadCtx, ml.RunDownloadDeps{
 		Manifest:     w.manifest,
 		ModelsDir:    w.modelsDir,
 		Registry:     w.registry,
@@ -136,6 +205,28 @@ func (w *ModelDownloadWorker) Work(ctx context.Context, job *river.Job[ModelDown
 		HFMirror:     mirror,
 		AllowedHosts: allowed,
 	}, progress)
+
+	// The cancel close: the flag owns the ending, the row's own
+	// counts own the numbers (the report of a context-killed transfer
+	// carries no honest partial). A run that finished its work before
+	// the flag's read keeps its succeeded close -- the boundary lets
+	// the in-flight chunk complete, and a completed run is not
+	// cancelled. The envelope-expiry retry path below cannot mask the
+	// ending: the flag is still set on the retry, whose first report
+	// closes the run.
+	if runErr != nil {
+		if stop, err := queries.GetJobRunStopRequested(context.WithoutCancel(ctx), pgUUID(jobRunID)); err == nil && stop {
+			run, err := queries.GetJobRun(context.WithoutCancel(ctx), pgUUID(jobRunID))
+			if err != nil {
+				return fmt.Errorf("load the cancelled model download run %s: %w", jobRunID, err)
+			}
+			w.bus.Publish("job.finished", jobEventPayload(jobRunID, ModelDownloadKind,
+				total, int(run.Done), int(run.Failed), dbgen.JobStateCancelled))
+			w.logger.Info("model download run closed cancelled", "job_run_id", jobRunID,
+				"bytes_done", run.Done)
+			return nil
+		}
+	}
 
 	if runErr != nil && ctx.Err() != nil {
 		// The context died (the job's envelope, or a shutdown drain):

@@ -715,6 +715,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// every GPS-bearing asset lives on the queue.
 				r.Post("/admin/places/reresolve", wrapper.ReresolvePlaces)
 				r.Get("/admin/jobs", wrapper.ListJobs)
+				// The task panel's cancel: one bounded row read plus
+				// the stop flag; the boundary close lives on the
+				// queue's drivers, exactly like the listing's own
+				// discipline.
+				r.Post("/admin/jobs/{runId}/cancel", wrapper.CancelJobRun)
 			})
 
 			// Authed streaming group: the SSE activity stream. It

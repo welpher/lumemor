@@ -580,3 +580,49 @@ func writeRerunFixtureModel(t *testing.T, modelsDir, id, slot, file, sha string,
 		t.Fatalf("write fixture manifest: %v", err)
 	}
 }
+
+// TestMlRerunHonorsCancel pins the rerun's cancel boundary (E41): a
+// flag set while the run sits queued closes it cancelled at the
+// driver's first page check -- nothing dispatched (the undispersed
+// scope is what the cancel refused), never a broken run -- and the
+// finished event carries the cancelled state so the task panel
+// converges through its own stream.
+func TestMlRerunHonorsCancel(t *testing.T) {
+	var failing uuid.UUID
+	var mu sync.Mutex
+	dispatched := map[uuid.UUID]int{}
+	e := newEnvReportingDispatch(t, &dispatched, &mu, &failing)
+	e.insertReadyImage(t, "originals/rerun-cancel/one.jpg")
+	e.insertReadyImage(t, "originals/rerun-cancel/two.jpg")
+
+	jobRunID, err := e.queue.EnqueueMlRerun(context.Background(), ml.SlotClipEmbed)
+	if err != nil {
+		t.Fatalf("enqueue the clip rerun: %v", err)
+	}
+	// The cancel lands before the driver's pickup: the walk's first
+	// page check reads it.
+	if _, err := e.pool.Exec(context.Background(),
+		"UPDATE job_runs SET stop_requested = true WHERE id = $1", pgUUID(jobRunID)); err != nil {
+		t.Fatalf("set the cancel flag: %v", err)
+	}
+
+	eventually(t, jobWaitTimeout, "the cancelled rerun run to close", func() bool {
+		return e.jobRunOf(t, jobRunID).state == "cancelled"
+	})
+	row := e.jobRunOf(t, jobRunID)
+	if row.done != 0 || row.failed != 0 {
+		t.Errorf("cancelled run counts = %d done / %d failed, want zeros (nothing was ever dispatched)", row.done, row.failed)
+	}
+	if !row.finishedAt.Valid {
+		t.Error("finished_at is null, want the cancel close's time")
+	}
+	mu.Lock()
+	if len(dispatched) != 0 {
+		t.Errorf("dispatched assets = %v, want none (the scope's work is what the cancel refused)", dispatched)
+	}
+	mu.Unlock()
+	finished := eventPayloadOf(t, e.bus, "job.finished")
+	if finished["jobRunId"] != jobRunID.String() || finished["state"] != "cancelled" {
+		t.Errorf("job.finished payload = %v, want the cancelled state on the run's identity", finished)
+	}
+}

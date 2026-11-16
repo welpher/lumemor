@@ -43,6 +43,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/media"
@@ -109,6 +110,27 @@ type FaceDetectWorker struct {
 // Timeout is the job's execution envelope; see faceDetectTimeout.
 func (w *FaceDetectWorker) Timeout(job *river.Job[FaceDetectArgs]) time.Duration {
 	return faceDetectTimeout
+}
+
+// decodeParams merges the steering params one detection decode runs
+// at: the admin's minimum score (E41's model params, read at THIS
+// job's dispatch -- an in-flight job keeps what it read, the next
+// dispatched job reads the fresh value) overrides the model's own
+// manifest entry for the knob, and every other param (the NMS
+// threshold, the topK) stays the model's. A corrupt settings row
+// answers the pipeline default through the accessor -- the read
+// never fails the job.
+func (w *FaceDetectWorker) decodeParams(ctx context.Context, model *ml.Model) map[string]any {
+	settings, err := db.ModelSettingsOf(ctx, dbgen.New(w.pool))
+	if err != nil {
+		w.logger.Warn("read the model params; answering the pipeline default", "error", err)
+	}
+	params := make(map[string]any, len(model.Params)+1)
+	for key, value := range model.Params {
+		params[key] = value
+	}
+	params["scoreThreshold"] = settings.Params.FaceDetectMinScore
+	return params
 }
 
 // Work executes one face detection job and, when the rerun driver
@@ -196,7 +218,7 @@ func (w *FaceDetectWorker) work(ctx context.Context, job *river.Job[FaceDetectAr
 		return fmt.Errorf("decode asset %s for detection: %w", assetID, err)
 	}
 
-	detections, err := mlface.DetectWithParams(sess, img, model.Params)
+	detections, err := mlface.DetectWithParams(sess, img, w.decodeParams(ctx, model))
 	if err != nil {
 		return fmt.Errorf("detect faces of asset %s: %w", assetID, err)
 	}

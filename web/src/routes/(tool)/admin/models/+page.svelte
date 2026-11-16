@@ -50,6 +50,7 @@
 	import { formatMegabytes } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
+	import { toast } from '$lib/components/toast.svelte';
 	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Download from '@lucide/svelte/icons/download';
@@ -64,10 +65,42 @@
 
 	/** The four card slots, the sample's order; the text tower rides
 	 * the semantic card (it shares the joint space with the embed
-	 * tower and has no switch of its own). */
-	const CARD_SLOTS: ReadonlyArray<{ slot: ModelSlotId; labelKey: string; prepKey: string }> = [
-		{ slot: 'face_detect', labelKey: 'admin_models_slot_face_detect', prepKey: 'admin_models_prep_detect' },
-		{ slot: 'face_recognize', labelKey: 'admin_models_slot_face_recognize', prepKey: 'admin_models_prep_align' },
+	 * tower and has no switch of its own). E41: the two face slots
+	 * carry the pipeline's running params -- the honest set, v1's two
+	 * knobs, no empty block on the other slots. */
+	const CARD_SLOTS: ReadonlyArray<{
+		slot: ModelSlotId;
+		labelKey: string;
+		prepKey: string;
+		params?: {
+			field: 'faceDetectMinScore' | 'faceRecognizeThreshold';
+			labelKey: string;
+			hintKey: string;
+			testid: string;
+		};
+	}> = [
+		{
+			slot: 'face_detect',
+			labelKey: 'admin_models_slot_face_detect',
+			prepKey: 'admin_models_prep_detect',
+			params: {
+				field: 'faceDetectMinScore',
+				labelKey: 'models_param_min_score',
+				hintKey: 'models_param_min_score_hint',
+				testid: 'models-param-min-score'
+			}
+		},
+		{
+			slot: 'face_recognize',
+			labelKey: 'admin_models_slot_face_recognize',
+			prepKey: 'admin_models_prep_align',
+			params: {
+				field: 'faceRecognizeThreshold',
+				labelKey: 'models_param_cluster_threshold',
+				hintKey: 'models_param_cluster_hint',
+				testid: 'models-param-cluster-threshold'
+			}
+		},
 		{ slot: 'clip_embed', labelKey: 'admin_models_slot_clip_embed', prepKey: 'admin_models_prep_clip' },
 		{ slot: 'ocr', labelKey: 'admin_models_slot_ocr', prepKey: 'admin_models_prep_ocr' }
 	];
@@ -119,6 +152,11 @@
 	let savingSources = $state(false);
 	let sourcesErrorKey = $state('');
 	let sourcesSaved = $state(false);
+
+	// The slot params' save state (E41): the field whose save failed
+	// and its mapped key -- the refusal lands inline under the slot's
+	// own row.
+	let paramError = $state<{ field: string; errorKey: string } | null>(null);
 
 	const settledEmpty = $derived(status === 'ready' && models.length === 0);
 	/** The download run, live: queued or running. */
@@ -626,6 +664,36 @@
 		sourcesErrorKey = outcome.errorKey;
 	}
 
+	/**
+	 * The slot param's save (E41): the input's change PUTs the whole
+	 * document it read (the sources' own discipline -- the settings
+	 * are one object), and success toasts. An out-of-bounds value
+	 * answers the server's 400 with the field named: the refusal
+	 * lands INLINE under the slot's own row, and the value stays as
+	 * typed (the next change re-saves).
+	 */
+	async function saveParams(field: 'faceDetectMinScore' | 'faceRecognizeThreshold', raw: string): Promise<void> {
+		if (sourceSettings === null) {
+			return;
+		}
+		paramError = null;
+		const value = Number(raw);
+		if (raw.trim() === '' || Number.isNaN(value) || value < 0 || value > 1) {
+			paramError = { field, errorKey: 'validation_failed' };
+			return;
+		}
+		const outcome = await saveModelSettings({
+			...sourceSettings,
+			params: { ...sourceSettings.params, [field]: value }
+		});
+		if (outcome.ok) {
+			sourceSettings = outcome.settings;
+			toast($_('admin_models_params_saved'));
+			return;
+		}
+		paramError = { field, errorKey: outcome.errorKey };
+	}
+
 	/** The footer's summary line: N hosts, the mirror host. */
 	function sourcesSummary(): string {
 		if (sourceSettings === null) {
@@ -946,6 +1014,43 @@
 						>
 							{$_('admin_models_card_not_downloaded_note')}
 						</p>
+					{/if}
+					{#if card.params !== undefined}
+						<!-- The slot's running params (E41): the two knobs the
+						     pipeline actually reads -- the set is honest (a slot
+						     without a knob renders no empty block), the change
+						     saves on change and takes effect on the NEXT dispatch
+						     (in-flight work keeps the values it read). The out-of
+						     bounds refusal lands inline under the row. -->
+						<div
+							class="models__params flex flex-wrap items-center gap-x-5 gap-y-2 pt-2 border-t border-border"
+						>
+							<label
+								class="models__param flex items-center gap-2 font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+							>
+								{$_(card.params.labelKey)}
+								<input
+									class="models__param-input w-[76px] px-2 py-1 font-body font-normal text-[13px] leading-[1.4] text-text bg-page border border-border-strong rounded-control tabular-nums"
+									type="number"
+									step="0.05"
+									min="0"
+									max="1"
+									data-testid={card.params.testid}
+									value={sourceSettings?.params[card.params.field] ?? ''}
+									aria-label={$_(card.params.labelKey)}
+									onchange={(event) => void saveParams(card.params!.field, event.currentTarget.value)}
+								/>
+								<span class="text-text-faint">{$_(card.params.hintKey)}</span>
+							</label>
+						</div>
+						{#if paramError !== null && paramError.field === card.params.field}
+							<p
+								class="models__param-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+								role="alert"
+							>
+								{errorText(paramError.errorKey)}
+							</p>
+						{/if}
 					{/if}
 					<div class="models__card-actions flex flex-wrap items-center gap-2">
 						<Button

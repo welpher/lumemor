@@ -10,6 +10,13 @@ import (
 	"github.com/welpher/lumemor/server/migrations"
 )
 
+// positionRowsDownTarget is the version the down targets: the one
+// BELOW the position-rows migration (00027), so the downgrade runs
+// the fork's own down and the fold it pins. Later migrations (the
+// cancelled job state, E41) may sit above it -- their downs are
+// no-ops to this test, the target names the fold it exists to catch.
+const positionRowsDownTarget = 26
+
 // TestPositionRowsMigrationDown pins the fork migration's reversibility:
 // the position-row model lets one owner hold one content twice (an
 // uploaded copy plus a directory source's position row), and the DOWN
@@ -77,7 +84,10 @@ func TestPositionRowsMigrationDown(t *testing.T) {
 	}
 
 	// The migration's own transaction boundary: the down runs, then the
-	// up restores the model the test's rows were written under.
+	// up restores the model the test's rows were written under. The
+	// target is THE POSITION-ROWS MIGRATION's version, not "one down
+	// from the tip": later migrations (the cancelled job state, E41)
+	// may sit above it, and their downs are their own business.
 	sqlDB := stdlib.OpenDBFromPool(pool)
 	defer func() { _ = sqlDB.Close() }()
 	goose.SetBaseFS(migrations.FS)
@@ -85,8 +95,8 @@ func TestPositionRowsMigrationDown(t *testing.T) {
 	if err := goose.SetDialect("postgres"); err != nil {
 		t.Fatalf("set goose dialect: %v", err)
 	}
-	if err := goose.DownContext(ctx, sqlDB, "."); err != nil {
-		t.Fatalf("goose down: %v", err)
+	if err := goose.DownToContext(ctx, sqlDB, ".", positionRowsDownTarget); err != nil {
+		t.Fatalf("goose down to %d: %v", positionRowsDownTarget, err)
 	}
 
 	// The collapse: one row of the content (the blob, the survivor

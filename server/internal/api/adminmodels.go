@@ -22,10 +22,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
@@ -146,7 +149,7 @@ func (s *server) ListModels(w http.ResponseWriter, r *http.Request) {
 	// its state -- the run the download endpoint's idempotence would
 	// return -- or null before the first download was ever started.
 	if row, err := s.queries.LatestJobRunByKind(ctx, modelDownloadKind); err == nil {
-		summary := jobRunResponseFrom(row)
+		summary := jobRunResponseFrom(row, pgtype.Text{})
 		response.Download = &summary
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		s.internalError(w, r, "find the latest model download run", err)
@@ -495,16 +498,120 @@ func (s *server) ListJobs(w http.ResponseWriter, r *http.Request, params apigen.
 		}
 	}
 
-	rows, err := s.queries.ListJobRuns(r.Context(), int32(limit))
+	rows, err := s.queries.ListJobRunsWithSubject(r.Context(), int32(limit))
 	if err != nil {
 		s.internalError(w, r, "list the job runs", err)
 		return
 	}
 	response := apigen.JobRunListResponse{Jobs: make([]apigen.JobRunResponse, 0, len(rows))}
 	for _, row := range rows {
-		response.Jobs = append(response.Jobs, jobRunResponseFrom(row))
+		// The listing row is the flat join of the run and its subject:
+		// the run's own columns carry under the same names, the
+		// subject rides beside them.
+		response.Jobs = append(response.Jobs, jobRunResponseFrom(dbgen.JobRun{
+			ID:            row.ID,
+			Kind:          row.Kind,
+			Total:         row.Total,
+			Done:          row.Done,
+			Failed:        row.Failed,
+			State:         row.State,
+			StartedAt:     row.StartedAt,
+			FinishedAt:    row.FinishedAt,
+			CreatedAt:     row.CreatedAt,
+			UpdatedAt:     row.UpdatedAt,
+			AlbumID:       row.AlbumID,
+			ResumeFrom:    row.ResumeFrom,
+			StopRequested: row.StopRequested,
+		}, row.Subject))
 	}
 	s.writeJSON(w, http.StatusOK, response)
+}
+
+// CancelJobRun implements POST /api/v1/admin/jobs/{runId}/cancel: the
+// task panel's cancel (E41). The request only flags the run -- its
+// driver checks the flag between chunks and closes it cancelled with
+// the committed work kept. A run that already finished answers 409
+// JOB_NOT_CANCELLABLE (the row's own state is the honest answer); an
+// unknown id answers 404 JOB_RUN_NOT_FOUND.
+func (s *server) CancelJobRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
+	if _, ok := authFrom(r.Context()); !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	run, err := s.queries.GetJobRun(r.Context(), pgUUID(runId))
+	if errors.Is(err, pgx.ErrNoRows) {
+		s.writeError(w, http.StatusNotFound, apigen.JOBRUNNOTFOUND,
+			"no job run carries this id", nil)
+		return
+	}
+	if err != nil {
+		s.internalError(w, r, "load the job run", err)
+		return
+	}
+	if run.State != dbgen.JobStateQueued && run.State != dbgen.JobStateRunning {
+		s.writeError(w, http.StatusConflict, apigen.JOBNOTCANCELLABLE,
+			"this run has already finished and cannot be cancelled", nil)
+		return
+	}
+
+	// The flag write: rows-affected zero means the run finished
+	// between the read and the write (the driver closed it) -- the
+	// re-read decides the honest answer instead of a silent 204.
+	rows, err := s.queries.RequestJobRunCancel(r.Context(), pgUUID(runId))
+	if err != nil {
+		s.internalError(w, r, "mark the job run asked-to-cancel", err)
+		return
+	}
+	if rows == 0 {
+		if _, err := s.queries.GetJobRun(r.Context(), pgUUID(runId)); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			s.internalError(w, r, "re-read the finished job run", err)
+			return
+		}
+		s.writeError(w, http.StatusConflict, apigen.JOBNOTCANCELLABLE,
+			"this run has already finished and cannot be cancelled", nil)
+		return
+	}
+
+	// A run still QUEUED closes here, at once: no chunk ever started,
+	// so there is no boundary to wait for. The flag write above is
+	// the race safety -- if the driver's pickup interlocked with this
+	// close, the re-read below answers running and the flag alone is
+	// the contract (the driver's own first boundary check closes the
+	// run). The guarded pickup (MarkJobRunRunning's state='queued'
+	// guard) can never resurrect a run this close ended.
+	run, err = s.queries.GetJobRun(r.Context(), pgUUID(runId))
+	if err != nil {
+		s.internalError(w, r, "re-read the cancelled job run", err)
+		return
+	}
+	if run.State == dbgen.JobStateQueued {
+		if err := s.queries.FinishJobRun(r.Context(), dbgen.FinishJobRunParams{
+			ID:     pgUUID(runId),
+			State:  dbgen.JobStateCancelled,
+			Done:   run.Done,
+			Failed: run.Failed,
+		}); err != nil {
+			s.internalError(w, r, "close the queued job run", err)
+			return
+		}
+		// The close announces itself on the same stream every other
+		// run close rides: the task panel converges without a poll.
+		// The payload's shape is jobs.jobEventPayload's (the driver
+		// side pins the same keys); the api side repeats it here for
+		// the one close the drivers cannot own.
+		if s.events != nil {
+			s.events.Publish("job.finished", map[string]string{
+				"jobRunId": runId.String(),
+				"kind":     run.Kind,
+				"total":    strconv.Itoa(int(run.Total)),
+				"done":     strconv.Itoa(int(run.Done)),
+				"failed":   strconv.Itoa(int(run.Failed)),
+				"state":    string(dbgen.JobStateCancelled),
+			})
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // modelActivationMap reads every model's activation flag in one
@@ -556,15 +663,23 @@ func modelResponseFrom(model ml.Model, isActive bool) apigen.ModelResponse {
 	return response
 }
 
-// jobRunResponseFrom maps one job_runs row onto the API shape.
-func jobRunResponseFrom(row dbgen.JobRun) apigen.JobRunResponse {
+// jobRunResponseFrom maps one job_runs row onto the API shape. The
+// subject (E41) is the run's subject album's title, when the run
+// carries one -- a rescan's rows name their album, every other kind
+// answers null.
+func jobRunResponseFrom(row dbgen.JobRun, subject pgtype.Text) apigen.JobRunResponse {
 	response := apigen.JobRunResponse{
-		Id:     uuid.UUID(row.ID.Bytes),
-		Kind:   apigen.JobRunKind(row.Kind),
-		State:  apigen.JobRunState(row.State),
-		Total:  int(row.Total),
-		Done:   int(row.Done),
-		Failed: int(row.Failed),
+		Id:      uuid.UUID(row.ID.Bytes),
+		Kind:    apigen.JobRunKind(row.Kind),
+		State:   apigen.JobRunState(row.State),
+		Subject: nil,
+		Total:   int(row.Total),
+		Done:    int(row.Done),
+		Failed:  int(row.Failed),
+	}
+	if subject.Valid {
+		title := subject.String
+		response.Subject = &title
 	}
 	if row.StartedAt.Valid {
 		started := row.StartedAt.Time.UTC()

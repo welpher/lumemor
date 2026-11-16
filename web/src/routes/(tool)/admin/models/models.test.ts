@@ -152,7 +152,12 @@ function modelsRoutes(models: unknown[], overrides: FetchRoute = {}): FetchRoute
 				official: listing.official
 			}),
 		'/api/v1/admin/settings/models': () =>
-			jsonResponse(200, { autoDownload: true, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' }),
+			jsonResponse(200, {
+				autoDownload: true,
+				allowedHosts: ['huggingface.co'],
+				mirrorBaseUrl: '',
+				params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
+			}),
 		...overrides
 	};
 }
@@ -563,10 +568,16 @@ test('the sources footer edits the allowed hosts and saves the settings', async 
 					return jsonResponse(200, {
 						autoDownload: true,
 						allowedHosts: ['huggingface.co', 'models.example.net'],
-						mirrorBaseUrl: ''
+						mirrorBaseUrl: '',
+						params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
 					});
 				}
-				return jsonResponse(200, { autoDownload: true, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' });
+				return jsonResponse(200, {
+					autoDownload: true,
+					allowedHosts: ['huggingface.co'],
+					mirrorBaseUrl: '',
+					params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
+				});
 			}
 		})
 	);

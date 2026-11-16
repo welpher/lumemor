@@ -400,6 +400,17 @@ function modelSettingsFrom(body: unknown): ModelSettings | null {
 	if (!Array.isArray(candidate.allowedHosts) || typeof candidate.mirrorBaseUrl !== 'string') {
 		return null;
 	}
+	// The params (E41): the two knobs ride the document, both floats
+	// in the closed 0-1 domain the server validates -- a drifted or
+	// proxied answer never renders as a surface.
+	const params = candidate.params as ModelSettings['params'] | undefined;
+	if (
+		params === undefined ||
+		typeof params.faceDetectMinScore !== 'number' ||
+		typeof params.faceRecognizeThreshold !== 'number'
+	) {
+		return null;
+	}
 	return body as ModelSettings;
 }
 

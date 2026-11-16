@@ -35,7 +35,7 @@ func waitRebuildConverged(t *testing.T, e *env, id uuid.UUID) (string, int32, in
 	t.Helper()
 	eventually(t, 30*time.Second, "the rebuild run to converge", func() bool {
 		state, _, _ := rebuildRunRow(t, e, id)
-		return state == "succeeded" || state == "failed"
+		return state == "succeeded" || state == "failed" || state == "cancelled"
 	})
 	return rebuildRunRow(t, e, id)
 }
@@ -196,8 +196,9 @@ func TestRebuildMissingDerivesAbsent(t *testing.T) {
 }
 
 // TestRebuildHonorsStop pins the stop: a stop flag set while the run
-// is in flight closes it failed with zero failures -- the panel's
-// reason line says stopped -- and the work already done stays on
+// is in flight closes it cancelled (E41's shared flag-closed ending)
+// with zero failures -- the panel renders the cancelled state, the
+// admin asked for this ending -- and the work already done stays on
 // disk.
 func TestRebuildHonorsStop(t *testing.T) {
 	requireThumbnails(t)
@@ -223,8 +224,8 @@ func TestRebuildHonorsStop(t *testing.T) {
 		t.Fatalf("set the stop flag: %v", err)
 	}
 	state, _, _ := waitRebuildConverged(t, e, runID)
-	if state != "failed" {
-		t.Fatalf("stopped rebuild run state = %s, want failed (the stopped run's state)", state)
+	if state != "cancelled" {
+		t.Fatalf("stopped rebuild run state = %s, want cancelled (the stopped run's state)", state)
 	}
 	// Whatever the stop caught, the derivations that landed are real
 	// files -- and the run's failure names no failed assets.

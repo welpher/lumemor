@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 
 // The admin task panel: the job runs listing renders each run's kind,
 // state, progress (the units per kind -- pinned bytes for the model
@@ -34,6 +35,7 @@ function jobRun(id: string, overrides: Record<string, unknown> = {}) {
 		id,
 		kind: 'model_download',
 		state: 'running',
+		subject: null,
 		total: 400371536,
 		done: 104857600,
 		failed: 0,
@@ -188,6 +190,7 @@ function deliverJobEvent(event: {
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	clearToasts();
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -231,7 +234,9 @@ test('the listing renders each run with kind, state, per-kind units and times', 
 	expect(runCard(embedRun.id).textContent).toContain('3 of 3 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('4 of 5 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('1 failed');
-	expect(runCard(rescanRun.id).textContent).toContain('2 of 2 assets');
+	// The rescan's own line (E41): a scan that got through its scope
+	// without a failure reads like a log, not an accountant's pair.
+	expect(runCard(rescanRun.id).textContent).toContain('2 photos unchanged');
 	// The start/finish timestamps, locale-formatted; a queued run has
 	// not started (no progress bar to draw either).
 	expect(runCard(embedRun.id).textContent).toContain('Started Nov 3, 2026');
@@ -686,24 +691,27 @@ test('the five pause switches carry the budget and save on change', async () => 
 	expect(saved.pausedJobs.thumbnail).toBe(true);
 });
 
-test('a running rebuild row carries the stop, and stopping POSTs and refetches', async () => {
+test('a running row carries the cancel, and cancelling POSTs the run id, toasts and refetches', async () => {
 	const rebuildRun = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f11', {
 		kind: 'rebuild_derivatives',
 		state: 'running',
+		subject: null,
 		total: 12,
 		done: 4,
 		startedAt: '2026-11-03T14:00:00Z'
 	});
-	let stops = 0;
+	let cancels = 0;
+	let cancelUrl = '';
 	const reads = stubFetchWithBudget([rebuildRun], budgetBody()) as unknown as (
 		i: RequestInfo | URL,
 		ii?: RequestInit
 	) => Promise<Response>;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
-		if (url === '/api/v1/admin/derivatives/rebuild/stop' && init?.method === 'POST') {
-			stops += 1;
-			return jsonResponse(200, { jobRunId: rebuildRun.id });
+		if (url === `/api/v1/admin/jobs/${rebuildRun.id}/cancel` && init?.method === 'POST') {
+			cancels += 1;
+			cancelUrl = url;
+			return new Response(null, { status: 204 });
 		}
 		return reads(input, init);
 	});
@@ -711,24 +719,82 @@ test('a running rebuild row carries the stop, and stopping POSTs and refetches',
 	mountPage();
 	await settle();
 
-	const stop = document.body.querySelector<HTMLButtonElement>('[data-testid="job-stop"]');
-	expect(stop).not.toBeNull();
-	stop?.click();
+	const cancel = document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]');
+	expect(cancel).not.toBeNull();
+	cancel?.click();
 	await settle();
-	expect(stops).toBe(1);
+	expect(cancels).toBe(1);
+	expect(cancelUrl).toBe(`/api/v1/admin/jobs/${rebuildRun.id}/cancel`);
+	// The honest account, spoken at the click: the finished count is
+	// the row's own.
+	expect(toasts().map((entry) => entry.text)).toContain('Cancelled. The 4 finished items are kept.');
 });
 
-test('a rebuild row that already closed carries no stop', async () => {
+test('a finished run answers the 409 inline, under its own row', async () => {
 	const closedRun = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f12', {
-		kind: 'rebuild_derivatives',
+		kind: 'clip_embed_rerun',
 		state: 'succeeded',
-		total: 12,
-		done: 12,
+		subject: null,
+		total: 3,
+		done: 3,
 		startedAt: '2026-11-03T14:00:00Z',
 		finishedAt: '2026-11-03T14:03:00Z'
 	});
-	vi.stubGlobal('fetch', stubFetchWithBudget([closedRun], budgetBody()));
+	const reads = stubFetchWithBudget([closedRun], budgetBody()) as unknown as (
+		i: RequestInfo | URL,
+		ii?: RequestInit
+	) => Promise<Response>;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === `/api/v1/admin/jobs/${closedRun.id}/cancel` && init?.method === 'POST') {
+			// The run finished between the listing and the click: the
+			// server's refusal, mapped inline.
+			return jsonResponse(409, { code: 'JOB_NOT_CANCELLABLE', message: 'this run has already finished' });
+		}
+		return reads(input, init);
+	});
+	vi.stubGlobal('fetch', fetchMock);
 	mountPage();
 	await settle();
-	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="job-stop"]')).toBeNull();
+
+	// A completed row carries NO cancel (honesty -- nothing to do
+	// about finished work). The 409's inline face is rework-tested
+	// through a stale running row below; the completed row's own
+	// discipline is the assertion here.
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]')).toBeNull();
+});
+
+test('a queued row carries the cancel too, and a 409 lands under its own row', async () => {
+	const queued = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f13', {
+		kind: 'face_detect_rerun',
+		state: 'queued',
+		subject: null,
+		total: 10,
+		done: 0,
+		startedAt: null
+	});
+	const reads = stubFetchWithBudget([queued], budgetBody()) as unknown as (
+		i: RequestInfo | URL,
+		ii?: RequestInit
+	) => Promise<Response>;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === `/api/v1/admin/jobs/${queued.id}/cancel` && init?.method === 'POST') {
+			return jsonResponse(409, { code: 'JOB_NOT_CANCELLABLE', message: 'this run has already finished' });
+		}
+		return reads(input, init);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	const cancel = document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]');
+	expect(cancel).not.toBeNull();
+	cancel?.click();
+	await settle();
+	const inline = document.body.querySelector<HTMLElement>('[data-testid="job-cancel-error"]');
+	expect(inline).not.toBeNull();
+	expect(inline?.textContent).toContain('This run has already finished and cannot be cancelled.');
+	// The refusal stays under its own row: no toast over the listing.
+	expect(document.body.querySelector('.toast')).toBeNull();
 });

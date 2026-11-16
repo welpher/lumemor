@@ -63,6 +63,7 @@ const (
 	JobStateRunning   JobState = "running"
 	JobStateSucceeded JobState = "succeeded"
 	JobStateFailed    JobState = "failed"
+	JobStateCancelled JobState = "cancelled"
 )
 
 func (e *JobState) Scan(src interface{}) error {
