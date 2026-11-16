@@ -290,6 +290,25 @@ test.describe('the administrator scenes', () => {
 		const album = (await created.json()) as { id?: string };
 		const albumId = album.id ?? '';
 		expect(albumId).not.toBe('');
+
+		// The creation enqueues the album's first scan; let it settle
+		// BEFORE the source vanishes. The failing run this scene pins
+		// is the one it drives below, and two runs racing the removed
+		// root could leave the panel's newest row a succeeded one.
+		await expect
+			.poll(
+				async () => {
+					const listing = await page.request.get('/api/v1/admin/jobs');
+					expect(listing.status()).toBe(200);
+					const body = (await listing.json()) as {
+						jobs?: Array<{ kind?: string; state?: string }>;
+					};
+					return body.jobs?.find((job) => job.kind === 'album_rescan')?.state ?? 'missing';
+				},
+				{ timeout: 120_000, intervals: [500, 1000, 2000] }
+			)
+			.toBe('succeeded');
+
 		await rm(VANISH_HOST_DIR, { recursive: true, force: true });
 
 		const rescan = await page.request.post(`/api/v1/albums/${encodeURIComponent(albumId)}/rescan`);
