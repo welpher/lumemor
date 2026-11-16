@@ -2979,6 +2979,59 @@ type FaceBbox struct {
 	Y int `json:"y"`
 }
 
+// FaceBoxPatchRequest One adjusted face box, normalized to the image: x/y the
+// top-left corner, width/height the extents, each a number in
+// 0-1 with x + width <= 1 and y + height <= 1 and both extents
+// at least 0.01. All four values are required. The server
+// stores the box in the faces table's per-mille units.
+type FaceBoxPatchRequest struct {
+	// Height The box's height, as a fraction of the image's height (at least 0.01).
+	//
+	// Examples: 0.14
+	Height float64 `json:"height"`
+
+	// Width The box's width, as a fraction of the image's width (at least 0.01).
+	//
+	// Examples: 0.14
+	Width float64 `json:"width"`
+
+	// X The box's left edge, as a fraction of the image's width.
+	//
+	// Examples: 0.56
+	X float64 `json:"x"`
+
+	// Y The box's top edge, as a fraction of the image's height.
+	//
+	// Examples: 0.38
+	Y float64 `json:"y"`
+}
+
+// FaceBoxPatchResponse One committed face-box rewrite: the face's identity, its
+// crop URL, and the stored box in the per-mille units the
+// crop endpoint and the on-photo face-box layer address.
+type FaceBoxPatchResponse struct {
+	// Bbox A face's bounding box in per-mille units of the asset's view
+	// derivative (the pixels the crop endpoint addresses and the
+	// on-photo face-box layer renders): `x`/`y` the top-left
+	// corner, `w`/`h` the box's extents, each an integer 0..1000.
+	// A detected face's box is the detector's own; a hand-drawn
+	// face (POST /faces) carries the drawn box as-is.
+	Bbox FaceBbox `json:"bbox"`
+
+	// FaceId Identifier of the rewritten face.
+	//
+	// Examples: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+	FaceId openapi_types.UUID `json:"faceId"`
+
+	// Thumbnail URL of the face's crop, which now derives from the new
+	// box (the crop endpoint computes at query time; the
+	// change signal is the face row's updated_at).
+	//
+	//
+	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+	Thumbnail string `json:"thumbnail"`
+}
+
 // FaceCreateRequest One hand-drawn face: the asset it sits on and the drawn box,
 // in the FaceBbox per-mille units. The drawn box is the face
 // row's bounding box as-is; the crop endpoint and the on-photo
@@ -5681,6 +5734,9 @@ type ConsumePairingTokenJSONRequestBody = PairingConsumeRequest
 // CreateFaceJSONRequestBody defines body for CreateFace for application/json ContentType.
 type CreateFaceJSONRequestBody = FaceCreateRequest
 
+// PatchFaceBoxJSONRequestBody defines body for PatchFaceBox for application/json ContentType.
+type PatchFaceBoxJSONRequestBody = FaceBoxPatchRequest
+
 // MoveFaceJSONRequestBody defines body for MoveFace for application/json ContentType.
 type MoveFaceJSONRequestBody = MoveFaceRequest
 
@@ -5926,6 +5982,9 @@ type ServerInterface interface {
 	// DetachFace Release one face from its person.
 	// (DELETE /faces/{faceId})
 	DetachFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
+	// PatchFaceBox Rewrite one face's bounding box.
+	// (PATCH /faces/{faceId})
+	PatchFaceBox(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
 	// ClusterFace Seed a new person from one face.
 	// (POST /faces/{faceId}/cluster)
 	ClusterFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID)
@@ -5950,6 +6009,9 @@ type ServerInterface interface {
 	// ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
 	// (GET /people/unnamed)
 	ListUnnamedPeople(w http.ResponseWriter, r *http.Request, params ListUnnamedPeopleParams)
+	// DeletePerson Delete this person outright.
+	// (DELETE /people/{clusterId})
+	DeletePerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
 	// GetPersonCluster One face cluster's detail as the caller sees it.
 	// (GET /people/{clusterId})
 	GetPersonCluster(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID)
@@ -6442,6 +6504,12 @@ func (_ Unimplemented) DetachFace(w http.ResponseWriter, r *http.Request, faceId
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// PatchFaceBox Rewrite one face's bounding box.
+// (PATCH /faces/{faceId})
+func (_ Unimplemented) PatchFaceBox(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // ClusterFace Seed a new person from one face.
 // (POST /faces/{faceId}/cluster)
 func (_ Unimplemented) ClusterFace(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
@@ -6487,6 +6555,12 @@ func (_ Unimplemented) MergePeople(w http.ResponseWriter, r *http.Request) {
 // ListUnnamedPeople The caller's unnamed face clusters, one keyset page at a time.
 // (GET /people/unnamed)
 func (_ Unimplemented) ListUnnamedPeople(w http.ResponseWriter, r *http.Request, params ListUnnamedPeopleParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// DeletePerson Delete this person outright.
+// (DELETE /people/{clusterId})
+func (_ Unimplemented) DeletePerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8194,6 +8268,32 @@ func (siw *ServerInterfaceWrapper) DetachFace(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
+// PatchFaceBox operation middleware
+func (siw *ServerInterfaceWrapper) PatchFaceBox(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "faceId" -------------
+	var faceId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "faceId", chi.URLParam(r, "faceId"), &faceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "faceId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PatchFaceBox(w, r, faceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClusterFace operation middleware
 func (siw *ServerInterfaceWrapper) ClusterFace(w http.ResponseWriter, r *http.Request) {
 
@@ -8365,6 +8465,32 @@ func (siw *ServerInterfaceWrapper) ListUnnamedPeople(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListUnnamedPeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePerson operation middleware
+func (siw *ServerInterfaceWrapper) DeletePerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterId" -------------
+	var clusterId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterId", chi.URLParam(r, "clusterId"), &clusterId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "clusterId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePerson(w, r, clusterId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9335,6 +9461,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/people/unnamed", wrapper.ListUnnamedPeople)
 	})
 	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/people/{clusterId}", wrapper.DeletePerson)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/people/{clusterId}", wrapper.GetPersonCluster)
 	})
 	r.Group(func(r chi.Router) {
@@ -9357,6 +9486,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/faces/{faceId}", wrapper.DetachFace)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/faces/{faceId}", wrapper.PatchFaceBox)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/faces/{faceId}/cluster", wrapper.ClusterFace)

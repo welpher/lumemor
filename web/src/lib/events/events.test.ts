@@ -295,7 +295,9 @@ test('every person event name the people pages react to is subscribed', () => {
 		'person.merged',
 		'person.face_moved',
 		'person.face_clustered',
-		'person.face_detached'
+		'person.face_detached',
+		'person.face_box_updated',
+		'person.deleted'
 	]) {
 		expect(stream?.listeners, name).toBeTruthy();
 	}
@@ -320,6 +322,10 @@ test('person subscribers receive the parsed person events, one shape per name', 
 	stream?.emit('person.face_clustered', { faceId: 'f2', clusterId: 'n1', userId }, 6);
 	stream?.emit('person.face_detached', { faceId: 'f3', clusterId: 'c3', userId }, 7);
 	stream?.emit('person.avatar_updated', { clusterId: 'c1', userId }, 8);
+	// The box rewrite names only the face; the real delete names
+	// only the cluster it removed.
+	stream?.emit('person.face_box_updated', { faceId: 'f4', userId }, 9);
+	stream?.emit('person.deleted', { clusterId: 'c9', userId }, 10);
 
 	expect(seen).toEqual([
 		{ id: 1, name: 'person.labeled', clusterId: 'c1', userId },
@@ -331,7 +337,9 @@ test('person subscribers receive the parsed person events, one shape per name', 
 		// cluster the face LEFT.
 		{ id: 6, name: 'person.face_clustered', faceId: 'f2', clusterId: 'n1', userId },
 		{ id: 7, name: 'person.face_detached', faceId: 'f3', clusterId: 'c3', userId },
-		{ id: 8, name: 'person.avatar_updated', clusterId: 'c1', userId }
+		{ id: 8, name: 'person.avatar_updated', clusterId: 'c1', userId },
+		{ id: 9, name: 'person.face_box_updated', faceId: 'f4', userId },
+		{ id: 10, name: 'person.deleted', clusterId: 'c9', userId }
 	]);
 	unsubscribe();
 });
@@ -358,6 +366,9 @@ test('malformed person blocks are ignored, not dispatched', () => {
 	stream?.emit('person.face_clustered', { faceId: 'f2', userId }, 7);
 	// A face detach whose vacated cluster id is missing.
 	stream?.emit('person.face_detached', { faceId: 'f3', userId: 'u1' }, 8);
+	// A box rewrite without a face id, a delete without a cluster id.
+	stream?.emit('person.face_box_updated', { userId: 'u1' }, 10);
+	stream?.emit('person.deleted', { userId: 'u1' }, 11);
 	// A missing acting user id.
 	stream?.emit('person.avatar_updated', { clusterId: 'c1', faceId: 'f1' }, 9);
 	// A missing id line (lastEventId empty).

@@ -2421,8 +2421,10 @@ test('the create-from-face stages and the commit seeds the person; the detach wr
 	openDrawer();
 	click(peoplePencil());
 	await settle();
-	// The clusterless row carries the reassign pencil alone.
-	expect(editRow('f3').querySelectorAll('button')).toHaveLength(1);
+	// The clusterless row carries the reassign pencil and the
+	// box-edit arm (the detach needs a person to leave).
+	expect(editRow('f3').querySelectorAll('button')).toHaveLength(2);
+	expect(editRow('f3').querySelector('[aria-label="Remove this face"]')).toBeNull();
 	click(editRowButton('f3', 'Reassign this face'));
 	await settle();
 

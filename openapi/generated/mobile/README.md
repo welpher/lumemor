@@ -162,6 +162,7 @@ Class | Method | HTTP request | Description
 [*EventsApi*](doc/EventsApi.md) | [**getEvents**](doc/EventsApi.md#getevents) | **GET** /events | Stream instance activity over server-sent events.
 [*PeopleApi*](doc/PeopleApi.md) | [**clusterFace**](doc/PeopleApi.md#clusterface) | **POST** /faces/{faceId}/cluster | Seed a new person from one face.
 [*PeopleApi*](doc/PeopleApi.md) | [**createFace**](doc/PeopleApi.md#createface) | **POST** /faces | Add one hand-drawn face to an asset.
+[*PeopleApi*](doc/PeopleApi.md) | [**deletePerson**](doc/PeopleApi.md#deleteperson) | **DELETE** /people/{clusterId} | Delete this person outright.
 [*PeopleApi*](doc/PeopleApi.md) | [**detachFace**](doc/PeopleApi.md#detachface) | **DELETE** /faces/{faceId} | Release one face from its person.
 [*PeopleApi*](doc/PeopleApi.md) | [**getFaceThumbnail**](doc/PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [*PeopleApi*](doc/PeopleApi.md) | [**getPersonCluster**](doc/PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
@@ -170,6 +171,7 @@ Class | Method | HTTP request | Description
 [*PeopleApi*](doc/PeopleApi.md) | [**listUnnamedPeople**](doc/PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
 [*PeopleApi*](doc/PeopleApi.md) | [**mergePeople**](doc/PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 1-50 face clusters into one surviving cluster.
 [*PeopleApi*](doc/PeopleApi.md) | [**moveFace**](doc/PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
+[*PeopleApi*](doc/PeopleApi.md) | [**patchFaceBox**](doc/PeopleApi.md#patchfacebox) | **PATCH** /faces/{faceId} | Rewrite one face&#39;s bounding box.
 [*PeopleApi*](doc/PeopleApi.md) | [**setPersonAvatar**](doc/PeopleApi.md#setpersonavatar) | **PUT** /people/{clusterId}/avatar | Pick the face one person&#39;s avatar renders.
 [*PeopleApi*](doc/PeopleApi.md) | [**setPersonBirthdate**](doc/PeopleApi.md#setpersonbirthdate) | **PUT** /people/{clusterId}/birthdate | Set or clear one person&#39;s birth date.
 [*PeopleApi*](doc/PeopleApi.md) | [**unlabelPerson**](doc/PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
@@ -245,6 +247,8 @@ Class | Method | HTTP request | Description
  - [Error](doc/Error.md)
  - [ExifSummary](doc/ExifSummary.md)
  - [FaceBbox](doc/FaceBbox.md)
+ - [FaceBoxPatchRequest](doc/FaceBoxPatchRequest.md)
+ - [FaceBoxPatchResponse](doc/FaceBoxPatchResponse.md)
  - [FaceCreateRequest](doc/FaceCreateRequest.md)
  - [FaceCreated](doc/FaceCreated.md)
  - [FaceDetail](doc/FaceDetail.md)

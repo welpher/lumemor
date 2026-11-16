@@ -117,7 +117,9 @@ export type PersonEventName =
 	| 'person.merged'
 	| 'person.face_moved'
 	| 'person.face_clustered'
-	| 'person.face_detached';
+	| 'person.face_detached'
+	| 'person.face_box_updated'
+	| 'person.deleted';
 
 export type PersonEvent =
 	| {
@@ -175,6 +177,19 @@ export type PersonEvent =
 			name: 'person.face_detached';
 			faceId: string;
 			/** The cluster the face left (its membership is gone after the write). */
+			clusterId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.face_box_updated';
+			faceId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.deleted';
+			/** The cluster the write removed (its faces died with it). */
 			clusterId: string;
 			userId: string;
 	  };
@@ -251,7 +266,9 @@ const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
 	'person.merged',
 	'person.face_moved',
 	'person.face_clustered',
-	'person.face_detached'
+	'person.face_detached',
+	'person.face_box_updated',
+	'person.deleted'
 ];
 
 const FACE_EVENT_NAMES: readonly FaceEventName[] = ['face.clustered'];
@@ -443,7 +460,9 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 		}
 		// The creation and the detach share the moved face's wire
 		// shape: the face id beside ONE cluster id (the new cluster
-		// for the creation, the vacated one for the detach).
+		// for the creation, the vacated one for the detach). The
+		// box rewrite names only the face; the delete names only
+		// the cluster it removed.
 		case 'person.face_clustered':
 		case 'person.face_detached': {
 			if (typeof payload.faceId !== 'string' || payload.faceId === '') {
@@ -453,6 +472,18 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 				return null;
 			}
 			return { id: base.id, name, faceId: payload.faceId, clusterId, userId };
+		}
+		case 'person.face_box_updated': {
+			if (typeof payload.faceId !== 'string' || payload.faceId === '') {
+				return null;
+			}
+			return { id: base.id, name, faceId: payload.faceId, userId };
+		}
+		case 'person.deleted': {
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			return { id: base.id, name, clusterId, userId };
 		}
 	}
 }

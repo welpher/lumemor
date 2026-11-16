@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -827,6 +828,261 @@ func (s *server) DetachFace(w http.ResponseWriter, r *http.Request, faceId opena
 	s.publishPersonEvent("person.face_detached", map[string]string{
 		"faceId":    uuid.UUID(faceId).String(),
 		"clusterId": source.String(),
+		"userId":    requester.userID.String(),
+	})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// PatchFaceBox implements PATCH /faces/{faceId}: the face-box
+// editor's write. The body carries the adjusted box NORMALIZED to the
+// image (four required values, in frame, neither extent below
+// 0.01); the store keeps the faces table's own per-mille units, so
+// the handler converts -- the same numbers the crop endpoint and the
+// on-photo face-box layer address. The guard is the face writes' own
+// (GetFaceForCaller): the face must sit on an asset the caller owns
+// and that is live, and every miss answers the pinned 404. On
+// success the face's crop re-derives from the new box at query time
+// -- the row's updated_at is the crop ETag's change signal -- and the
+// write publishes person.face_box_updated with the face id and the
+// acting user.
+func (s *server) PatchFaceBox(w http.ResponseWriter, r *http.Request, faceId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	// The four values are required: the presence check names the
+	// missing ones (a defaulted zero would read as a legal
+	// coordinate and silently rewrite the box to nothing).
+	var body map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+		return
+	}
+	fields := make([]string, 0, 4)
+	for _, name := range []string{"x", "y", "width", "height"} {
+		if _, present := body[name]; !present {
+			fields = append(fields, name)
+		}
+	}
+	if len(fields) > 0 {
+		s.writeValidationError(w,
+			"the box must carry four in-frame normalized values with extents of at least 0.01", fields)
+		return
+	}
+	var request apigen.FaceBoxPatchRequest
+	for name, raw := range body {
+		var value float64
+		if err := json.Unmarshal(raw, &value); err != nil {
+			s.writeValidationError(w,
+				"the box must carry four in-frame normalized values with extents of at least 0.01",
+				[]string{name})
+			return
+		}
+		switch name {
+		case "x":
+			request.X = value
+		case "y":
+			request.Y = value
+		case "width":
+			request.Width = value
+		case "height":
+			request.Height = value
+		}
+	}
+	if !normalizedBoxInFrame(request) {
+		s.writeValidationError(w,
+			"the box must carry four in-frame normalized values with extents of at least 0.01",
+			[]string{"bbox"})
+		return
+	}
+
+	ctx := r.Context()
+	callerID := pgUUID(requester.userID)
+	faceID := pgUUID(uuid.UUID(faceId))
+
+	// The face-side gate, the face writes' own: no row means an
+	// unknown face or one on an asset the caller cannot curate --
+	// both miss shapes answer the one 404.
+	if _, err := s.queries.GetFaceForCaller(ctx, dbgen.GetFaceForCallerParams{
+		FaceID: faceID,
+		UserID: callerID,
+	}); errors.Is(err, pgx.ErrNoRows) {
+		s.writePersonNotFound(w)
+		return
+	} else if err != nil {
+		s.internalError(w, r, "load the face", err)
+		return
+	}
+
+	// The store's per-mille conversion: each half rounds to the
+	// nearest per-mille and clamps into the frame -- the float-space
+	// gate above already holds x + width <= 1, but two independent
+	// roundings can drift one per-mille past the edge (the faces
+	// table's own CHECK would refuse the row).
+	bbox := apigen.FaceBbox{
+		X: perMilleHalf(request.X),
+		Y: perMilleHalf(request.Y),
+		W: perMilleExtent(request.Width, perMilleHalf(request.X)),
+		H: perMilleExtent(request.Height, perMilleHalf(request.Y)),
+	}
+	if err := s.queries.UpdateFaceBox(ctx, dbgen.UpdateFaceBoxParams{
+		FaceID: faceID,
+		BboxX:  int32(bbox.X),
+		BboxY:  int32(bbox.Y),
+		BboxW:  int32(bbox.W),
+		BboxH:  int32(bbox.H),
+	}); err != nil {
+		s.internalError(w, r, "store the face box", err)
+		return
+	}
+
+	s.publishPersonEvent("person.face_box_updated", map[string]string{
+		"faceId": uuid.UUID(faceId).String(),
+		"userId": requester.userID.String(),
+	})
+
+	s.writeJSON(w, http.StatusOK, apigen.FaceBoxPatchResponse{
+		FaceId:    faceId,
+		Thumbnail: faceThumbnailPath(uuid.UUID(faceId)),
+		Bbox:      bbox,
+	})
+}
+
+// normalizedBoxInFrame validates the PATCH's normalized box: four
+// values in 0-1 with the box inside the frame and neither extent
+// below the hundredth-of-the-image floor (a smaller box is nothing
+// worth storing).
+func normalizedBoxInFrame(request apigen.FaceBoxPatchRequest) bool {
+	if request.X < 0 || request.X > 1 || request.Y < 0 || request.Y > 1 {
+		return false
+	}
+	if request.Width < 0.01 || request.Width > 1 || request.Height < 0.01 || request.Height > 1 {
+		return false
+	}
+	return request.X+request.Width <= 1 && request.Y+request.Height <= 1
+}
+
+// perMilleHalf rounds one normalized coordinate into the faces
+// table's per-mille units, clamped into 0..1000.
+func perMilleHalf(value float64) int {
+	rounded := int(math.Round(value * 1000))
+	if rounded < 0 {
+		return 0
+	}
+	if rounded > 1000 {
+		return 1000
+	}
+	return rounded
+}
+
+// perMilleExtent rounds one normalized extent, clamped into the
+// frame that starts at the given corner (the pair must satisfy the
+// faces table's own in-frame CHECK however the two roundings
+// drifted).
+func perMilleExtent(value float64, corner int) int {
+	rounded := perMilleHalf(value)
+	if limit := 1000 - corner; rounded > limit {
+		rounded = limit
+	}
+	if rounded < 1 {
+		rounded = 1
+	}
+	return rounded
+}
+
+// DeletePerson implements DELETE /people/{clusterId}: the person's
+// REAL delete, the third tier of the remove vocabulary beside the
+// caller's own label delete (the person returns to the unnamed
+// region) and the single-face detach (the face row survives). This
+// write removes the cluster row AND every one of its face rows in
+// one transaction -- the photos lose the person's chips, the lists
+// lose the person, and the unnamed pool gains NOTHING (the faces
+// are deleted, never unassigned); the asset rows themselves are
+// untouched. The domain is the instance administrator's: clusters
+// are global shared state and the delete reshapes every account's
+// view, so a non-admin caller answers 403 with the domain in the
+// message -- before any lookup, so a member probing ids learns
+// nothing about existence either. The write publishes
+// person.deleted with the cluster id and the acting user, and every
+// open list converges through it.
+func (s *server) DeletePerson(w http.ResponseWriter, r *http.Request, clusterId openapi_types.UUID) {
+	requester, ok := authFrom(r.Context())
+	if !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+
+	// The admin domain first: the ML records are the instance's
+	// shared curation, the member's own removal action is their
+	// label delete -- and the answer comes before any lookup, so
+	// the 403 never becomes an existence oracle.
+	if requester.role != dbgen.UserRoleAdmin {
+		s.writeError(w, http.StatusForbidden, apigen.AUTHFORBIDDEN,
+			"the instance's ML records are the administrator's curation", nil)
+		return
+	}
+
+	ctx := r.Context()
+	callerID := pgUUID(requester.userID)
+	clusterID := pgUUID(uuid.UUID(clusterId))
+
+	// The visibility gate, the people surface's own count: a
+	// cluster the caller cannot see answers the same 404 as an
+	// unknown id -- the double meaning every people write keeps.
+	visible, err := s.queries.CountClusterFaces(ctx, dbgen.CountClusterFacesParams{
+		ClusterID: clusterID,
+		UserID:    callerID,
+	})
+	if err != nil {
+		s.internalError(w, r, "count cluster faces", err)
+		return
+	}
+	if visible.FaceCount == 0 {
+		s.writePersonNotFound(w)
+		return
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		s.internalError(w, r, "begin person delete transaction", err)
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := dbgen.New(tx)
+
+	// The discipline in order: the face ids are captured first (the
+	// SET NULL the cluster row's death triggers would leave them
+	// anonymous), then the cluster row goes -- its labels cascade
+	// with it, its representative and avatar pointers die with the
+	// row -- and the captured face rows are removed last. The faces
+	// are deleted, never released: nothing lands in the
+	// not-yet-grouped pool.
+	faces, err := queries.ListClusterFaceIDs(ctx, clusterID)
+	if err != nil {
+		s.internalError(w, r, "list the person's faces", err)
+		return
+	}
+	if err := queries.DeleteCluster(ctx, clusterID); err != nil {
+		s.internalError(w, r, "delete the cluster", err)
+		return
+	}
+	if len(faces) > 0 {
+		if err := queries.DeleteFacesByIDs(ctx, faces); err != nil {
+			s.internalError(w, r, "delete the person's faces", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.internalError(w, r, "commit person delete transaction", err)
+		return
+	}
+
+	s.publishPersonEvent("person.deleted", map[string]string{
+		"clusterId": uuid.UUID(clusterId).String(),
 		"userId":    requester.userID.String(),
 	})
 

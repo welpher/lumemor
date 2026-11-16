@@ -65,6 +65,8 @@ import 'package:lumemor_api/src/model/download_format.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/exif_summary.dart';
 import 'package:lumemor_api/src/model/face_bbox.dart';
+import 'package:lumemor_api/src/model/face_box_patch_request.dart';
+import 'package:lumemor_api/src/model/face_box_patch_response.dart';
 import 'package:lumemor_api/src/model/face_create_request.dart';
 import 'package:lumemor_api/src/model/face_created.dart';
 import 'package:lumemor_api/src/model/face_detail.dart';
@@ -226,6 +228,8 @@ part 'serializers.g.dart';
   Error,
   ExifSummary,
   FaceBbox,
+  FaceBoxPatchRequest,
+  FaceBoxPatchResponse,
   FaceCreateRequest,
   FaceCreated,
   FaceDetail,
