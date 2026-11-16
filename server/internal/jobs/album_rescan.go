@@ -10,22 +10,37 @@
 //   - ADD: a file no live member matches is ingested by reference
 //     (a new external asset row pointing AT the file where it lies,
 //     zero copy zero move, plus its album membership) through the
-//     EXISTING ingest pipeline -- the same owner+checksum dedup the
-//     upload path enforces (a live duplicate gains the membership of
-//     the row the owner already holds; a trashed duplicate is left
-//     alone: no revival semantics), and the same metadata /
-//     thumbnail / transcode jobs an upload's transaction commits
-//     enqueue. No parallel pipeline exists here: the format
-//     whitelist and magic-byte sniffing are the storage package's
-//     own tables, and the pipeline jobs read the external row's real
-//     path through the kind-aware resolver.
+//     EXISTING ingest pipeline -- the same metadata / thumbnail /
+//     transcode jobs an upload's transaction commits enqueue. No
+//     parallel pipeline exists here: the format whitelist and
+//     magic-byte sniffing are the storage package's own tables, and
+//     the pipeline jobs read the external row's real path through the
+//     kind-aware resolver. The row is keyed by its POSITION
+//     (owner+file_path), never by content: a folder mirroring files
+//     the owner also uploaded gets its own rows -- the album must be
+//     able to delete its own copy through the application, which a
+//     borrowed upload row could never do. The position's three states
+//     resolve the one collision the insert can meet: a LIVE row at
+//     the path is another album's reference (or a racing scan's) and
+//     gains this album's membership; an ORPHAN-marked row at the path
+//     is this very file's earlier death (VANISH below) and revives
+//     carrying the file's current identity; a row whose bytes the
+//     trash holds never matches (its path names the trash copy).
 //
 //   - VANISH (the pinned orphan arm, 2026-11-08): a live member
 //     whose file is gone from disk is marked deleted_at directly --
 //     the file is not the server's and the trash has no meaning for
-//     it. No missing state, no revival: the membership row stays
-//     (soft delete never removed membership rows), and a file that
-//     returns is ingested as a NEW row by the next scan's add arm.
+//     it. No missing state: the membership row stays (soft delete
+//     never removed membership rows), and a file that returns to the
+//     SAME path revives that row through the add arm's position-key
+//     resolution, while one that returns elsewhere lands a fresh row.
+//
+//   - CONVERGE (the position model, migration 00027): after the walk
+//     and the vanish arm, a same-content membership of this album that
+//     is not one of its own position rows leaves -- the pre-fork
+//     scan's dedup links (a blob row the album borrowed; another
+//     album's twin row) swap for the album's own copy. Idempotent: a
+//     converged album has no such memberships left to swap.
 //
 //   - CHANGE: a member whose mtime+size snapshot differs has its
 //     checksum re-read (the full verification runs only now -- never
@@ -46,7 +61,7 @@
 // database state, so re-running an arm is a no-op (the guards in
 // the vanishing and snapshot statements match nothing on the
 // second pass, the add arm's insert collides and resolves to the
-// membership it already landed).
+// membership it already landed, the convergence deletes nothing).
 package jobs
 
 import (
@@ -100,11 +115,17 @@ const albumRescanProgressBatch = 100
 const albumRescanProgressInterval = time.Second
 
 // uniqueViolationCode is PostgreSQL's 23505, the only error the add
-// arm's insert resolves instead of failing: the owner+checksum
-// uniqueness IS the ingest dedup, so a violation routes into the
-// duplicate arms exactly as the upload path's conflict resolution
-// routes its own.
+// arm's insert resolves instead of failing: the owner+file_path
+// uniqueness IS the position key, so a violation routes into the
+// three-state resolution exactly as the upload path's conflict
+// resolution routes its own. Any other constraint (the blob domain's
+// content key is not reachable from an external insert) stays an
+// honest failure.
 const uniqueViolationCode = "23505"
+
+// externalPositionConstraint is the position unique index's name: the
+// one violation the add arm resolves.
+const externalPositionConstraint = "assets_owner_file_path_external_uq"
 
 // RescanDispatchFunc runs one externally ingested asset's pipeline
 // enqueue: the metadata and thumbnail jobs every asset counts, plus
@@ -441,6 +462,28 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		progress()
 	}
 
+	// The convergence, after the walk and the vanish arm: every live
+	// external member of the album is by now a position row at a
+	// walked path, so a same-content member that is NOT one of them --
+	// a blob row the album borrowed under the pre-fork dedup, another
+	// album's twin -- gives its membership up to this album's own
+	// copy. The blob row keeps its sync membership; the directory
+	// album stops mirroring a file it does not hold. One statement per
+	// run, idempotent: a converged album matches nothing.
+	converged, err := queries.ConvergeAlbumMembersToPositionRows(ctx, dbgen.ConvergeAlbumMembersToPositionRowsParams{
+		AlbumID: pgUUID(albumID),
+		OwnerID: pgUUID(owner),
+	})
+	if err != nil {
+		return fmt.Errorf("converge the album's memberships onto its position rows: %w", err)
+	}
+	if converged > 0 {
+		liveSetChanged = true
+		diffChanged = true
+		w.logger.Info("the rescan converged borrowed memberships onto the album's own copies",
+			"job_run_id", jobRunID, "album_id", albumID, "converged", converged)
+	}
+
 	// The album's story: one event when the album's LIVE membership
 	// moved in either direction -- the add arm's growth (a row landed
 	// or a live duplicate was linked) or the vanish arm's departure
@@ -490,16 +533,18 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 // pipeline's own tables apply (the extension whitelist -- already
 // applied by the walk's candidate filter, kept here so the arm
 // stays total for any caller -- then the magic bytes over the sniff
-// window), the full read computes the checksum the owner+checksum
-// dedup resolves on, and the row, its exif placeholder and its
-// album membership land in ONE transaction -- the upload path's own
-// shape, minus the upload (the file is never staged, linked or
-// moved: file_path IS the walked path, and the size and mtime the
-// row stamps are the read's and the stat's own values). answered
-// true when the album's membership GREW (a new row landed, or a
-// live duplicate of the content was linked in); the asset event
-// fires only for the new row, the duplicate arms staying silent
-// like every idempotent convergence.
+// window), the full read computes the checksum the row records, and
+// the row, its exif placeholder and its album membership land in ONE
+// transaction -- the upload path's own shape, minus the upload (the
+// file is never staged, linked or moved: file_path IS the walked
+// path, and the size and mtime the row stamps are the read's and the
+// stat's own values). The content key never resolves an ingest here:
+// the row's identity is its position, so content the owner uploaded
+// (or another folder holds) lands its own row. answered true when
+// the album's membership GREW (a new row landed, a live row at this
+// position joined, or an orphan mark revived); the asset event fires
+// for the rows that (re)entered the library, the link arm staying
+// silent like every idempotent convergence.
 func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, jobRunID, albumID, owner uuid.UUID, path string, mtime time.Time) (bool, error) {
 	ext := extensionOf(path)
 	format, known := storage.LookupUploadFormat(ext)
@@ -542,7 +587,7 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 	if err != nil {
 		return false, fmt.Errorf("generate the external asset id: %w", err)
 	}
-	asset, err := txQueries.CreateExternalAsset(ctx, dbgen.CreateExternalAssetParams{
+	ingest := dbgen.CreateExternalAssetParams{
 		ID:               pgUUID(assetID),
 		OwnerID:          pgUUID(owner),
 		FilePath:         path,
@@ -554,16 +599,17 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 		TakenAt:          pgtype.Timestamptz{Time: mtime, Valid: true},
 		PendingJobs:      pendingJobs,
 		FileMtime:        pgtype.Timestamptz{Time: mtime, Valid: true},
-	})
+	}
+	asset, err := txQueries.CreateExternalAsset(ctx, ingest)
 	if err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
-			// The owner+checksum dedup at work: the walked content
-			// is already the owner's. The row never landed (the
-			// transaction rolls back); the duplicate resolves
-			// through the same lookup the upload path's conflict
-			// resolution uses.
-			return w.linkDuplicate(ctx, queries, albumID, owner, checksum, path, jobRunID)
+		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode &&
+			pgErr.ConstraintName == externalPositionConstraint {
+			// The position key at work: a row already holds this
+			// path. The row never landed (the transaction rolls
+			// back); the three-state resolution owns the answer.
+			_ = tx.Rollback(ctx)
+			return w.resolvePositionCollision(ctx, queries, albumID, owner, ingest, jobRunID)
 		}
 		return false, fmt.Errorf("insert the external asset: %w", err)
 	}
@@ -600,25 +646,68 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 	return true, nil
 }
 
-// linkDuplicate resolves the add arm's owner+checksum collision:
-// the content is the owner's already. A LIVE row gains the album
-// membership of the existing row (the album's wall grows, no new
-// row -- the uniqueness IS the server's content identity); a
-// TRASHED row is left alone, the no-revival pin read from this
-// side: the next scan of a restored duplicate, or the restore
-// itself, re-links it. answered is the membership signal: a live
-// duplicate's link grew the album's story without a new row.
-func (w *AlbumRescanWorker) linkDuplicate(ctx context.Context, queries *dbgen.Queries, albumID, owner uuid.UUID, checksum, path string, jobRunID uuid.UUID) (bool, error) {
-	row, err := queries.GetAssetByOwnerChecksum(ctx, dbgen.GetAssetByOwnerChecksumParams{
+// resolvePositionCollision resolves the add arm's position-key
+// collision -- a row already occupies this path -- in the three
+// states the position model pins:
+//
+//   - LIVE: the file is already ingested, by another album's source
+//     (overlapping roots) or by a racing scan of this one. The album
+//     links the row: membership grows, no second row.
+//
+//   - ORPHAN-MARKED (dead, no trash copy): the file died at this very
+//     position once -- the vanish arm marked it -- and it is back, so
+//     the row revives carrying the file's current identity (the walk
+//     just read it) and rejoins the album. The metadata pipeline
+//     re-runs, converging the derivations onto the new bytes.
+//
+//   - TRASHED WITH A COPY (dead, trash_path set): the row's bytes sit
+//     in the server's trash area, and its file_path names that copy,
+//     so a walked source path can never be this row's. Nothing to
+//     resolve; the guard keeps the arm total.
+//
+// answered is the membership signal: a live link is a new tile, a
+// revival is a row back in the library (the asset event fires), and
+// the unreachable arm stays silent.
+func (w *AlbumRescanWorker) resolvePositionCollision(ctx context.Context, queries *dbgen.Queries, albumID, owner uuid.UUID, ingest dbgen.CreateExternalAssetParams, jobRunID uuid.UUID) (bool, error) {
+	path := ingest.FilePath
+	row, err := queries.GetExternalAssetByOwnerFilePath(ctx, dbgen.GetExternalAssetByOwnerFilePathParams{
 		OwnerID:  pgUUID(owner),
-		Checksum: checksum,
+		FilePath: path,
 	})
 	if err != nil {
-		return false, fmt.Errorf("resolve the duplicate of %s: %w", path, err)
+		return false, fmt.Errorf("resolve the position of %s: %w", path, err)
 	}
-	if row.DeletedAt.Valid {
-		w.logger.Info("the rescan add arm matched trashed content; leaving it in the trash",
+	if !row.DeletedAt.Valid {
+		if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
+			AlbumID: pgUUID(albumID),
+			AssetID: row.ID,
+			AddedBy: pgUUID(owner),
+		}); err != nil {
+			return false, fmt.Errorf("link the live row at %s into the album: %w", path, err)
+		}
+		return true, nil
+	}
+	if row.TrashPath.Valid {
+		w.logger.Info("the rescan add arm matched a trashed copy's position; leaving it in the trash",
 			"job_run_id", jobRunID, "asset_id", uuid.UUID(row.ID.Bytes), "path", path)
+		return false, nil
+	}
+	revived, err := queries.ReviveExternalAsset(ctx, dbgen.ReviveExternalAssetParams{
+		ID:               row.ID,
+		OwnerID:          pgUUID(owner),
+		Checksum:         ingest.Checksum,
+		OriginalFilename: ingest.OriginalFilename,
+		FileSize:         ingest.FileSize,
+		MimeType:         ingest.MimeType,
+		MediaKind:        ingest.MediaKind,
+		FileMtime:        ingest.FileMtime,
+	})
+	if err != nil {
+		return false, fmt.Errorf("revive the row at %s: %w", path, err)
+	}
+	if revived == 0 {
+		// A racing scan revived it first; its own run owns the
+		// event and the membership is already in place.
 		return false, nil
 	}
 	if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
@@ -626,8 +715,15 @@ func (w *AlbumRescanWorker) linkDuplicate(ctx context.Context, queries *dbgen.Qu
 		AssetID: row.ID,
 		AddedBy: pgUUID(owner),
 	}); err != nil {
-		return false, fmt.Errorf("link the live duplicate into the album: %w", err)
+		return false, fmt.Errorf("rejoin the revived row at %s to the album: %w", path, err)
 	}
+	if err := w.dispatch(context.WithoutCancel(ctx), uuid.UUID(row.ID.Bytes), ingest.MediaKind); err != nil {
+		return false, fmt.Errorf("re-enqueue the pipeline of the revived asset: %w", err)
+	}
+	w.bus.Publish("asset.added", map[string]string{
+		"assetId": uuid.UUID(row.ID.Bytes).String(),
+		"kind":    string(ingest.MediaKind),
+	})
 	return true, nil
 }
 

@@ -123,9 +123,10 @@ WHERE id = $1
 -- racing restore, matches nothing and the re-run of a driver retry
 -- counts no second transition), and the album_items row is
 -- deliberately NOT touched -- soft delete never removed membership
--- rows (the trash queries' own discipline), the live views filter
--- on deleted_at, and the next scan's add arm ingests a returning
--- file as a NEW row that lands its OWN membership.
+-- rows (the trash queries' own discipline) and the live views filter
+-- on deleted_at, so a file that returns to this very path revives
+-- this row through the add arm's position-key resolution
+-- (ReviveExternalAsset) with its membership already in place.
 UPDATE assets SET
     deleted_at = now(),
     updated_at = now()
@@ -144,10 +145,11 @@ WHERE id = $1
 -- of an already-refreshed row (same snapshot now -- the comparison
 -- no longer differs) never reaches this statement at all, and a
 -- row that vanished or trashed mid-run matches nothing rather
--- than stamping a vanished file's truth onto a dead row. A unique
--- violation here (the changed file's new content exactly equals
--- another row's checksum of the same owner) is the caller's
--- honest failure count, never a silent skip.
+-- than stamping a vanished file's truth onto a dead row. The write
+-- cannot collide: a position row's keys are its own path and the
+-- blob domain's content key does not see external rows, so a changed
+-- file's new content is the row's to carry whatever else the owner
+-- holds.
 UPDATE assets SET
     checksum = $2,
     file_size = $3,
@@ -172,3 +174,83 @@ FROM albums
 WHERE type = 'directory'
   AND root_path IS NOT NULL
 ORDER BY created_at, id;
+
+-- name: GetExternalAssetByOwnerFilePath :one
+-- The position key's lookup: the owner's external row at one source
+-- path. The add arm reaches it only after the insert violated
+-- assets_owner_file_path_external_uq -- a walked file whose position
+-- already holds a row -- and the row's state decides the resolution:
+-- LIVE, the row is another album's reference to the same file (or a
+-- racing scan's), and the album links it; DEAD with a trash_path, the
+-- row's bytes sit in the server's trash area (the position the walk
+-- saw cannot be that row -- its file_path names the trash copy), so
+-- the scan leaves it alone; DEAD without a trash_path, the row is the
+-- vanish arm's orphan mark of this very file, and the walk's return
+-- revives it (the position model's own three-state shape, the
+-- upload's restore-or-replace read from the source side).
+SELECT * FROM assets
+WHERE owner_id = $1
+  AND file_path = $2
+  AND storage_kind = 'external';
+
+-- name: ReviveExternalAsset :execrows
+-- The add arm's revival of an orphan-marked row: the file is back at
+-- the position its dead row recorded, so the row comes back to life
+-- carrying the file's CURRENT identity -- the checksum and size the
+-- walk just read (the file may have changed while it was away), the
+-- stat's mtime snapshot, and the name/mime/kind the walk resolved.
+-- Only an orphan mark matches (external, deleted, no trash_path): a
+-- row whose bytes the trash holds never revives from a source path,
+-- and a live row is not the arm's to rewrite. taken_at is left alone:
+-- the metadata job refunds it from the file's own EXIF on the re-run
+-- this arm dispatches, so the walk never overwrites a refined capture
+-- time with a filesystem stamp.
+UPDATE assets SET
+    checksum = sqlc.arg('checksum'),
+    original_filename = sqlc.arg('original_filename'),
+    file_size = sqlc.arg('file_size'),
+    mime_type = sqlc.arg('mime_type'),
+    media_kind = sqlc.arg('media_kind'),
+    file_mtime = sqlc.arg('file_mtime'),
+    deleted_at = NULL,
+    updated_at = now()
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  AND storage_kind = 'external'
+  AND deleted_at IS NOT NULL
+  AND trash_path IS NULL;
+
+-- name: ConvergeAlbumMembersToPositionRows :execrows
+-- The position model's convergence arm: an album that still holds a
+-- same-content membership which is NOT one of its own position rows
+-- swaps that membership for the position row's -- the pre-fork
+-- scan's dedup links (a blob row the album borrowed, a twin row of
+-- another album's source) leave the album, while the blob row keeps
+-- its sync membership. It runs AFTER the walk and the vanish arm, so
+-- every LIVE external member of the album is by then a position row
+-- at a walked path; a same-content folder genuinely holding two
+-- identical files keeps both (each is its own position). Dead
+-- external members whose trash copy the server holds are left alone:
+-- their restore returns them to this album. Idempotent by
+-- construction -- after one pass no non-position member with a
+-- position twin remains, so a re-run deletes nothing.
+DELETE FROM album_items ai
+USING assets member, assets pos, album_items pi
+WHERE ai.album_id = sqlc.arg('album_id')
+  AND ai.asset_id = member.id
+  AND member.owner_id = sqlc.arg('owner_id')
+  AND pos.owner_id = member.owner_id
+  AND pos.checksum = member.checksum
+  AND pos.id <> member.id
+  AND pos.storage_kind = 'external'
+  AND pos.deleted_at IS NULL
+  AND pi.album_id = ai.album_id
+  AND pi.asset_id = pos.id
+  AND (
+      member.storage_kind = 'blob'
+      OR (
+          member.storage_kind = 'external'
+          AND member.deleted_at IS NOT NULL
+          AND member.trash_path IS NULL
+      )
+  );
