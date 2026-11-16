@@ -299,8 +299,12 @@ func (w *MetadataWorker) placeMotion(ctx context.Context, still dbgen.GetAssetFo
 	// the library (a re-extraction of the same still, a burst, or the
 	// same camera clip arriving twice). The bytes are already on disk,
 	// so the row is reused rather than written again -- and marking it
-	// as a component is what makes it the pair's (never listed).
-	if existing, err := dbgen.New(w.pool).GetAssetByOwnerChecksum(ctx, dbgen.GetAssetByOwnerChecksumParams{
+	// as a component is what makes it the pair's (never listed). The
+	// lookup is blob-domain: a directory source's position row is the
+	// family's own file at its own path, and marking THAT as the
+	// still's component would make the pair's deletion reach a file the
+	// server never owned.
+	if existing, err := dbgen.New(w.pool).GetBlobAssetByOwnerChecksum(ctx, dbgen.GetBlobAssetByOwnerChecksumParams{
 		OwnerID:  still.OwnerID,
 		Checksum: checksum,
 	}); err == nil {

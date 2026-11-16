@@ -586,6 +586,84 @@ func TestUploadAssetTrashedState(t *testing.T) {
 	}
 }
 
+// TestUploadAssetPositionRows pins the position model's upload arm
+// (the owner's second ruling): the content lookup walks the FULL
+// domain, so an upload of bytes a directory album already mirrors
+// answers duplicate with nothing placed -- the upload direction never
+// creates a second row -- while an orphan-marked source row (the file
+// vanished, the row is dead and no trash copy exists) is content the
+// owner no longer holds, and the upload replaces it with a fresh blob
+// row.
+func TestUploadAssetPositionRows(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	payload := jpegFixture(t)
+	fields := map[string]string{
+		"deviceAssetId": "device-position-1",
+		"fileName":      "IMG_POSITION.jpg",
+	}
+	files := []assetUploadFile{{field: "photo", name: "IMG_POSITION.jpg", content: payload}}
+	ownerID := env.sessionUserID(t)
+	checksum := sha256Hex(payload)
+
+	// The source row a scan would have landed: an external row at its
+	// real path, carrying the upload's content.
+	env.exec(t, `INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at,
+			taken_at_source, pending_jobs
+		) VALUES ($1, $2, 'external', $3, $4, 'IMG_POSITION.jpg', $5, 'image/jpeg',
+			'image', 0, 0, now(), 'file', 0)`,
+		pgUUID(uuid.Must(uuid.NewV7())), pgUUID(ownerID),
+		"/mnt/source/IMG_POSITION.jpg", checksum, int64(len(payload)))
+
+	// The live source copy answers duplicate: no new row lands, and
+	// nothing is placed under the owner's originals.
+	rec := env.postUpload(t, fields, files)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	live := decodeAsset(t, rec)
+	if live.State != apigen.Duplicate {
+		t.Errorf("state = %q, want %q (the content lives in the source row)", live.State, apigen.Duplicate)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE owner_id = $1 AND storage_kind = 'blob'", pgUUID(ownerID)); got != 0 {
+		t.Errorf("blob rows = %d, want 0 (the upload never lands beside live content)", got)
+	}
+	env.requireOriginalsEmpty(t)
+
+	// The source file vanishes: the scan's orphan mark leaves the row
+	// dead, with no trash copy -- a state no restore can reach.
+	env.exec(t, "UPDATE assets SET deleted_at = now() WHERE owner_id = $1 AND storage_kind = 'external'", pgUUID(ownerID))
+
+	// The upload now REPLACES the dead row: the fresh blob row lands
+	// (created), and the orphan mark is gone.
+	rec = env.postUpload(t, fields, files)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("upload over the orphan mark status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	created := decodeAsset(t, rec)
+	if created.State != apigen.Created {
+		t.Errorf("state = %q, want %q", created.State, apigen.Created)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE owner_id = $1 AND storage_kind = 'external'", pgUUID(ownerID)); got != 0 {
+		t.Errorf("external rows = %d, want the orphan mark replaced", got)
+	}
+	row := env.assetByChecksum(t, checksum)
+	if row.StorageKind != dbgen.StorageKindBlob {
+		t.Errorf("the content's row kind = %q, want blob after the replace", row.StorageKind)
+	}
+	env.requireUploadedFileStored(t, row, payload)
+
+	// And the replacement is in "My photos": the sync membership
+	// landed with it.
+	if got := env.queryInt(t, `SELECT count(*) FROM album_items ai
+		JOIN albums al ON al.id = ai.album_id
+		WHERE al.type = 'sync' AND al.owner_id = $1 AND ai.asset_id = $2`,
+		pgUUID(ownerID), row.ID); got != 1 {
+		t.Errorf("sync memberships of the replacement = %d, want 1", got)
+	}
+}
+
 // TestUploadAssetConcurrent mirrors the setup concurrency pattern:
 // two uploads of identical bytes, genuinely in flight at the same
 // time, must resolve through the database constraint into exactly one

@@ -52,12 +52,13 @@ const (
 )
 
 // uploadUniquenessConstraints are the unique indexes whose violation
-// IS the upload idempotency: the total owner+checksum index (live and
-// trashed rows alike) and the owner+device identity. A violation of
-// any of them routes the request into the three-state lookup instead
-// of the error path.
+// IS the upload idempotency: the blob domain's total owner+checksum
+// index (live and trashed rows alike -- a directory album's position
+// rows are outside it by storage kind) and the owner+device identity.
+// A violation of any of them routes the request into the three-state
+// lookup instead of the error path.
 var uploadUniquenessConstraints = map[string]bool{
-	"assets_owner_checksum_uq":             true,
+	"assets_owner_checksum_blob_uq":        true,
 	"assets_owner_device_asset_id_live_uq": true,
 }
 
@@ -377,35 +378,25 @@ func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *m
 }
 
 // lookupExistingUpload answers the upload idempotency BEFORE any
-// placement: the owner+checksum lookups of both parts (live and
-// trashed rows alike, in the photo-then-video order the conflict
-// resolution walks), then the device identity. A hit means the upload
-// is a duplicate or a trashed re-upload -- the caller discards the
-// sealed files and answers through the same three-state mapping the
-// insert's conflict path produces, so the early answer and the race
-// answer agree. The device identity is the remaining collision the
-// pre-check can see: a fresh content under a known deviceAssetId
-// resolves to the existing row exactly as the insert's unique
-// violation would.
+// placement: the owner+checksum lookups of both parts over the FULL
+// content domain (live and trashed rows of every storage kind, in the
+// photo-then-video order the conflict resolution walks), then the
+// device identity. A hit means the upload is a duplicate or a trashed
+// re-upload -- the caller discards the sealed files and answers
+// through the same three-state mapping the insert's conflict path
+// produces, so the early answer and the race answer agree -- with one
+// exception the position model added: a directory source's ORPHAN
+// MARK (the file vanished, the row is dead and no trash copy exists)
+// is not content the owner holds any more, so the upload REPLACES it
+// -- the dead row goes and the fresh blob row lands in its place,
+// carrying the same content back into the library. The device
+// identity is the remaining collision the pre-check can see: a fresh
+// content under a known deviceAssetId resolves to the existing row
+// exactly as the insert's unique violation would.
 func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, bool, error) {
-	lookups := []dbgen.GetAssetByOwnerChecksumParams{{
-		OwnerID:  pgUUID(owner),
-		Checksum: photo.checksum,
-	}}
-	if video != nil {
-		lookups = append(lookups, dbgen.GetAssetByOwnerChecksumParams{
-			OwnerID:  pgUUID(owner),
-			Checksum: video.checksum,
-		})
-	}
-	for _, lookup := range lookups {
-		row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
-		if err == nil {
-			return row, uploadStateOf(row), true, nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return dbgen.Asset{}, "", false, err
-		}
+	created, found, err := s.resolveContentLookups(r, owner, photo, video)
+	if err != nil || found {
+		return created, uploadStateOf(created), found, err
 	}
 
 	row, err := s.queries.GetAssetByDeviceId(r.Context(), dbgen.GetAssetByDeviceIdParams{
@@ -419,6 +410,58 @@ func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form upl
 		return dbgen.Asset{}, "", false, err
 	}
 	return dbgen.Asset{}, "", false, nil
+}
+
+// resolveContentLookups walks the content lookups of both parts and
+// answers the first row that still claims the content. A live row (of
+// whichever storage kind) and a trashed row whose bytes the server
+// holds (a blob in place, a source file moved into the trash area)
+// both claim it: the caller answers duplicate or trashed through the
+// same three-state mapping the race path uses. An orphan-marked
+// source row does not claim it: the file it referenced is gone from
+// its folder, the row is dead, and nothing can restore it -- so the
+// upload removes the dead row here and answers "no existing content",
+// letting the placement and the fresh insert run. The removal is
+// guarded in the statement itself (only an orphan mark of this owner
+// matches), so a concurrent upload that already replaced it leaves
+// this one to the insert's own conflict resolution.
+func (s *server) resolveContentLookups(r *http.Request, owner uuid.UUID, photo, video *sealedUpload) (dbgen.Asset, bool, error) {
+	lookups := []dbgen.GetAssetByOwnerChecksumParams{{
+		OwnerID:  pgUUID(owner),
+		Checksum: photo.checksum,
+	}}
+	if video != nil {
+		lookups = append(lookups, dbgen.GetAssetByOwnerChecksumParams{
+			OwnerID:  pgUUID(owner),
+			Checksum: video.checksum,
+		})
+	}
+	for _, lookup := range lookups {
+		row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
+		if errors.Is(err, pgx.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return dbgen.Asset{}, false, err
+		}
+		if row.DeletedAt.Valid && row.StorageKind == dbgen.StorageKindExternal && !row.TrashPath.Valid {
+			// The purge path's own transaction: the row's faces
+			// re-home or dissolve before the cascade takes them, and
+			// its derivatives go with the id.
+			removed, err := s.purgeAssetRow(r, row)
+			if err != nil {
+				return dbgen.Asset{}, false, err
+			}
+			if removed {
+				s.logger.Info("upload replaced a vanished source row",
+					"owner_id", owner, "checksum", lookup.Checksum,
+					"asset_id", uuid.UUID(row.ID.Bytes))
+			}
+			continue
+		}
+		return row, true, nil
+	}
+	return dbgen.Asset{}, false, nil
 }
 
 // discardUpload cleans the sealed files of a request that will never
