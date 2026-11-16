@@ -11,21 +11,21 @@ import 'package:built_value/serializer.dart';
 
 part 'album_detail.g.dart';
 
-/// One album's detail as the calling user sees it: the metadata, the caller's role, the live member count, the live photo count and one keyset page of the live items. 
+/// One album's detail as the calling user sees it: the metadata, the caller's role, the member count, the photo count and one keyset page of the members. 
 ///
 /// Properties:
 /// * [id] - Identifier of the album.
 /// * [title] - The album's display title.
 /// * [type] - The album's type. `memory` is a reference set the caller owns or that is shared to them; `sync` is the caller's own default album -- a read-only, system-managed detail (no write affordance applies, the display name is the client's localized one keyed by the type). Another account's sync album never reaches this shape: it answers the single-shape 404. 
-/// * [coverAssetIds] - The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
+/// * [coverAssetIds] - The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, archived) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
 /// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Memory and sync albums omit it: a memory has no source. 
 /// * [sourceWritable] - The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
 /// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
 /// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
-/// * [itemCount] - The album's live member count, the same predicate as the items below (every media kind). 
-/// * [photoCount] - The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
-/// * [items] - One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
+/// * [itemCount] - The album's member count, the same predicate as the items below (every media kind). 
+/// * [photoCount] - The album's photo count: the member predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
+/// * [items] - One page of the album's members, `takenAt` descending with the asset id as the tiebreak. 
 /// * [nextCursor] - The opaque continuation cursor: pass it back as the `cursor` query parameter to fetch the next page. Absent exactly when this is the last page. 
 /// * [shares] - The album's grantee list, riding ONLY the owner's view: one entry per `album_shares` row in the grant order (`grantedAt` ascending) -- the share management dialog's list. The owner's response always carries the field, an empty array when the album holds no grants; viewer responses never carry it at all. 
 /// * [inTimeline] - The caller's timeline preference of this album: whether it feeds their aggregated timeline. Present exactly when the album is excludable for the caller -- an own `directory` album or an album shared to them; an own `memory` album omits the field (it never feeds the caller's own timeline), and the caller's own `sync` album omits it too (the core stream is never excludable). The value is the preference row's switch, true when no row exists (the default). The preference scopes the aggregated timeline only: it never filters this album's own items, whatever the switch says. 
@@ -44,7 +44,7 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   AlbumDetailTypeEnum get type;
   // enum typeEnum {  memory,  directory,  sync,  };
 
-  /// The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
+  /// The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, archived) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
   @BuiltValueField(wireName: r'coverAssetIds')
   BuiltList<String> get coverAssetIds;
 
@@ -69,15 +69,15 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   AlbumDetailCallerRoleEnum get callerRole;
   // enum callerRoleEnum {  owner,  viewer,  };
 
-  /// The album's live member count, the same predicate as the items below (every media kind). 
+  /// The album's member count, the same predicate as the items below (every media kind). 
   @BuiltValueField(wireName: r'itemCount')
   int get itemCount;
 
-  /// The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
+  /// The album's photo count: the member predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
   @BuiltValueField(wireName: r'photoCount')
   int get photoCount;
 
-  /// One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
+  /// One page of the album's members, `takenAt` descending with the asset id as the tiebreak. 
   @BuiltValueField(wireName: r'items')
   BuiltList<AlbumItem> get items;
 

@@ -612,7 +612,7 @@ export async function moveFace(
  * clustered face is another CREATE, never a no-op, and the vacated
  * source cluster may dissolve with its label rows (the server's
  * honest cost). Refusals: an unknown face, a face on an asset the
- * caller does not own, or a trashed, hidden or component asset --
+ * caller does not own, or a trashed, archived, or component asset --
  * the same byte-identical 404 as the move (anti-enumeration).
  */
 export async function clusterFace(

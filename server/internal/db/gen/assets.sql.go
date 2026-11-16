@@ -595,7 +595,7 @@ type GetVisibleAssetParams struct {
 // (the thumbnail, the original download, the playable stream): the
 // album union -- the caller's own sync and directory arms plus
 // every album shared to them -- with no state filter, matching the
-// owner's long-standing shape (a trashed or hidden asset stays
+// owner's long-standing shape (a trashed or archived asset stays
 // servable at its known id; the listing surfaces are what filter
 // the states out). A miss answers the single-shape 404 the asset
 // endpoints share.

@@ -89,7 +89,7 @@
 //     and Done closing with the wall's selection cleared -- no
 //     convergence follows (adding to a memory changes no photo's
 //     state; the tiles stay exactly as they were).
-//  7. The honest skip: the hidden wall carries the hidden photo
+//  7. The honest skip: the archived wall carries the archived photo
 //     (a photo the creator cannot currently see), its batch bar's
 //     same sparkles entry, and the picker's pick answers
 //     {added 0, skipped 1} with the skip-note honesty line -- the
@@ -515,19 +515,19 @@ test.describe('the creator scenes', () => {
 			)
 			.toBe(5);
 
-		// The hide of the third photo (the owner-level visibility
-		// switch, the batch surface's own write): the row leaves the
-		// caller's sight -- the honest skip's ground.
-		const hide = await page.request.post('/api/v1/assets/batch', {
+		// The archiving of the third photo (the owner-level switch, the
+		// batch surface's own write): the row leaves every family flow
+		// -- the honest skip's ground.
+		const archive = await page.request.post('/api/v1/assets/batch', {
 			data: { action: 'hide', ids: [ownCId] }
 		});
-		expect(hide.status()).toBe(200);
-		const hideBody = (await hide.json()) as { affected?: number };
-		expect(hideBody.affected).toBe(1);
+		expect(archive.status()).toBe(200);
+		const archiveBody = (await archive.json()) as { affected?: number };
+		expect(archiveBody.affected).toBe(1);
 
 		// The creator's aggregated timeline after the seed: their own
 		// pair plus the shared pair (the union's shared arm -- the
-		// directory album's grant), the hidden photo gone.
+		// directory album's grant), the archived photo gone.
 		const timeline = await page.request.get('/api/v1/assets/timeline');
 		expect(timeline.status()).toBe(200);
 		const timelineBody = (await timeline.json()) as TimelineBody;
@@ -672,13 +672,13 @@ test.describe('the creator scenes', () => {
 		expect(detailBody.itemCount).toBe(3);
 	});
 
-	test('scene 7: the hidden wall answers the honest skip note', async ({ page }) => {
-		// The hidden wall carries the hidden photo -- a row the
+	test('scene 7: the archived wall answers the honest skip note', async ({ page }) => {
+		// The archived wall carries the archived photo -- a row the
 		// creator cannot currently see.
-		await page.goto('/hidden');
+		await page.goto('/archived');
 		await expect(page.getByRole('link', { name: OWN_C_NAME, exact: true })).toBeVisible();
 
-		// The same wall-selection entry rides the hidden wall's bar.
+		// The same wall-selection entry rides the archived wall's bar.
 		await page.getByRole('checkbox', { name: `Select: ${OWN_C_NAME}`, exact: true }).click();
 		const bar = page.getByRole('toolbar', { name: '1 selected' });
 		await expect(bar).toBeVisible();
@@ -690,7 +690,7 @@ test.describe('the creator scenes', () => {
 		await expect(dialog.getByText('1 photo is selected — pick a memory, or create one.')).toBeVisible();
 
 		// The pick POSTs the captured id; the write answers the
-		// honest counts-only report -- the hidden row never lands.
+		// honest counts-only report -- the archived row never lands.
 		const addPosted = page.waitForRequest(
 			(request) => request.method() === 'POST' && request.url().endsWith(`/api/v1/albums/${memoryId}/items`)
 		);
@@ -1039,7 +1039,7 @@ test.describe('the closing scenes', () => {
 		await expect(overlay.locator(`.memory-overlay__cell[aria-label="${VIA_SHARE_A_NAME}"]`)).toBeVisible();
 
 		// The selection rises the REMOVE-ONLY subset: the danger
-		// minus action alone -- no favorite, no hide, no trash, no
+		// minus action alone -- no favorite, no archive, no trash, no
 		// tag, no sparkles.
 		await overlay.locator(`.memory-overlay__cell[aria-label="${VIA_SHARE_A_NAME}"]`).click();
 		const bar = overlay.getByRole('toolbar', { name: '1 selected' });
@@ -1048,8 +1048,8 @@ test.describe('the closing scenes', () => {
 		for (const label of [
 			'Favorite',
 			'Unfavorite',
-			'Hide',
-			'Unhide',
+			'Archive',
+			'Unarchive',
 			'Trash',
 			'Restore',
 			'Add tag',

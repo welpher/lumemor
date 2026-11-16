@@ -36,6 +36,7 @@ const itemDefaults = {
 	takenAt: '2026-10-13T12:30:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: false,
 	isReady: true,
 	durationMs: null,

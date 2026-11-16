@@ -114,7 +114,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 	adminID := env.sessionUserID(t)
 	env.insertPlacesFixture(t)
 
-	// The admin's Paris set: three live (jul 1, 2, 3), one hidden
+	// The admin's Paris set: three live (jul 1, 2, 3), one archived
 	// (never counts, never covers), one trashed, one Live Photo
 	// component -- plus two Beijing assets and one Highland Falls.
 	aParis1 := placeAssetID("01")
@@ -155,7 +155,7 @@ func TestPlacesCityGrouping(t *testing.T) {
 		// its canonical self.
 		requirePlace(t, places[2], placeParisID, "Paris", "FR", 3, 3)
 		// The capture span is the members' earliest and latest (the
-		// hidden, trashed and component rows never move it).
+		// archived, trashed and component rows never move it).
 		requireSpan(t, places[2],
 			time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC),
 			time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC))

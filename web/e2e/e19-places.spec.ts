@@ -225,12 +225,12 @@ test.describe('the signed-in scenes', () => {
 		const tile = page.locator('.tile').first();
 		await expect(tile.getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
 
-		// The curation subset on a selection: favorite / hide / trash.
+		// The curation subset on a selection: favorite / archive / trash.
 		await tile.hover();
 		await page.getByRole('checkbox', { name: `Select: ${PHOTO_GPS_NAME}` }).click();
 		const bar = page.getByRole('toolbar');
 		await expect(bar.getByRole('button', { name: 'Favorite' })).toBeVisible();
-		await expect(bar.getByRole('button', { name: 'Hide' })).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Archive' })).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Trash' })).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Add tag' })).toHaveCount(0);
 		await page.keyboard.press('Escape');

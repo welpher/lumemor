@@ -2,7 +2,7 @@
 // caller (and its per-album narrowing), one keyset page at a time.
 // The page-parameter validation and the item mapping here are the
 // shared machinery of every timeline-shaped view: the favorites and
-// hidden views answer the same page shape through the same
+// archived views answer the same page shape through the same
 // helpers.
 package api
 
@@ -236,7 +236,7 @@ func timelinePage[T any](rows []T, limit int, fields func(T) (dbgen.Asset, bool)
 }
 
 // The field extractors of the five timeline-shaped queries (the
-// aggregate, the album, the person, the favorites view, the hidden
+// aggregate, the album, the person, the favorites view, the archived
 // view): each folds its generated row type onto the (asset,
 // isFavorite) pair the shared page renderer consumes.
 func timelineAssetFields(row dbgen.ListTimelineAssetsRow) (dbgen.Asset, bool) {
@@ -259,13 +259,13 @@ func favoriteAssetFields(row dbgen.ListFavoriteAssetsRow) (dbgen.Asset, bool) {
 	return row.Asset, row.IsFavorite
 }
 
-func hiddenAssetFields(row dbgen.ListHiddenAssetsRow) (dbgen.Asset, bool) {
+func archivedAssetFields(row dbgen.ListArchivedAssetsRow) (dbgen.Asset, bool) {
 	return row.Asset, row.IsFavorite
 }
 
 // timelinePageParams validates and normalizes the pagination
 // parameters every timeline-shaped view shares (the aggregate, the
-// favorites, the hidden): the limit -- absent means the contract
+// favorites, the archived): the limit -- absent means the contract
 // default, over the maximum clamps to it, below 1 is a client bug the
 // 400 names (the clamp of the upper bound rather than a 400 keeps
 // honest clients future-proof: a page size the instance currently
@@ -301,7 +301,7 @@ func (s *server) timelinePageParams(w http.ResponseWriter, limit *int, cursor *s
 
 // timelineItemFrom maps one timeline row onto the API shape. The row
 // is live by construction (every timeline-shaped query filters
-// hidden, trashed and component rows), so isTrashed is always false
+// archived, trashed and component rows), so isTrashed is always false
 // here -- carried only to keep the shape identical to the asset
 // detail's. isFavorite is the per-user state the query computed for
 // the requesting user. Width and height cross as the raw NOT NULL
@@ -322,6 +322,7 @@ func timelineItemFrom(row dbgen.Asset, isFavorite bool) apigen.TimelineItem {
 		TakenAt:          row.TakenAt.Time.UTC(),
 		TakenAtSource:    apigen.TimelineItemTakenAtSource(row.TakenAtSource),
 		IsTrashed:        row.DeletedAt.Valid,
+		IsArchived:       row.IsHidden,
 		IsFavorite:       isFavorite,
 		IsReady:          row.ReadyAt.Valid,
 		Width:            int(row.Width),

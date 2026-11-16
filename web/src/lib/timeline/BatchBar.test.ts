@@ -21,6 +21,7 @@ function mountBar(
 		errorKey?: string;
 		busy?: boolean;
 		actions?: readonly BatchAction[];
+		archivedSelected?: boolean;
 		onaddtag?: () => void;
 		onaddmemory?: () => void;
 		onremovememory?: () => void;
@@ -36,6 +37,7 @@ function mountBar(
 			errorKey: props.errorKey ?? '',
 			busy: props.busy ?? false,
 			actions: props.actions,
+			archivedSelected: props.archivedSelected ?? false,
 			onaddtag: props.onaddtag,
 			onaddmemory: props.onaddmemory,
 			onremovememory: props.onremovememory,
@@ -70,8 +72,9 @@ test('no selection means no bar', () => {
 });
 
 test('an action subset renders only the named actions (the curated walls)', () => {
-	// The favorites wall passes the toggle alone; the hidden wall
-	// the unhide action.
+	// The favorites wall passes the toggle alone; the archived wall
+	// the unhide action (over an archived selection -- the bar's
+	// unarchive gate).
 	const { bar: favoriteBar, onaction: favoriteAction } = mountBar({
 		count: 2,
 		allFavorite: true,
@@ -86,23 +89,30 @@ test('an action subset renders only the named actions (the curated walls)', () =
 	unmount(favoriteBar);
 	flushSync();
 
-	const { bar: hiddenBar } = mountBar({ count: 2, actions: ['unhide'] });
-	const hiddenButtons = Array.from(
+	const { bar: archivedBar } = mountBar({ count: 2, actions: ['unhide'], archivedSelected: true });
+	const archivedButtons = Array.from(
 		document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')
 	);
-	expect(hiddenButtons.map((button) => button.getAttribute('aria-label'))).toEqual(['Unhide']);
-	unmount(hiddenBar);
+	expect(archivedButtons.map((button) => button.getAttribute('aria-label'))).toEqual(['Unarchive']);
+	unmount(archivedBar);
+	flushSync();
+
+	// The same subset over a selection with no archived tile: no
+	// unarchive button at all (a family-flow wall's case).
+	const { bar: plainBar } = mountBar({ count: 2, actions: ['unhide'] });
+	expect(document.body.querySelectorAll<HTMLButtonElement>('.batchbar button:not(.batchbar__clear)')).toHaveLength(0);
+	unmount(plainBar);
 	flushSync();
 });
 
-test('the bar shows the selected count and the six batch actions', () => {
-	const { bar, onaction } = mountBar({ count: 5 });
+test('the bar shows the selected count and the batch actions', () => {
+	const { bar, onaction } = mountBar({ count: 5, archivedSelected: true });
 
 	const toolbar = document.body.querySelector<HTMLElement>('.batchbar');
 	expect(toolbar?.getAttribute('role')).toBe('toolbar');
 	expect(toolbar?.textContent).toContain('5 selected');
 
-	for (const label of ['Favorite', 'Hide', 'Unhide', 'Trash', 'Restore']) {
+	for (const label of ['Favorite', 'Archive', 'Unarchive', 'Trash', 'Restore']) {
 		const button = buttonByLabel(label);
 		expect(button.disabled, label).toBe(false);
 		// The icon-first rule: every action carries its lucide glyph
@@ -136,8 +146,8 @@ test('the favorite toggle flips its label with the selection state', () => {
 });
 
 test('a busy run disables every action', () => {
-	const { bar } = mountBar({ count: 2, busy: true });
-	for (const label of ['Favorite', 'Hide', 'Unhide', 'Trash', 'Restore']) {
+	const { bar } = mountBar({ count: 2, busy: true, archivedSelected: true });
+	for (const label of ['Favorite', 'Archive', 'Unarchive', 'Trash', 'Restore']) {
 		expect(buttonByLabel(label).disabled, label).toBe(true);
 	}
 	unmount(bar);

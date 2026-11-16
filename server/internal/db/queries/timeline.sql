@@ -29,8 +29,13 @@
 -- several albums yields one row, and an asset kept in through ANY
 -- feeding album stays in even when another of its albums is switched
 -- out -- the union semantics of the formula. Every item is live by
--- construction: hidden, trashed and Live Photo component rows are
--- filtered before the semi-join runs.
+-- construction: archived, trashed and Live Photo component rows are
+-- filtered before the semi-join runs. The album narrow below is the
+-- one exception, by design: an album is a reference container that
+-- keeps its archived members (the archive removes an asset from the
+-- family flow, never from the album that holds it), while a memory --
+-- a family-flow surface of its own -- drops them like this
+-- aggregate does.
 --
 -- The keyset predicate is the row-value comparison on the ordering
 -- key (taken_at DESC, id DESC): it is index-consistent with the
@@ -84,7 +89,10 @@ LIMIT sqlc.arg('limit_count');
 -- name: ListAlbumTimelineAssets :many
 -- The album's own timeline with the same is_favorite computation as
 -- the aggregate: per-user state of the requesting viewer, whatever
--- the album or the asset's owner.
+-- the album or the asset's owner. The member predicate is the album
+-- container's: trashed and component rows are out, archived members
+-- stay -- except on a memory, which is a family-flow surface and
+-- drops them (the is_hidden arm below, gated on the album type).
 SELECT sqlc.embed(a),
        EXISTS (
            SELECT 1 FROM user_favorites uf
@@ -108,7 +116,7 @@ WHERE al.id = sqlc.arg('album_id')
       )
   )
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
   -- The memory's shared-view rule rides the same arm as the detail's
   -- pages, the counts and the collages: a sharee's walk carries the

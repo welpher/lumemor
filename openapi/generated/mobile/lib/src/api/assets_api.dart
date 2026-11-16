@@ -29,7 +29,7 @@ class AssetsApi {
   const AssetsApi(this._dio, this._serializers);
 
   /// Apply one set action to a batch of assets.
-  /// The batch surface of the curation actions: one request applies one action -- favorite, unfavorite, hide, unhide, trash or restore -- to a list of up to 1000 asset ids, in one transaction. The endpoint follows set semantics: it is a convergence operation, not a state-change counter. Every id that resolves against the action&#39;s guard is applied (an id already in the target state is the idempotent no-op and still counts as affected), and every id that does not resolve -- unknown, or one the guard does not cover, the two indistinguishable -- is ignored and reported in the response&#39;s &#x60;missing&#x60; list. The two lists partition the request&#39;s distinct ids: no individual id ever fails the request, and a repeat of a successful batch converges to the same answer.  The guards differ by action, exactly as the single-asset faces do: favorite and unfavorite resolve CALLER-VISIBLE ids -- the caller&#39;s own assets plus the assets of every album shared to them, the same union the timeline aggregates (a sharee favorites what they see) -- while hide, unhide, trash and resolve&#39;s restore arm stay OWNER-scoped: curation and the trash lifecycle are the owner&#39;s alone, so another account&#39;s asset resolves for a sharee only through the favorite arms and reports as missing through every other.  This is the deliberate trade of the list surface: the byte-identical 404 anti-enumeration of the single-asset endpoints does not apply here. The caller handed the ids over themselves, so reporting the unresolvable ones back in &#x60;missing&#x60; hides nothing -- and hands honest clients their retry list.  &#x60;ids&#x60; must carry between 1 and 1000 entries: an empty list, or one past the cap, answers 400 &#x60;VALIDATION_FAILED&#x60;, as does an &#x60;action&#x60; outside the enum or a body that is not valid JSON (an id that is not a uuid fails the body decode). Repeated ids collapse to one application.  The whole batch commits as one transaction: the action&#39;s writes land together or not at all, so a partial batch never surfaces. Failures on resolvable ids are not expected -- the per-item guards turn foreign and already-in-state ids into no-ops, not errors -- so the all-or-nothing bound is the infrastructure safety, not a client-visible case.  The actions resolve to their single-row primitives: favorite / unfavorite write or remove the caller&#39;s per-user favorites rows; hide / unhide flip the owner-level visibility switch of the row the id names (a hidden asset leaves every live view -- the timeline, the favorites -- until unhidden); trash / restore run the trash lifecycle of the trash endpoints, Live Photo pair included (trashing or restoring the photo carries its component video row along, whichever row the id names).  The trash arm splits on the row&#39;s storage kind, its two semantics: a &#x60;blob&#x60; row is soft-deleted in place (the file stays until expiry), while an &#x60;external&#x60; row&#39;s file is MOVED into the server&#39;s trash area (&#x60;data/trash/&lt;assetId&gt;/&#x60;) with &#x60;original_path&#x60; and &#x60;trash_path&#x60; recorded on the row -- and the move needs the operating system&#39;s permission. A file the server cannot move (an unreadable source, an unwritable directory) fails the WHOLE batch explicitly with 500 &#x60;ASSET_TRASH_MOVE_FAILED&#x60;: nothing moves, nothing is written, the rows stay live -- the batch&#39;s one transaction rolls back and every file already moved is moved back. Restoring an external row moves the file back to its recorded original location by the same discipline (a location that can no longer receive it fails the batch the same way).  Events publish AFTER the commit, one per asset whose state actually changed -- the idempotent no-op stays silent, the same discipline as the single-asset restore: &#x60;asset.trashed&#x60; and &#x60;asset.restored&#x60; for trash and restore, &#x60;asset.updated&#x60; for hide and unhide (visibility is owner-level state, and every viewer of the shared timeline sees it change). favorite / unfavorite publish nothing: favorites are per-user state with no cross-user visibility effect, so no other session has anything to refresh. 
+  /// The batch surface of the curation actions: one request applies one action -- favorite, unfavorite, hide, unhide, trash or restore -- to a list of up to 1000 asset ids, in one transaction. The endpoint follows set semantics: it is a convergence operation, not a state-change counter. Every id that resolves against the action&#39;s guard is applied (an id already in the target state is the idempotent no-op and still counts as affected), and every id that does not resolve -- unknown, or one the guard does not cover, the two indistinguishable -- is ignored and reported in the response&#39;s &#x60;missing&#x60; list. The two lists partition the request&#39;s distinct ids: no individual id ever fails the request, and a repeat of a successful batch converges to the same answer.  The guards differ by action, exactly as the single-asset faces do: favorite and unfavorite resolve CALLER-VISIBLE ids -- the caller&#39;s own assets plus the assets of every album shared to them, the same union the timeline aggregates (a sharee favorites what they see) -- while hide, unhide, trash and resolve&#39;s restore arm stay OWNER-scoped: curation and the trash lifecycle are the owner&#39;s alone, so another account&#39;s asset resolves for a sharee only through the favorite arms and reports as missing through every other.  This is the deliberate trade of the list surface: the byte-identical 404 anti-enumeration of the single-asset endpoints does not apply here. The caller handed the ids over themselves, so reporting the unresolvable ones back in &#x60;missing&#x60; hides nothing -- and hands honest clients their retry list.  &#x60;ids&#x60; must carry between 1 and 1000 entries: an empty list, or one past the cap, answers 400 &#x60;VALIDATION_FAILED&#x60;, as does an &#x60;action&#x60; outside the enum or a body that is not valid JSON (an id that is not a uuid fails the body decode). Repeated ids collapse to one application.  The whole batch commits as one transaction: the action&#39;s writes land together or not at all, so a partial batch never surfaces. Failures on resolvable ids are not expected -- the per-item guards turn foreign and already-in-state ids into no-ops, not errors -- so the all-or-nothing bound is the infrastructure safety, not a client-visible case.  The actions resolve to their single-row primitives: favorite / unfavorite write or remove the caller&#39;s per-user favorites rows; hide / unhide flip the owner-level archive switch of the row the id names (an archived asset leaves every family flow -- the timeline, the favorites, the people and places walls, the map, the memories, the search -- until unarchived); trash / restore run the trash lifecycle of the trash endpoints, Live Photo pair included (trashing or restoring the photo carries its component video row along, whichever row the id names).  The trash arm splits on the row&#39;s storage kind, its two semantics: a &#x60;blob&#x60; row is soft-deleted in place (the file stays until expiry), while an &#x60;external&#x60; row&#39;s file is MOVED into the server&#39;s trash area (&#x60;data/trash/&lt;assetId&gt;/&#x60;) with &#x60;original_path&#x60; and &#x60;trash_path&#x60; recorded on the row -- and the move needs the operating system&#39;s permission. A file the server cannot move (an unreadable source, an unwritable directory) fails the WHOLE batch explicitly with 500 &#x60;ASSET_TRASH_MOVE_FAILED&#x60;: nothing moves, nothing is written, the rows stay live -- the batch&#39;s one transaction rolls back and every file already moved is moved back. Restoring an external row moves the file back to its recorded original location by the same discipline (a location that can no longer receive it fails the batch the same way).  Events publish AFTER the commit, one per asset whose state actually changed -- the idempotent no-op stays silent, the same discipline as the single-asset restore: &#x60;asset.trashed&#x60; and &#x60;asset.restored&#x60; for trash and restore, &#x60;asset.updated&#x60; for hide and unhide (the archive switch is owner-level state, and every viewer of the shared timeline sees it change). favorite / unfavorite publish nothing: favorites are per-user state with no cross-user visibility effect, so no other session has anything to refresh. 
   ///
   /// Parameters:
   /// * [batchRequest] 
@@ -192,8 +192,102 @@ class AssetsApi {
     return _response;
   }
 
+  /// The caller&#39;s archived assets, one keyset page at a time.
+  /// The archived view: the caller&#39;s own assets whose archive switch is on. Untrashed rows only -- a trashed asset stays in the trash view until restored or expired, and a restored one returns here still archived -- and no Live Photo component rows (the pair is represented by its photo). The same ordering and keyset pagination as the timeline: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, &#x60;nextCursor&#x60; exactly when another page follows.  Unarchiving returns an asset to every family flow (the timeline, the favorites if favorited, the people and places walls, the map, the memories, the search); an album kept it visible all along, since the album is a reference container. &#x60;isFavorite&#x60; still reports the caller&#39;s favorites state of an archived asset -- the favorite row survives the archiving, exactly like it survives the trash. 
+  ///
+  /// Parameters:
+  /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
+  /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TimelineResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TimelineResponse>> getArchived({ 
+    String? cursor,
+    int? limit = 100,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/assets/archived';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _queryParameters = <String, dynamic>{
+      if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
+      if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),
+    };
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      queryParameters: _queryParameters,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TimelineResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TimelineResponse),
+      ) as TimelineResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TimelineResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Fetch the detail of one owned asset.
-  /// The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- the owner-level editable attributes (&#x60;description&#x60;, &#x60;isHidden&#x60;, and the &#x60;takenAt&#x60; / &#x60;latitude&#x60; / &#x60;longitude&#x60; edits &#x60;PATCH&#x60; writes), which the asset detail view renders, the asset&#39;s faces with the caller&#39;s own label of each face&#39;s cluster (&#x60;faces&#x60;), which the detail view&#39;s people section renders and the people write endpoints maintain, and the caller&#39;s own tags on the asset (&#x60;tags&#x60;, name ascending), which the detail view&#39;s tag section renders and the tags endpoints maintain -- another account&#39;s tags on the same asset never surface here.  Access is the caller-visible gate: the asset&#39;s owner, and every member of an album the caller sees -- their own sync and directory albums plus every album shared to them (the same album union the timeline aggregates). An id none of those cover answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. The owner&#39;s reads keep their current shape: a trashed or hidden asset answers 200 (&#x60;isTrashed&#x60;, &#x60;isHidden&#x60; honest) because the owner&#39;s album memberships outlive both marks; for a sharee the same holds by id -- the album views and the timeline list live members only, so a hidden or trashed shared asset surfaces nowhere but stays readable at its known id until the share itself goes.  A trashed asset answers 200 with &#x60;isTrashed: true&#x60; -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the detail, the original download and the transcoded play stream resolve it through &#x60;livePhotoVideoId&#x60;; it counts a transcode job of its own) but never appears in the timeline. 
+  /// The asset detail: the identity and storage fields of the upload response plus the refinements the pipeline produced afterwards -- dimensions, duration, blurhash, the EXIF hot fields, and readiness -- the owner-level editable attributes (&#x60;description&#x60;, &#x60;isArchived&#x60;, and the &#x60;takenAt&#x60; / &#x60;latitude&#x60; / &#x60;longitude&#x60; edits &#x60;PATCH&#x60; writes), which the asset detail view renders, the asset&#39;s faces with the caller&#39;s own label of each face&#39;s cluster (&#x60;faces&#x60;), which the detail view&#39;s people section renders and the people write endpoints maintain, and the caller&#39;s own tags on the asset (&#x60;tags&#x60;, name ascending), which the detail view&#39;s tag section renders and the tags endpoints maintain -- another account&#39;s tags on the same asset never surface here.  Access is the caller-visible gate: the asset&#39;s owner, and every member of an album the caller sees -- their own sync and directory albums plus every album shared to them (the same album union the timeline aggregates). An id none of those cover answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. The owner&#39;s reads keep their current shape: a trashed or archived asset answers 200 (&#x60;isTrashed&#x60;, &#x60;isArchived&#x60; honest) because the owner&#39;s album memberships outlive both marks; for a sharee the same holds by id -- the family flows list live rows only, so an archived or trashed shared asset surfaces only where its album keeps it (an album keeps its archived members) and stays readable at its known id until the share itself goes.  A trashed asset answers 200 with &#x60;isTrashed: true&#x60; -- the trash view reads the detail the same way. The component video row of a Live Photo is readable by its id (the detail, the original download and the transcoded play stream resolve it through &#x60;livePhotoVideoId&#x60;; it counts a transcode job of its own) but never appears in the timeline. 
   ///
   /// Parameters:
   /// * [id] - Identifier of the asset.
@@ -547,7 +641,7 @@ class AssetsApi {
   }
 
   /// The caller&#39;s favorites, one keyset page at a time.
-  /// The favorites view: the assets the calling user favorites, filtered to the live view -- hidden assets, assets in the trash and the component video rows of Live Photos never appear -- with every item carrying &#x60;isFavorite: true&#x60; by construction (the listing joins the caller&#39;s favorites rows).  The view shares the timeline&#39;s shape, ordering and pagination: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, and the opaque &#x60;cursor&#x60; handed back as &#x60;nextCursor&#x60; precisely when another page follows, so the same wall UI that walks the timeline walks the favorites.  Favorites are per-user state written by the batch endpoint&#39;s favorite action, and the view is the caller&#39;s favorites rows crossed with CALLER-VISIBLE assets: the caller&#39;s own, plus the assets of every album shared to them -- the same album union the timeline aggregates. A sharee&#39;s favorites of shared assets appear here; a revoked share removes the assets from the view (the favorite row itself survives and resurfaces if the album is shared again). Hiding (or trashing) a favorited asset removes it from this view; it returns when unhidden (or restored), the favorite row untouched -- an idempotent per-user mark, not a copy of the asset. 
+  /// The favorites view: the assets the calling user favorites, filtered to the live view -- archived assets, assets in the trash and the component video rows of Live Photos never appear -- with every item carrying &#x60;isFavorite: true&#x60; by construction (the listing joins the caller&#39;s favorites rows).  The view shares the timeline&#39;s shape, ordering and pagination: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, and the opaque &#x60;cursor&#x60; handed back as &#x60;nextCursor&#x60; precisely when another page follows, so the same wall UI that walks the timeline walks the favorites.  Favorites are per-user state written by the batch endpoint&#39;s favorite action, and the view is the caller&#39;s favorites rows crossed with CALLER-VISIBLE assets: the caller&#39;s own, plus the assets of every album shared to them -- the same album union the timeline aggregates. A sharee&#39;s favorites of shared assets appear here; a revoked share removes the assets from the view (the favorite row itself survives and resurfaces if the album is shared again). Hiding (or trashing) a favorited asset removes it from this view; it returns when unarchived (or restored), the favorite row untouched -- an idempotent per-user mark, not a copy of the asset. 
   ///
   /// Parameters:
   /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
@@ -640,109 +734,15 @@ class AssetsApi {
     );
   }
 
-  /// The caller&#39;s hidden assets, one keyset page at a time.
-  /// The hidden view: the caller&#39;s own assets whose owner-level visibility switch is off. Live rows only -- a trashed asset stays in the trash view until restored or expired, and a restored one returns here still hidden -- and no Live Photo component rows (the pair is represented by its photo). The same ordering and keyset pagination as the timeline: &#x60;takenAt&#x60; descending with the id as the tiebreak, &#x60;limit&#x60; absent meaning 100 and capped at 200, &#x60;nextCursor&#x60; exactly when another page follows.  Unhiding through the batch endpoint returns an asset to every live view (the timeline, the favorites if favorited). &#x60;isFavorite&#x60; still reports the caller&#39;s favorites state of a hidden asset -- the favorite row survives the hiding, exactly like it survives the trash. 
-  ///
-  /// Parameters:
-  /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
-  /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
-  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
-  /// * [headers] - Can be used to add additional headers to the request
-  /// * [extras] - Can be used to add flags to the request
-  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
-  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
-  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
-  ///
-  /// Returns a [Future] containing a [Response] with a [TimelineResponse] as data
-  /// Throws [DioException] if API call or serialization fails
-  Future<Response<TimelineResponse>> getHidden({ 
-    String? cursor,
-    int? limit = 100,
-    CancelToken? cancelToken,
-    Map<String, dynamic>? headers,
-    Map<String, dynamic>? extra,
-    ValidateStatus? validateStatus,
-    ProgressCallback? onSendProgress,
-    ProgressCallback? onReceiveProgress,
-  }) async {
-    final _path = r'/assets/hidden';
-    final _options = Options(
-      method: r'GET',
-      headers: <String, dynamic>{
-        ...?headers,
-      },
-      extra: <String, dynamic>{
-        'secure': <Map<String, String>>[
-          {
-            'type': 'apiKey',
-            'name': 'cookieAuth',
-            'keyName': 'lumemor_session',
-            'where': '',
-          },{
-            'type': 'http',
-            'scheme': 'bearer',
-            'name': 'bearerAuth',
-          },
-        ],
-        ...?extra,
-      },
-      validateStatus: validateStatus,
-    );
-
-    final _queryParameters = <String, dynamic>{
-      if (cursor != null) r'cursor': encodeQueryParameter(_serializers, cursor, const FullType(String)),
-      if (limit != null) r'limit': encodeQueryParameter(_serializers, limit, const FullType(int)),
-    };
-
-    final _response = await _dio.request<Object>(
-      _path,
-      options: _options,
-      queryParameters: _queryParameters,
-      cancelToken: cancelToken,
-      onSendProgress: onSendProgress,
-      onReceiveProgress: onReceiveProgress,
-    );
-
-    TimelineResponse? _responseData;
-
-    try {
-      final rawResponse = _response.data;
-      _responseData = rawResponse == null ? null : _serializers.deserialize(
-        rawResponse,
-        specifiedType: const FullType(TimelineResponse),
-      ) as TimelineResponse;
-
-    } catch (error, stackTrace) {
-      throw DioException(
-        requestOptions: _response.requestOptions,
-        response: _response,
-        type: DioExceptionType.unknown,
-        error: error,
-        stackTrace: stackTrace,
-      );
-    }
-
-    return Response<TimelineResponse>(
-      data: _responseData,
-      headers: _response.headers,
-      isRedirect: _response.isRedirect,
-      requestOptions: _response.requestOptions,
-      redirects: _response.redirects,
-      statusCode: _response.statusCode,
-      statusMessage: _response.statusMessage,
-      extra: _response.extra,
-    );
-  }
-
   /// The aggregated timeline, one keyset page at a time.
-  /// The aggregated timeline of the caller: the union of the albums that feed it -- the caller&#39;s sync album (the core backup stream, never excludable), the caller&#39;s own directory albums, and every album shared to the caller regardless of type (memory albums included) -- minus the albums the caller turned off with the per-user \&quot;keep out of the timeline\&quot; preference (a missing preference row means kept in). The caller&#39;s own memory albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: hidden assets, assets in the trash, and the component video rows of Live Photos never appear.  &#x60;isFavorite&#x60; is per-user state: it reports whether the CALLING user favorites the asset (the favorites rows the batch endpoint writes), whatever the asset&#39;s owner -- the same item is a favorite for one viewer and a plain tile for another.  Pages are keyset-paginated with an opaque cursor: the response carries &#x60;nextCursor&#x60; exactly when another page exists, and the client passes it back as &#x60;cursor&#x60; to continue after the last item of the page. Cursors are stable for the ordering key (&#x60;takenAt&#x60; descending, &#x60;id&#x60; as the tiebreak); an asset uploaded with an older &#x60;takenAt&#x60; than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 &#x60;VALIDATION_FAILED&#x60;.  &#x60;albumId&#x60; narrows the response to that album&#39;s own timeline instead of the aggregate: the album&#39;s items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint.  &#x60;clusterId&#x60; narrows the response to one face cluster&#39;s own photos -- the person detail&#39;s photo wall: the distinct live assets carrying at least one of the cluster&#39;s faces that the caller can see, in the same ordering and per-user favourite flags, deduplicated by asset (two faces of the person in one photo are one item). The narrows are mutually exclusive: a request carrying more than one answers 400 &#x60;VALIDATION_FAILED&#x60;. A cluster that does not exist or is not visible to the caller answers the empty list, not an error -- the same anti-enumeration shape as &#x60;albumId&#x60;.  &#x60;placeIds&#x60; narrows the response to the live assets resolved to one of those places (GeoNames ids) -- the place detail&#39;s photo wall, and the map panel&#39;s read for the spot a pin or a bubble stands for. Every item passes the same caller-visible live filter and carries the same per-user favourite flag as the aggregate; an id no caller-visible asset resolves to contributes nothing, so the answer is the empty list rather than an error. 
+  /// The aggregated timeline of the caller: the union of the albums that feed it -- the caller&#39;s sync album (the core backup stream, never excludable), the caller&#39;s own directory albums, and every album shared to the caller regardless of type (memory albums included) -- minus the albums the caller turned off with the per-user \&quot;keep out of the timeline\&quot; preference (a missing preference row means kept in). The caller&#39;s own memory albums never feed their own timeline: in-stream curation would be pure duplication. One asset visible through several albums appears once.  Every item is live by construction: archived assets, assets in the trash, and the component video rows of Live Photos never appear.  &#x60;isFavorite&#x60; is per-user state: it reports whether the CALLING user favorites the asset (the favorites rows the batch endpoint writes), whatever the asset&#39;s owner -- the same item is a favorite for one viewer and a plain tile for another.  Pages are keyset-paginated with an opaque cursor: the response carries &#x60;nextCursor&#x60; exactly when another page exists, and the client passes it back as &#x60;cursor&#x60; to continue after the last item of the page. Cursors are stable for the ordering key (&#x60;takenAt&#x60; descending, &#x60;id&#x60; as the tiebreak); an asset uploaded with an older &#x60;takenAt&#x60; than the cursor appears only in a fresh pagination run, never in the current one. The first page omits the &#x60;cursor&#x60; parameter.  &#x60;limit&#x60; bounds the page size: absent means the default of 100, a value over 200 is answered with the maximum of 200, and a value below 1 answers 400 &#x60;VALIDATION_FAILED&#x60;.  &#x60;albumId&#x60; narrows the response to that album&#39;s own timeline instead of the aggregate: the album&#39;s items in the same ordering and filtering. The caller must be able to see the album (own album of any type, or an album shared to the caller); an album that does not exist or is not visible answers the empty list, not an error, so album ids cannot be probed for existence through this endpoint.  &#x60;clusterId&#x60; narrows the response to one face cluster&#39;s own photos -- the person detail&#39;s photo wall: the distinct live assets carrying at least one of the cluster&#39;s faces that the caller can see, in the same ordering and per-user favourite flags, deduplicated by asset (two faces of the person in one photo are one item). The narrows are mutually exclusive: a request carrying more than one answers 400 &#x60;VALIDATION_FAILED&#x60;. A cluster that does not exist or is not visible to the caller answers the empty list, not an error -- the same anti-enumeration shape as &#x60;albumId&#x60;.  &#x60;placeIds&#x60; narrows the response to the live assets resolved to one of those places (GeoNames ids) -- the place detail&#39;s photo wall, and the map panel&#39;s read for the spot a pin or a bubble stands for. Every item passes the same caller-visible live filter and carries the same per-user favourite flag as the aggregate; an id no caller-visible asset resolves to contributes nothing, so the answer is the empty list rather than an error. 
   ///
   /// Parameters:
   /// * [cursor] - The `nextCursor` of the previous page; absent on the first page. An unparseable value answers 400 `VALIDATION_FAILED` (cursors are opaque strings produced by this endpoint, never assembled by clients). 
   /// * [limit] - Page size: the number of timeline items one response carries at most. Defaults to 100; values over 200 are answered with 200, values below 1 answer 400. 
   /// * [clusterId] - Restrict the response to one face cluster's photos (the person detail's wall). Mutually exclusive with `albumId` and `placeIds`; an unknown or invisible cluster answers the empty list. 
   /// * [placeIds] - Restrict the response to assets resolved to one of these places (GeoNames ids) -- the place detail's wall and the map panel's read. Mutually exclusive with `albumId` and `clusterId`; ids no visible asset resolves to answer the empty list. 
-  /// * [albumId] - Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. For a memory shared to the caller the walk honors the re-share ground: the items are the live members the memory's owner currently sees, revalidated at read time (a photo whose source visibility died leaves the walk), while the memory's owner keeps the plain live membership. 
+  /// * [albumId] - Restrict the response to the timeline of this one album (an album the caller owns or that is shared to the caller) instead of the aggregate. An unknown or invisible album answers the empty list. An album is a reference container: its archived members ride the walk (the archive removes an asset from the family flows, never from the album that holds it). A memory is a family-flow surface of its own, so its archived members leave the walk exactly like they leave the aggregate -- and for a memory shared to the caller the walk honors the re-share ground: the items are the members the memory's owner currently sees, revalidated at read time (a photo whose source visibility died leaves the walk), while the memory's owner keeps the plain membership. 
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -922,7 +922,7 @@ class AssetsApi {
   }
 
   /// Edit the owner-level attributes of one asset.
-  /// The partial edit of the owner-level attributes of an asset: &#x60;description&#x60;, the free text the detail panel renders, &#x60;isHidden&#x60;, the owner-level visibility switch that keeps the asset out of every live view until it returns, &#x60;takenAt&#x60;, the manual capture-time edit, and the &#x60;latitude&#x60; / &#x60;longitude&#x60; pair, the manual location edit. All body fields are optional but at least one must be present (a field set to JSON null counts as absent, so a body of nulls is the empty patch); a request that carries none answers 400 &#x60;VALIDATION_FAILED&#x60;. Only the fields the request carries update -- the rest keep their values -- and the response is the full asset detail after the edit, the same shape &#x60;GET /assets/{id}&#x60; serves.  The edit follows set semantics: patching a field with the value the row already carries is the idempotent no-op -- the answer stays the 200 success with the row&#39;s current state, nothing is written (not even &#x60;updated_at&#x60;), and NO &#x60;asset.updated&#x60; event fires. A patch that actually changes any field publishes exactly ONE &#x60;asset.updated&#x60; event (the asset id and kind, after the commit): every field is owner-level asset state, so the same announcement refreshes every viewer of the shared timeline and the detail panel. The description alone has no timeline effect -- it is detail-panel content -- but it is asset state the event covers all the same. The response serves the caller&#39;s tags on the asset beside the faces, both unchanged by this edit (the tags endpoints maintain them): the full detail shape &#x60;GET /assets/{id}&#x60; serves.  Access is owner-only, the attribute-editing row of the permission matrix: there is deliberately no administrator override here (unlike the permanent delete), so an id that is unknown or foreign answers the same 404 &#x60;ASSET_NOT_FOUND&#x60;, byte for byte, as every asset endpoint -- asset ids cannot be enumerated. A trashed asset is editable like it is readable (the detail answers 200 with &#x60;isTrashed: true&#x60;): the edit lands on the row and resurfaces with the restore. The hidden switch this endpoint flips is the same one the batch &#x60;hide&#x60; / &#x60;unhide&#x60; actions flip, so the two surfaces agree on the state of an asset.  &#x60;description&#x60; carries at most 10,000 Unicode characters (runes); above that the request answers 400 &#x60;VALIDATION_FAILED&#x60;. The value replaces the stored text wholesale -- an empty string is a valid patch and clears it.  &#x60;takenAt&#x60; replaces the stored capture time wholesale. The timestamp MUST carry a UTC offset (RFC 3339&#39;s &#x60;Z&#x60; or &#x60;+hh:mm&#x60; designator): the offset is the capture zone the info panel displays beside the time, so a zone-less value is ambiguous and answers 400 &#x60;VALIDATION_FAILED&#x60; -- the same value decides where the photo sits on the timeline (the instant) and which offset renders beside it (the offset). The stored &#x60;takenAtSource&#x60; keeps its value; the value itself carries the edit. The same patch publishes the one &#x60;asset.updated&#x60; event when the instant or the zone changed.  &#x60;latitude&#x60; and &#x60;longitude&#x60; are the manual location edit, and they ride together: the pair replaces the asset&#39;s location wholesale (carrying one alone answers 400 &#x60;VALIDATION_FAILED&#x60; -- half a coordinate is no location). The written pair is what the info panel renders (&#x60;location&#x60;) and what the place resolution runs on: the resolved city follows the pin (the nearest city within the resolution threshold, or no place at all when the point sits beyond one -- the honest absence). The camera-recorded GPS in &#x60;exif&#x60; keeps the file&#39;s own reading and is not touched. A deployment without the baked place data keeps the resolved place whatever it held: the coordinates still stand, the city join stays out of the edit. 
+  /// The partial edit of the owner-level attributes of an asset: &#x60;description&#x60;, the free text the detail panel renders, &#x60;isArchived&#x60;, the owner-level switch that keeps the asset out of every family flow until it returns, &#x60;takenAt&#x60;, the manual capture-time edit, and the &#x60;latitude&#x60; / &#x60;longitude&#x60; pair, the manual location edit. All body fields are optional but at least one must be present (a field set to JSON null counts as absent, so a body of nulls is the empty patch); a request that carries none answers 400 &#x60;VALIDATION_FAILED&#x60;. Only the fields the request carries update -- the rest keep their values -- and the response is the full asset detail after the edit, the same shape &#x60;GET /assets/{id}&#x60; serves.  The edit follows set semantics: patching a field with the value the row already carries is the idempotent no-op -- the answer stays the 200 success with the row&#39;s current state, nothing is written (not even &#x60;updated_at&#x60;), and NO &#x60;asset.updated&#x60; event fires. A patch that actually changes any field publishes exactly ONE &#x60;asset.updated&#x60; event (the asset id and kind, after the commit): every field is owner-level asset state, so the same announcement refreshes every viewer of the shared timeline and the detail panel. The description alone has no timeline effect -- it is detail-panel content -- but it is asset state the event covers all the same. The response serves the caller&#39;s tags on the asset beside the faces, both unchanged by this edit (the tags endpoints maintain them): the full detail shape &#x60;GET /assets/{id}&#x60; serves.  Access is owner-only, the attribute-editing row of the permission matrix: there is deliberately no administrator override here (unlike the permanent delete), so an id that is unknown or foreign answers the same 404 &#x60;ASSET_NOT_FOUND&#x60;, byte for byte, as every asset endpoint -- asset ids cannot be enumerated. A trashed asset is editable like it is readable (the detail answers 200 with &#x60;isTrashed: true&#x60;): the edit lands on the row and resurfaces with the restore. The archive switch this endpoint flips is the same one the batch endpoint&#39;s &#x60;hide&#x60; / &#x60;unhide&#x60; actions flip, so the two surfaces agree on the state of an asset.  &#x60;description&#x60; carries at most 10,000 Unicode characters (runes); above that the request answers 400 &#x60;VALIDATION_FAILED&#x60;. The value replaces the stored text wholesale -- an empty string is a valid patch and clears it.  &#x60;takenAt&#x60; replaces the stored capture time wholesale. The timestamp MUST carry a UTC offset (RFC 3339&#39;s &#x60;Z&#x60; or &#x60;+hh:mm&#x60; designator): the offset is the capture zone the info panel displays beside the time, so a zone-less value is ambiguous and answers 400 &#x60;VALIDATION_FAILED&#x60; -- the same value decides where the photo sits on the timeline (the instant) and which offset renders beside it (the offset). The stored &#x60;takenAtSource&#x60; keeps its value; the value itself carries the edit. The same patch publishes the one &#x60;asset.updated&#x60; event when the instant or the zone changed.  &#x60;latitude&#x60; and &#x60;longitude&#x60; are the manual location edit, and they ride together: the pair replaces the asset&#39;s location wholesale (carrying one alone answers 400 &#x60;VALIDATION_FAILED&#x60; -- half a coordinate is no location). The written pair is what the info panel renders (&#x60;location&#x60;) and what the place resolution runs on: the resolved city follows the pin (the nearest city within the resolution threshold, or no place at all when the point sits beyond one -- the honest absence). The camera-recorded GPS in &#x60;exif&#x60; keeps the file&#39;s own reading and is not touched. A deployment without the baked place data keeps the resolved place whatever it held: the coordinates still stand, the city join stays out of the edit. 
   ///
   /// Parameters:
   /// * [id] - Identifier of the asset.

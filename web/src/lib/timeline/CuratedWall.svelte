@@ -1,5 +1,5 @@
 <script lang="ts">
-	// The curated wall wrapper the favorites and hidden pages
+	// The curated wall wrapper the favorites and archived pages
 	// compose: the page-level concerns of a membership
 	// view -- the pagination client (driven with the view's
 	// membership semantics), the SSE convergence, the sentinel walk,
@@ -96,7 +96,7 @@
 
 	// The wall's batch runner: this wrapper's walk owns the write
 	// (the client's view-aware optimistic convergence -- unfavorite
-	// on favorites, unhide on hidden ends the selected rows'
+	// on favorites, unhide on archived ends the selected rows'
 	// memberships); the wall owns the busy/error/clear choreography
 	// around the promise it awaits here.
 	async function runBatch(action: BatchAction, ids: readonly string[]) {

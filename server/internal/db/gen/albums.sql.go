@@ -114,9 +114,9 @@ type AddMemoryItemsParams struct {
 // is the caller-visible predicate over the acting creator (the
 // union of the albums that feed their view: their sync stream, their
 // directory albums, the albums shared to them), joined with the
-// live-member filter (not trashed, not hidden, not a Live Photo
-// component row) so a photo the family can no longer see never
-// enters a set that re-shares it. An id failing either check
+// family-flow filter (not trashed, not archived, not a Live Photo
+// component row): a memory is a family-flow surface, so a photo the
+// family can no longer see never enters one. An id failing either check
 // matches nothing here and lands as the report's skipped; an id
 // already a member hits the conflict and lands as skipped too --
 // the honest report, never per-item errors. RETURNING carries
@@ -166,11 +166,12 @@ func (q *Queries) CountAlbumReferencesOfAsset(ctx context.Context, assetID pgtyp
 const countLiveAlbumMembers = `-- name: CountLiveAlbumMembers :one
 SELECT count(*) AS matches
 FROM album_items ai
+JOIN albums al ON al.id = ai.album_id
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = $1
   AND ai.asset_id = ANY($2::uuid[])
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
 `
 
@@ -180,10 +181,11 @@ type CountLiveAlbumMembersParams struct {
 }
 
 // The cover write's validation: how many of the requested ids sit in
-// this album as LIVE members? The membership row must exist AND the
-// asset must pass the live predicate -- a hidden, trashed or Live
-// Photo component member is a member no more for cover purposes, and
-// an asset outside the album never was one. The handler compares the
+// this album as renderable members? The membership row must exist
+// AND the asset must pass the member predicate -- a trashed or Live
+// Photo component member is a member no more for cover purposes
+// (and on a memory, so is an archived one), while an asset outside
+// the album never was one. The handler compares the
 // count with the request's length: a shortfall names the refused
 // write's dead ids.
 func (q *Queries) CountLiveAlbumMembers(ctx context.Context, arg CountLiveAlbumMembersParams) (int64, error) {
@@ -420,7 +422,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND (
                  al.type <> 'memory'
@@ -434,7 +436,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
              AND (
@@ -471,8 +473,8 @@ type GetAlbumForCallerRow struct {
 	InTimeline pgtype.Bool `json:"in_timeline"`
 }
 
-// The album the caller may see, with the caller's role, the live
-// member count and the caller's timeline preference. The visibility
+// The album the caller may see, with the caller's role, the member
+// count and the caller's timeline preference. The visibility
 // check is the whole point: the caller owns the album or an
 // album_shares row grants it -- and a sync album resolves ONLY for
 // its owner: the caller's own sync album is the default album's
@@ -489,10 +491,10 @@ type GetAlbumForCallerRow struct {
 // caller's own memory albums and for the caller's own sync album
 // (the core stream is never excludable), true when no row exists.
 // item_count carries the memory's shared-view rule: a sharee's
-// count is the live members the memory's owner currently sees (the
+// count is the members the memory's owner currently sees (the
 // re-share ground, revalidated at read time), while the owner's own
-// count is the plain live membership -- the owner's curation is
-// their own view of the set. photo_count is the same count narrowed
+// count is the plain membership -- the owner's curation is their
+// own view of the set. photo_count is the same count narrowed
 // to image-kind members: the count idiom beside the image glyph
 // says "photos", so the bar reads this field (a video is a member,
 // never a photo).
@@ -604,10 +606,10 @@ type GetAlbumForWriteRow struct {
 // Album writes (reshaped by albums-as-sources): creation, the property
 // patch, the delete, the membership removal and the write face's
 // authorization
-// gate. The reads' live-member predicate runs through the cover
-// validation and the add's resolution: the same three-part filter
-// (deleted_at IS NULL AND is_hidden = false AND is_component =
-// false).
+// gate. The reads' member predicate runs through the cover
+// validation and the memory add's resolution: the same filter set
+// the read queries carry (deleted_at IS NULL AND is_component =
+// false, plus is_hidden = false for a memory).
 // The write face's authorization gate: the album row plus whether
 // the caller holds a view share of it. Sync albums answer no row
 // (the timeline is their face, whoever owns them); the owner check
@@ -646,7 +648,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
        ) AS item_count,
        (
@@ -655,7 +657,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
        ) AS photo_count,
@@ -680,8 +682,8 @@ type GetAlbumSummaryRow struct {
 }
 
 // The album row with the wall card's honest companions: whether any
-// share row exists, the live member count, the live photo count
-// (the image-kind members -- the card's "N photos" number), and the
+// share row exists, the member count, the photo count (the
+// image-kind members -- the card's "N photos" number), and the
 // caller's raw timeline preference row (the write face's caller is the owner, so a
 // memory album's card carries no preference field; the handler maps
 // NULL to the default the same way the wall does). The write face's
@@ -722,7 +724,7 @@ type InsertAlbumCoverPicksParams struct {
 
 // The pin's full-set write: the request's ids land at their pick
 // positions (0-based, first pick first). The ids arrive already
-// validated as live members of the album.
+// validated as members the album renders.
 func (q *Queries) InsertAlbumCoverPicks(ctx context.Context, arg InsertAlbumCoverPicksParams) error {
 	_, err := q.db.Exec(ctx, insertAlbumCoverPicks, arg.AlbumID, arg.AssetIds)
 	return err
@@ -764,7 +766,7 @@ ORDER BY album_id, position
 // so both stores are row-per-frame keyed by position -- the order is
 // the render order and never re-sorted by the reads.
 // The pinned cover sets of the given albums, in pick order. A picked
-// frame the caller cannot see (trashed, hidden, moved out of the
+// frame the caller cannot see (trashed, archived, moved out of the
 // album) is not filtered here: the caller needs the stored list to
 // tell the owner WHICH pinned frame died, and the renderer fills the
 // dead cells from the pool.
@@ -841,7 +843,7 @@ JOIN albums al ON al.id = ai.album_id
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = $1
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
   AND (
       al.type <> 'memory'
@@ -872,18 +874,17 @@ type ListAlbumItemsForCallerRow struct {
 	MediaKind        MediaKind          `json:"media_kind"`
 }
 
-// One page of the album's items: the live members in the timeline's
-// own ordering (taken_at DESC, id DESC), keyset-paginated with the
+// One page of the album's items: the members in the timeline's own
+// ordering (taken_at DESC, id DESC), keyset-paginated with the
 // same row-value predicate and the same NULL-init first page. The
 // caller's visibility gate is NOT here: the handler runs this only
 // after GetAlbumForCaller returned the album, so the rows it lists
 // are rows of an album the caller already proved they may see. The
 // memory's shared-view rule rides along: a sharee's page carries
-// the live members the memory's owner CURRENTLY sees (the re-share
+// the members the memory's owner CURRENTLY sees (the re-share
 // ground, revalidated at read time -- a photo whose source
-// visibility died leaves every shared view live, no snapshot
-// residue), while the owner's own page is the plain live
-// membership.
+// visibility died leaves every shared view, no snapshot residue),
+// while the owner's own page is the plain membership.
 func (q *Queries) ListAlbumItemsForCaller(ctx context.Context, arg ListAlbumItemsForCallerParams) ([]ListAlbumItemsForCallerRow, error) {
 	rows, err := q.db.Query(ctx, listAlbumItemsForCaller,
 		arg.AlbumID,
@@ -924,7 +925,7 @@ JOIN album_items ai ON ai.album_id = picks.album_id AND ai.asset_id = picks.asse
 JOIN assets a ON a.id = picks.asset_id
 WHERE picks.album_id = ANY($1::uuid[])
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
   AND (
       al.type <> 'memory'
@@ -939,9 +940,10 @@ type ListAlbumLiveCoverPicksParams struct {
 	UserID   pgtype.UUID   `json:"user_id"`
 }
 
-// The LIVE subset of the given albums' pinned sets, in pick order: a
-// pick whose membership row is gone or whose asset is trashed,
-// hidden or a component row is dead for cover purposes. The card
+// The renderable subset of the given albums' pinned sets, in pick
+// order: a pick whose membership row is gone, or whose asset is
+// trashed, a component row, or (on a memory) archived, is dead for
+// cover purposes. The card
 // renders exactly these in their positions and fills the dead cells;
 // a fully dead set falls back to the automatic group. The memory's
 // shared-view rule rides the pool's predicate so a shared card never
@@ -973,7 +975,7 @@ JOIN albums al ON al.id = ai.album_id
 JOIN assets a ON a.id = ai.asset_id
 WHERE ai.album_id = ANY($1::uuid[])
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
   AND (
       al.type <> 'memory'
@@ -993,13 +995,13 @@ type ListAlbumLiveCoverPoolRow struct {
 	AssetID pgtype.UUID `json:"asset_id"`
 }
 
-// The sampling pool of the given albums: every live member the caller
-// can see, in the timeline's own order (taken_at descending, the
-// asset id as the tiebreak). The order is the pool's stable shape,
-// never the sampling's ranking -- the rotation hashes these ids. The
+// The sampling pool of the given albums: every member the caller can
+// see, in the timeline's own order (taken_at descending, the asset
+// id as the tiebreak). The order is the pool's stable shape, never
+// the sampling's ranking -- the rotation hashes these ids. The
 // memory's shared-view rule rides the same predicate as the pages
-// and the counts: a sharee's pool is the owner-visible live members,
-// the owner's own is the plain live ones, so a cover never names a
+// and the counts: a sharee's pool is the owner-visible members, the
+// owner's own is the plain ones, so a cover never names a
 // photo the card's count already dropped.
 func (q *Queries) ListAlbumLiveCoverPool(ctx context.Context, arg ListAlbumLiveCoverPoolParams) ([]ListAlbumLiveCoverPoolRow, error) {
 	rows, err := q.db.Query(ctx, listAlbumLiveCoverPool, arg.AlbumIds, arg.UserID)
@@ -1030,7 +1032,7 @@ JOIN assets a ON a.id = picks.asset_id
 WHERE picks.album_id = ANY($1::uuid[])
   AND picks.iso_week = $2
   AND a.deleted_at IS NULL
-  AND a.is_hidden = false
+  AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
   AND (
       al.type <> 'memory'
@@ -1053,10 +1055,10 @@ type ListAlbumLiveCoverWeekPicksRow struct {
 }
 
 // The LIVE subset of the given albums' frozen weekly groups, in the
-// order the sampling stored: the same liveness predicate the pins
-// run, because a week's cell dies exactly like a pin's -- the frame
-// leaves the album, is trashed, hidden or belongs to another
-// account's sight.
+// order the sampling stored: the same renderable predicate the
+// pins run, because a week's cell dies exactly like a pin's -- the
+// frame leaves the album, is trashed, archived (on a memory) or
+// belongs to another account's sight.
 func (q *Queries) ListAlbumLiveCoverWeekPicks(ctx context.Context, arg ListAlbumLiveCoverWeekPicksParams) ([]ListAlbumLiveCoverWeekPicksRow, error) {
 	rows, err := q.db.Query(ctx, listAlbumLiveCoverWeekPicks, arg.AlbumIds, arg.IsoWeek, arg.UserID)
 	if err != nil {
@@ -1296,7 +1298,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
        ) AS item_count,
        (
@@ -1305,7 +1307,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
        ) AS photo_count,
@@ -1334,7 +1336,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
        ) AS item_count,
        (
@@ -1343,7 +1345,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
        ) AS photo_count,
@@ -1367,8 +1369,8 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
        -- caller's own share row is the reason this row exists.
        true AS is_shared,
        -- The shared arm's count carries the memory's shared-view
-       -- rule: the sharee's card counts the live members the
-       -- memory's owner currently sees -- the re-share ground,
+       -- rule: the sharee's card counts the members the memory's
+       -- owner currently sees -- the re-share ground,
        -- revalidated at read time, so a revoked photo leaves the
        -- sharee's card with no snapshot residue. (The caller here
        -- is never the album's owner: no share row can name them.)
@@ -1378,7 +1380,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
        ) AS item_count,
@@ -1388,7 +1390,7 @@ SELECT al.id, al.owner_id, al.title, al.type, al.root_path, al.last_scanned_at, 
            JOIN assets a ON a.id = ai.asset_id
            WHERE ai.album_id = al.id
              AND a.deleted_at IS NULL
-             AND a.is_hidden = false
+             AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
@@ -1420,12 +1422,16 @@ type ListWallAlbumsForCallerRow struct {
 	SortAt      pgtype.Timestamptz `json:"sort_at"`
 }
 
-// Album reads: the wall, the cover candidates and the
-// detail face. The live-member predicate runs through all of them:
-// deleted_at IS NULL AND is_hidden = false AND is_component = false,
-// the timeline's own definition of a live asset row (a hidden
-// asset is invisible to the whole family, and a Live Photo's video
-// component is never a tile of its own).
+// Album reads: the wall, the cover candidates and the detail face.
+// The member predicate runs through all of them: deleted_at IS NULL
+// AND is_component = false, plus is_hidden = false for the memories
+// surface alone (type = 'memory' albums). An album is a reference
+// container -- archiving removes an asset from every family flow
+// but never from the album that holds it, so the owner still sees
+// it there and unarchives from there. A memory IS a family-flow
+// surface (the memories boundary), so an archived member leaves it
+// exactly like it leaves the timeline. A Live Photo's video
+// component is never a tile of its own either way.
 // The wall of the calling user in one statement: the pinned sync
 // card (the caller's own core stream, the default "My photos"
 // album) UNION ALL the own group (the caller's memory and
@@ -1446,7 +1452,7 @@ type ListWallAlbumsForCallerRow struct {
 // albums only (a sync album a share row names -- nothing can
 // produce one -- feeds no wall card for the sharee).
 //
-// Every arm's item_count is the card's live member count and its
+// Every arm's item_count is the card's member count and its
 // photo_count the image-kind members among them: the card's count
 // idiom carries the image glyph and the word "photos", so it
 // renders photo_count (a video is a member, never a photo), while

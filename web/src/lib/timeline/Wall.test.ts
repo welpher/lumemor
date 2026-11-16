@@ -3,10 +3,11 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Wall from './Wall.svelte';
 import type { TimelineItem } from '$lib/api/timeline';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 
 // The unified wall: ONE rendering
 // component every photo surface composes -- the timeline, the album
-// detail, the favorites/hidden wrappers, the search browse mode. It
+// detail, the favorites/archived wrappers, the search browse mode. It
 // takes bare ITEMS (the month/day fold is its own), the row engine,
 // the ResizeObserver re-pack, PhotoTile AND the month axis live
 // inside it (the 2026-11-08 axis pin: the photo rendering and the
@@ -34,6 +35,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: false,
 	isReady: true,
 	width: 4032,
@@ -198,7 +200,7 @@ test('a failed batch run keeps the selection and maps the error into the bar', a
 	flushSync();
 
 	clickTileCheck(0);
-	buttonByLabel('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Archive').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
 	// The failure keeps the selection (the retry affordance) and
@@ -228,8 +230,9 @@ test('a busy batch run disables the bar until the promise lands', async () => {
 	buttonByLabel('Trash').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	flushSync();
 
-	// In flight: every action disables (one write at a time).
-	for (const label of ['Favorite', 'Hide', 'Unhide', 'Trash', 'Restore']) {
+	// In flight: every action disables (one write at a time; the
+	// unarchive entry is absent over an unarchived selection).
+	for (const label of ['Favorite', 'Archive', 'Trash', 'Restore']) {
 		expect(buttonByLabel(label).disabled, label).toBe(true);
 	}
 
@@ -478,5 +481,62 @@ test('the panel frame: its own scroll root and compact axis, no fixed scrubber',
 	expect(document.body.querySelector('.scrubber')).toBeNull();
 
 	unmount(wall);
+	flushSync();
+});
+
+test('the unarchive button renders only for an archived selection, and the archive landing toasts its count', async () => {
+	// The album container's gate: the bar's unarchive action is a
+	// function of the SELECTION's state, not of the caller's action
+	// list alone -- an unarchived selection shows no button (the
+	// family-flow walls' normal case), an archived one shows it.
+	const archivedItems: TimelineItem[] = [
+		{ ...item('a1', '2026-11-02T10:00:00Z'), isArchived: true },
+		item('a2', '2026-11-01T09:00:00Z')
+	];
+	const onbatch = vi.fn(async () => ({ ok: true, affected: 1 }) as Outcome);
+	const wall = mount(Wall, {
+		target: document.body,
+		props: { items: archivedItems, onbatch, actions: ['hide', 'unhide', 'trash'] }
+	});
+	flushSync();
+	clearToasts();
+
+	// The plain row's selection: no unarchive button.
+	clickTileCheck(1);
+	expect(() => buttonByLabel('Unarchive')).toThrow();
+	buttonByLabel('Archive').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+	expect(onbatch).toHaveBeenCalledWith('hide', ['a2']);
+
+	// The archived row's selection: the button renders, and the
+	// landing fires the completion toast with the applied count.
+	clearToasts();
+	clickTileCheck(0);
+	expect(buttonByLabel('Unarchive')).not.toBeNull();
+	buttonByLabel('Unarchive').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+	expect(onbatch).toHaveBeenCalledWith('unhide', ['a1']);
+	expect(toasts().map((entry) => entry.text)).toEqual(['Unarchived 1 photo.']);
+
+	unmount(wall);
+	clearToasts();
+	flushSync();
+});
+
+test('the archive landing toasts the archived count too', async () => {
+	const onbatch = vi.fn(async () => ({ ok: true, affected: 2 }) as Outcome);
+	const wall = mount(Wall, { target: document.body, props: { items, onbatch } });
+	flushSync();
+	clearToasts();
+
+	clickTileCheck(0);
+	clickTileCheck(1);
+	buttonByLabel('Archive').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	expect(toasts().map((entry) => entry.text)).toEqual(['Archived 2 photos.']);
+
+	unmount(wall);
+	clearToasts();
 	flushSync();
 });

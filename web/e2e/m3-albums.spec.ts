@@ -1096,9 +1096,9 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
 
 	// The member's wall curates their own favorites -- and nothing
-	// else: the trash would delete the owner's files, and the hide
-	// switch writes the owner's row (the batch resolves it over the
-	// caller's own ids, so a shared album can never land it).
+	// else: the trash would delete the owner's files, and the
+	// archive switch writes the owner's row (the batch resolves it
+	// over the caller's own ids, so a shared album can never land it).
 	const check = page.locator('.tile__check').first();
 	await check.click();
 	const bar = page.getByRole('toolbar');
@@ -1106,7 +1106,7 @@ test('scene 8: the member signs in, the creation guard refuses them, and the sha
 	await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
 	await expect(bar.getByRole('button', { name: 'Clear selection', exact: true })).toBeVisible();
 	await expect(bar.locator('button')).toHaveCount(2);
-	for (const label of ['Trash', 'Hide', 'Unhide', 'Restore']) {
+	for (const label of ['Trash', 'Archive', 'Unarchive', 'Restore']) {
 		await expect(bar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 	}
 
@@ -1176,7 +1176,7 @@ test.describe('the member viewer scenes', () => {
 		await expect(page.getByRole('link', { name: 'Download the original' })).toBeVisible();
 		const favorite = page.getByRole('button', { name: 'Favorite', exact: true });
 		await expect(favorite).toBeVisible();
-		for (const label of ['Edit', 'Hide', 'Unhide', 'Trash', 'Restore', 'Delete permanently']) {
+		for (const label of ['Edit', 'Archive', 'Unarchive', 'Trash', 'Restore', 'Delete permanently']) {
 			// The owner-only writes never render in either surface: no
 			// trash/restore in the BAR (the drawer never carried a
 			// curation button since the rework), no description edit.
@@ -1394,7 +1394,7 @@ test.describe('the writable source scenes', () => {
 		const bar = page.getByRole('toolbar', { name: '1 selected' });
 		await expect(bar).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Trash', exact: true })).toBeVisible();
-		for (const label of ['Favorite', 'Unfavorite', 'Hide', 'Unhide', 'Restore', 'Add tag']) {
+		for (const label of ['Favorite', 'Unfavorite', 'Archive', 'Unarchive', 'Restore', 'Add tag']) {
 			await expect(bar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
 		}
 
@@ -1461,6 +1461,70 @@ test.describe('the writable source scenes', () => {
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos');
+	});
+
+	test('scene 13c: the archive empties the timeline, keeps the album member, and the album wall unarchives it', async ({
+		page
+	}) => {
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
+
+		// Archive one member through the batch endpoint (the same write
+		// the timeline's bar runs): the family flows lose the row, the
+		// album keeps it -- the container rule. The album read names
+		// the member's id.
+		const albumRead = await page.request.get(`/api/v1/albums/${rwAlbumId}`);
+		expect(albumRead.status()).toBe(200);
+		const albumBody = (await albumRead.json()) as {
+			items?: Array<{ assetId?: string; asset?: { originalFilename?: string } }>;
+		};
+		const memberId = (albumBody.items ?? []).find(
+			(item) => item.asset?.originalFilename === PHOTO_RW_A_NAME
+		)?.assetId;
+		expect(memberId).toBeTruthy();
+		const archived = await page.request.post('/api/v1/assets/batch', {
+			data: { action: 'hide', ids: [memberId] }
+		});
+		expect(archived.status()).toBe(200);
+		expect(((await archived.json()) as { affected?: number }).affected).toBe(1);
+
+		// The archived view is where the row lives while archived (the
+		// family flows exclude it; this album is the excluded creation,
+		// so the archived view is the flow-side evidence).
+		const archivedPage = await page.request.get('/api/v1/assets/archived');
+		expect(archivedPage.status()).toBe(200);
+		const archivedBody = (await archivedPage.json()) as {
+			items?: Array<{ originalFilename?: string }>;
+		};
+		expect((archivedBody.items ?? []).map((item) => item.originalFilename)).toContain(PHOTO_RW_A_NAME);
+
+		// The album's own wall keeps the member (the reference
+		// container) and its count with it.
+		await page.reload();
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos');
+
+		// The container's unarchive entry: the button renders for the
+		// archived selection alone, and the landing confirms.
+		await page.getByRole('checkbox', { name: `Select: ${PHOTO_RW_A_NAME}`, exact: true }).click();
+		const bar = page.getByRole('toolbar', { name: '1 selected' });
+		await expect(bar).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Unarchive', exact: true })).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Archive', exact: true })).toHaveCount(0);
+		await bar.getByRole('button', { name: 'Unarchive', exact: true }).click();
+		await expect(page.getByText('Unarchived 1 photo.')).toBeVisible();
+		// The container keeps the tile (unarchiving ends no album
+		// membership), and the row leaves the archived view -- it is
+		// back in the family flows.
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect
+			.poll(async () => {
+				const fresh = await page.request.get('/api/v1/assets/archived');
+				expect(fresh.status()).toBe(200);
+				const body = (await fresh.json()) as { items?: Array<{ originalFilename?: string }> };
+				return (body.items ?? []).some((item) => item.originalFilename === PHOTO_RW_A_NAME);
+			})
+			.toBe(false);
 	});
 
 	test('scene 13b: the folder sync follows the folder — a dropped photo appears, a removed one leaves', async ({

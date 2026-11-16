@@ -289,7 +289,7 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "people-grace@example.com")
 	env.insertPeopleModel(t)
 
-	// The admin's assets: two live ones, one trashed, one hidden.
+	// The admin's assets: two live ones, one trashed, one archived.
 	aA1 := fixturePeopleAssetID("01")
 	aA2 := fixturePeopleAssetID("02")
 	aTrash := fixturePeopleAssetID("03")
@@ -303,7 +303,7 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 
 	// One global cluster: the representative fA, a stronger face fB,
 	// a score tie fC (higher id), Grace's own face fD, and faces on
-	// the caller's trashed and hidden assets.
+	// the caller's trashed and archived assets.
 	fA := fixturePeopleFaceID("01") // representative, on aA1, 0.90
 	fB := fixturePeopleFaceID("02") // on aA2, 0.95
 	fC := fixturePeopleFaceID("03") // on aA1, 0.90 (tie with fA, higher id)
@@ -392,7 +392,7 @@ func TestPeopleCallerScopedCounts(t *testing.T) {
 			t.Errorf("avatarFaceId = %v, want null on a fresh cluster", detail.AvatarFaceId)
 		}
 		// The admin sees fB (0.95) then the 0.90 tie pair in face id
-		// order; the foreign face and the trashed/hidden-asset faces
+		// order; the foreign face and the trashed/archived-asset faces
 		// never appear.
 		wantFaces := []uuid.UUID{fB, fA, fC}
 		if len(detail.Faces) != len(wantFaces) {

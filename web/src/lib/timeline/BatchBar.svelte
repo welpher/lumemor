@@ -33,7 +33,7 @@
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Minus from '@lucide/svelte/icons/minus';
 	import Star from '@lucide/svelte/icons/star';
-	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Archive from '@lucide/svelte/icons/archive';
 	import Eye from '@lucide/svelte/icons/eye';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
@@ -53,9 +53,19 @@
 		 * ('favorite' names the favorite/unfavorite toggle). The
 		 * timeline passes nothing and gets every action; the curated
 		 * walls pass the subset that their view makes sense of
-		 * (unfavorite on favorites, unhide on hidden).
+		 * (unfavorite on favorites, unhide on archived).
 		 */
 		actions?: readonly BatchAction[];
+		/**
+		 * Whether the selection holds an archived tile. The
+		 * unarchive button renders only then: a family-flow wall
+		 * never checks an archived row (its bar has no unarchive
+		 * entry), the archived wall's rows are archived by
+		 * construction, and the album wall shows the container's
+		 * unarchive entry exactly when the owner checked an archived
+		 * member.
+		 */
+		archivedSelected?: boolean;
 		/**
 		 * Open the add-tag dialog over the current selection (the
 		 * timeline's bar offers it; the curated walls do not). The tag
@@ -91,6 +101,7 @@
 		errorKey,
 		busy,
 		actions,
+		archivedSelected = false,
 		onaddtag,
 		onaddmemory,
 		onremovememory,
@@ -99,7 +110,7 @@
 	}: Props = $props();
 
 	// The default is the full set of the bar's buttons; a caller's
-	// subset keeps its order (the toggle, hide, unhide, trash,
+	// subset keeps its order (the toggle, the archive pair, trash,
 	// restore -- the timeline's order).
 	const shown = $derived(actions ?? ['favorite', 'hide', 'unhide', 'trash', 'restore']);
 
@@ -169,23 +180,23 @@
 		{/if}
 		{#if offers('hide')}
 			<IconButton
-				class="batchbar__action batchbar__action--hide"
+				class="batchbar__action batchbar__action--archive"
 				variant="ghost"
 				disabled={busy}
-				aria-label={$_('action_hide')}
-				title={$_('action_hide')}
+				aria-label={$_('asset_archive')}
+				title={$_('asset_archive')}
 				onclick={() => onaction('hide')}
 			>
-				<EyeOff size={20} aria-hidden="true" />
+				<Archive size={20} aria-hidden="true" />
 			</IconButton>
 		{/if}
-		{#if offers('unhide')}
+		{#if offers('unhide') && archivedSelected}
 			<IconButton
-				class="batchbar__action batchbar__action--unhide"
+				class="batchbar__action batchbar__action--unarchive"
 				variant="ghost"
 				disabled={busy}
-				aria-label={$_('action_unhide')}
-				title={$_('action_unhide')}
+				aria-label={$_('asset_unarchive')}
+				title={$_('asset_unarchive')}
 				onclick={() => onaction('unhide')}
 			>
 				<Eye size={20} aria-hidden="true" />

@@ -11,19 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listFavoriteAssets = `-- name: ListFavoriteAssets :many
-
+const listArchivedAssets = `-- name: ListArchivedAssets :many
 SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon, a.motion_extracted, a.live_photo_cid,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
        ) AS is_favorite
 FROM assets a
-JOIN user_favorites f ON f.asset_id = a.id AND f.user_id = $1
-WHERE a.deleted_at IS NULL
-  AND a.is_hidden = false
+WHERE a.owner_id = $1
+  AND a.is_hidden = true
+  AND a.deleted_at IS NULL
   AND a.is_component = false
-  AND caller_asset_visible($1, a.id)
   AND (
       $2::timestamptz IS NULL
       OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
@@ -32,41 +30,29 @@ ORDER BY a.taken_at DESC, a.id DESC
 LIMIT $4
 `
 
-type ListFavoriteAssetsParams struct {
+type ListArchivedAssetsParams struct {
 	UserID        pgtype.UUID        `json:"user_id"`
 	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
 	CursorID      pgtype.UUID        `json:"cursor_id"`
 	LimitCount    int32              `json:"limit_count"`
 }
 
-type ListFavoriteAssetsRow struct {
+type ListArchivedAssetsRow struct {
 	Asset      Asset `json:"asset"`
 	IsFavorite bool  `json:"is_favorite"`
 }
 
-// Favorites and hidden view queries: the read side of
-// the two curated views. Both answer TimelineItem lists in the
-// timeline's ordering and keyset pagination, so both compute the
-// per-user is_favorite flag the timeline items carry (the EXISTS
-// form is the same computation the timeline queries use, evaluated
-// for the requesting user). Both filter to the live view the same
-// way: trashed rows, and the component video rows of Live Photos,
-// never appear -- the two views differ only in which assets they
-// select (the caller's favorites rows vs the caller's own hidden
-// rows).
-// The favorites view: the caller's favorites rows joined to the live
-// caller-visible assets behind them, newest capture first. The
-// favorites row is the selection; the asset's state is the filter --
-// a favorited asset that was hidden or trashed leaves the view (it
-// returns with the unhide or the restore, the favorite row
-// untouched) -- and the caller-visible union is the second filter
-// : a sharee's favorites of shared-album assets appear
-// here, and a revoked share removes the assets while the favorite
-// row survives. is_favorite is true by construction here (the join
-// selected the row); it is computed anyway so the column carries
-// the same meaning as in the timeline queries.
-func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]ListFavoriteAssetsRow, error) {
-	rows, err := q.db.Query(ctx, listFavoriteAssets,
+// The archived view: the caller's own rows whose archive switch is
+// on, untrashed ones only -- a trashed asset stays in the trash view
+// until restored or expired, and a restored one returns here still
+// archived (the archive survived the trash, exactly like a favorite
+// did). Component video rows never appear (the Live Photo pair is
+// represented by its photo, whose is_hidden carries the pair's
+// state). is_favorite still reports the caller's favorites state of
+// an archived asset: the favorites view filtered the row out, the
+// flag did not change.
+func (q *Queries) ListArchivedAssets(ctx context.Context, arg ListArchivedAssetsParams) ([]ListArchivedAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listArchivedAssets,
 		arg.UserID,
 		arg.CursorTakenAt,
 		arg.CursorID,
@@ -76,9 +62,9 @@ func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssets
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListFavoriteAssetsRow
+	var items []ListArchivedAssetsRow
 	for rows.Next() {
-		var i ListFavoriteAssetsRow
+		var i ListArchivedAssetsRow
 		if err := rows.Scan(
 			&i.Asset.ID,
 			&i.Asset.OwnerID,
@@ -127,17 +113,19 @@ func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssets
 	return items, nil
 }
 
-const listHiddenAssets = `-- name: ListHiddenAssets :many
+const listFavoriteAssets = `-- name: ListFavoriteAssets :many
+
 SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon, a.motion_extracted, a.live_photo_cid,
        EXISTS (
            SELECT 1 FROM user_favorites uf
            WHERE uf.asset_id = a.id AND uf.user_id = $1
        ) AS is_favorite
 FROM assets a
-WHERE a.owner_id = $1
-  AND a.is_hidden = true
-  AND a.deleted_at IS NULL
+JOIN user_favorites f ON f.asset_id = a.id AND f.user_id = $1
+WHERE a.deleted_at IS NULL
+  AND a.is_hidden = false
   AND a.is_component = false
+  AND caller_asset_visible($1, a.id)
   AND (
       $2::timestamptz IS NULL
       OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
@@ -146,29 +134,41 @@ ORDER BY a.taken_at DESC, a.id DESC
 LIMIT $4
 `
 
-type ListHiddenAssetsParams struct {
+type ListFavoriteAssetsParams struct {
 	UserID        pgtype.UUID        `json:"user_id"`
 	CursorTakenAt pgtype.Timestamptz `json:"cursor_taken_at"`
 	CursorID      pgtype.UUID        `json:"cursor_id"`
 	LimitCount    int32              `json:"limit_count"`
 }
 
-type ListHiddenAssetsRow struct {
+type ListFavoriteAssetsRow struct {
 	Asset      Asset `json:"asset"`
 	IsFavorite bool  `json:"is_favorite"`
 }
 
-// The hidden view: the caller's own rows whose owner-level
-// visibility switch is off, live ones only -- a trashed asset stays
-// in the trash view until restored or expired, and a restored one
-// returns here still hidden (the hide survived the trash, exactly
-// like a favorite did). Component video rows never appear (the Live
-// Photo pair is represented by its photo, whose is_hidden carries
-// the pair's visibility). is_favorite still reports the caller's
-// favorites state of a hidden asset: the favorites view filtered the
-// row out, the flag did not change.
-func (q *Queries) ListHiddenAssets(ctx context.Context, arg ListHiddenAssetsParams) ([]ListHiddenAssetsRow, error) {
-	rows, err := q.db.Query(ctx, listHiddenAssets,
+// Favorites and archived view queries: the read side of
+// the two curated views. Both answer TimelineItem lists in the
+// timeline's ordering and keyset pagination, so both compute the
+// per-user is_favorite flag the timeline items carry (the EXISTS
+// form is the same computation the timeline queries use, evaluated
+// for the requesting user). Both filter to the live view the same
+// way: trashed rows, and the component video rows of Live Photos,
+// never appear -- the two views differ only in which assets they
+// select (the caller's favorites rows vs the caller's own archived
+// rows -- is_hidden is the archive switch's column).
+// The favorites view: the caller's favorites rows joined to the live
+// caller-visible assets behind them, newest capture first. The
+// favorites row is the selection; the asset's state is the filter --
+// a favorited asset that was archived or trashed leaves the view (it
+// returns with the unarchive or the restore, the favorite row
+// untouched) -- and the caller-visible union is the second filter
+// : a sharee's favorites of shared-album assets appear
+// here, and a revoked share removes the assets while the favorite
+// row survives. is_favorite is true by construction here (the join
+// selected the row); it is computed anyway so the column carries
+// the same meaning as in the timeline queries.
+func (q *Queries) ListFavoriteAssets(ctx context.Context, arg ListFavoriteAssetsParams) ([]ListFavoriteAssetsRow, error) {
+	rows, err := q.db.Query(ctx, listFavoriteAssets,
 		arg.UserID,
 		arg.CursorTakenAt,
 		arg.CursorID,
@@ -178,9 +178,9 @@ func (q *Queries) ListHiddenAssets(ctx context.Context, arg ListHiddenAssetsPara
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListHiddenAssetsRow
+	var items []ListFavoriteAssetsRow
 	for rows.Next() {
-		var i ListHiddenAssetsRow
+		var i ListFavoriteAssetsRow
 		if err := rows.Scan(
 			&i.Asset.ID,
 			&i.Asset.OwnerID,

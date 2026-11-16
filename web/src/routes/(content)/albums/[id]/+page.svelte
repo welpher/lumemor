@@ -65,15 +65,20 @@
 	//   cover, the audience, the remove) is absent, never greyed.
 	// - THE WALL'S ACTION SUBSET: the owner of a DELETABLE directory
 	//   album (owner AND writable source AND the deletability switch
-	//   -- computed server-side as `deletable`, pure data) curates a
-	//   delete-only selection; a member curates the per-user
-	//   favorite toggle alone. The hide switch is the owner's own
-	//   row, and the batch resolves it against the caller's OWNED
-	//   ids -- over another account's album it resolves nothing --
-	//   so it never renders here: the bar offers what the write can
-	//   actually land. The per-user favorite is the arm that
-	//   resolves the caller's VISIBLE ids, so it lands for a member
-	//   like it does on the aggregate timeline.
+	//   -- computed server-side as `deletable`, pure data) curates
+	//   the unarchive and delete pair; a member curates the per-user
+	//   favorite toggle alone. An album is a reference container: it
+	//   keeps its archived members, so the wall shows them and the
+	//   owner unarchives them right here -- the unarchive button
+	//   renders exactly when the checked rows hold an archived
+	//   member (the wall's own gate). Archiving from the album is
+	//   not offered: the archive switch is the owner's own row, and
+	//   the batch resolves it against the caller's OWNED ids --
+	//   over another account's album it resolves nothing -- while
+	//   the container's job is the other direction. The per-user
+	//   favorite is the arm that resolves the caller's VISIBLE ids,
+	//   so it lands for a member like it does on the aggregate
+	//   timeline.
 	// - Every write adopts its own response (the property patch
 	//   carries the wall card after the edit, the preference
 	//   carries the stored switch) or converges through the detail
@@ -219,7 +224,7 @@
 	// (the per-user arm the batch resolves over the caller's visible
 	// ids). The arrays are constants so the bar's subset keeps a
 	// stable identity across re-renders.
-	const OWNER_WALL_ACTIONS: readonly BatchAction[] = ['trash'];
+	const OWNER_WALL_ACTIONS: readonly BatchAction[] = ['unhide', 'trash'];
 	const MEMBER_WALL_ACTIONS: readonly BatchAction[] = ['favorite'];
 	const wallCuration = $derived.by<{ actions: readonly BatchAction[] } | undefined>(() => {
 		if (detail === null) {

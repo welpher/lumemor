@@ -7,7 +7,7 @@
 	// open, the pick-then-add write, the inline create-then-add
 	// write, the honest counts-only report -- because four pages
 	// compose this one flow (the timeline, the search, the favorites
-	// and hidden walls), and a component owning its walk and writes
+	// and archived walls), and a component owning its walk and writes
 	// is the curated-wall wrapper's precedent.
 	//
 	// THE ROWS ARE STATE SELECTORS (the audience picker's face):
