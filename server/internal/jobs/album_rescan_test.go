@@ -1,13 +1,15 @@
-// The directory rescan tests: the three arms of the
-// diff through the real worker and queue -- the add arm's
-// reference-style ingest (external row, real path, the existing
-// pipeline's jobs), the orphan arm's pinned mark (deleted_at, the
-// membership row staying, no revival), the change arm's snapshot
-// re-run (checksum re-landed, the pipeline re-enqueued) -- plus the
+// The directory rescan tests: the arms of the diff through the
+// real worker and queue -- the add arm's reference-style ingest
+// (external row at its own position, real path, the pipeline's
+// jobs), the orphan arm's pinned mark (deleted_at, the membership
+// row staying, the position reviving on the file's return), the
+// change arm's snapshot re-run (checksum re-landed, the pipeline
+// re-enqueued), and the convergence arm (a borrowed same-content
+// membership swaps for the album's own position row) -- plus the
 // no-symlink walk and the idempotent re-scan (a second run over an
 // unchanged directory writes nothing and publishes nothing). The
-// duplicate arms pin the owner+checksum dedup: a live duplicate
-// gains the membership, a trashed duplicate stays in the trash.
+// duplicates test pins the position key: same content at two
+// positions is two rows, never a link onto the upload.
 package jobs
 
 import (
@@ -589,47 +591,238 @@ func TestAlbumRescanDuplicates(t *testing.T) {
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 	e.waitCreationScan(t, album)
 
-	// The live duplicate: no new row, the existing row gained the
-	// membership.
-	if _, ok := e.rescanAssetByPath(t, e.ownerID, filepath.Join(source, "same-content.jpg")); ok {
-		t.Error("the add arm created a second row of content the owner already holds, want the uniqueness respected")
+	// The position model's first promise: content the owner uploaded
+	// lands its OWN row at its own path -- the album must be able to
+	// delete its copy through the application, which a borrowed
+	// upload row could not do.
+	samePath := filepath.Join(source, "same-content.jpg")
+	positionRow, ok := e.rescanAssetByPath(t, e.ownerID, samePath)
+	if !ok {
+		t.Fatal("the add arm created no row for the uploaded content, want an external position row")
+	}
+	if positionRow.storageKind != "external" {
+		t.Errorf("the walked copy's storage kind = %q, want external", positionRow.storageKind)
+	}
+	if positionRow.id == uuid.UUID(uploaded.Id) {
+		t.Error("the walked copy IS the upload row, want its own position row")
+	}
+	if got, want := positionRow.checksum, uploaded.Checksum; got != want {
+		t.Errorf("the position row's checksum = %q, want the same content %q", got, want)
 	}
 	var members int
 	if err := e.pool.QueryRow(context.Background(),
 		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
-		pgUUID(album), pgUUID(uploaded.Id)).Scan(&members); err != nil {
-		t.Fatalf("count the live duplicate's membership: %v", err)
+		pgUUID(album), pgUUID(positionRow.id)).Scan(&members); err != nil {
+		t.Fatalf("count the position row's membership: %v", err)
 	}
 	if members != 1 {
-		t.Errorf("the live duplicate's membership rows = %d, want the existing row linked in", members)
+		t.Errorf("the position row's membership rows = %d, want 1", members)
 	}
-	// The album's story grew without a new row: the one
-	// items-changed event, no asset.added for a duplicate.
-	if got := countEvents(e.bus, "asset.added"); got != 0 {
-		t.Errorf("asset.added events = %d, want 0 (no new row landed)", got)
-	}
-	if got := countEvents(e.bus, "album.items-changed"); got != 1 {
-		t.Errorf("album.items-changed events = %d, want the one membership growth", got)
-	}
-
-	// The trashed duplicate: left alone -- no membership, no row, no
-	// revival.
-	var trashedMembers int
+	// The upload keeps its sync membership and never joins the
+	// directory album.
+	var uploadMembers int
 	if err := e.pool.QueryRow(context.Background(),
 		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
-		pgUUID(album), pgUUID(trashedUpload.Id)).Scan(&trashedMembers); err != nil {
-		t.Fatalf("count the trashed duplicate's membership: %v", err)
+		pgUUID(album), pgUUID(uploaded.Id)).Scan(&uploadMembers); err != nil {
+		t.Fatalf("count the upload's membership in the directory album: %v", err)
 	}
-	if trashedMembers != 0 {
-		t.Errorf("the trashed duplicate's membership rows = %d, want it left alone (no revival)", trashedMembers)
+	if uploadMembers != 0 {
+		t.Errorf("the upload's membership rows in the directory album = %d, want 0 (its own copy mirrors the folder)", uploadMembers)
+	}
+	// The album's story grew with a new row: one asset.added and one
+	// items-changed.
+	if got := countEvents(e.bus, "asset.added"); got != 2 {
+		t.Errorf("asset.added events = %d, want 2 (both walked files landed rows)", got)
+	}
+	if got := countEvents(e.bus, "album.items-changed"); got != 1 {
+		t.Errorf("album.items-changed events = %d, want 1 (one growth event per run)", got)
+	}
+
+	// The trashed upload's content is scanned as its own position row
+	// too: the album references the family's file, never the trashed
+	// row (the trash keeps exactly what the owner put there).
+	trashedPath := filepath.Join(source, "trashed-content.jpg")
+	trashedPosition, ok := e.rescanAssetByPath(t, e.ownerID, trashedPath)
+	if !ok {
+		t.Fatal("the add arm created no row for the trashed content, want an external position row")
+	}
+	if trashedPosition.id == uuid.UUID(trashedUpload.Id) {
+		t.Error("the walked copy IS the trashed upload row, want its own position row")
+	}
+	if trashedPosition.deletedAt.Valid {
+		t.Error("the trashed content's position row is dead, want a live source row")
 	}
 	var stillTrashed pgtype.Timestamptz
 	if err := e.pool.QueryRow(context.Background(),
 		"SELECT deleted_at FROM assets WHERE id = $1", pgUUID(trashedUpload.Id)).Scan(&stillTrashed); err != nil {
-		t.Fatalf("load the trashed duplicate's row: %v", err)
+		t.Fatalf("load the trashed upload's row: %v", err)
 	}
 	if !stillTrashed.Valid {
-		t.Error("the trashed duplicate was revived by the scan, want it staying in the trash")
+		t.Error("the trashed upload was revived by the scan, want it staying in the trash")
+	}
+}
+
+// TestAlbumRescanConvergesBorrowedMemberships pins the convergence
+// arm: an album that still holds a borrowed same-content membership
+// (the pre-fork scan's dedup link -- here, the upload linked into the
+// directory album exactly as the old add arm did) swaps it for the
+// album's own position row on the next scan, while the blob row keeps
+// its sync membership.
+func TestAlbumRescanConvergesBorrowedMemberships(t *testing.T) {
+	e := newEnv(t)
+
+	golden := goldenFixture(t)
+	rec := e.postUpload(t, map[string]string{
+		"deviceAssetId":   "device-rescan-converge-1",
+		"fileName":        "golden.jpg",
+		"deviceCreatedAt": "2020-05-05T09:00:00Z",
+	}, []uploadFileFixture{
+		{field: "photo", name: "golden.jpg", content: golden},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("the seeding upload status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	var uploaded apigen.AssetResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &uploaded); err != nil {
+		t.Fatalf("decode the upload body: %v", err)
+	}
+
+	root := t.TempDir()
+	source := filepath.Join(root, "family")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create the source directory: %v", err)
+	}
+	stamp := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	writeSourceFile(t, filepath.Join(source, "same-content.jpg"), golden, stamp)
+
+	album := e.createDirectoryAlbum(t, "Family archive", source)
+
+	// The pre-fork state, staged directly: the upload borrowed into
+	// the directory album, and no position row exists yet.
+	var syncAlbum uuid.UUID
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT id FROM albums WHERE owner_id = $1 AND type = 'sync'", pgUUID(e.ownerID)).Scan(&syncAlbum); err != nil {
+		t.Fatalf("load the sync album: %v", err)
+	}
+	if _, err := e.pool.Exec(context.Background(),
+		"INSERT INTO album_items (album_id, asset_id, added_by) VALUES ($1, $2, $3)",
+		pgUUID(album), uploaded.Id, pgUUID(e.ownerID)); err != nil {
+		t.Fatalf("stage the borrowed membership: %v", err)
+	}
+	e.waitCreationScan(t, album)
+
+	// The convergence: the album's membership names its own position
+	// row now, and the borrowed blob membership is gone.
+	positionRow, ok := e.rescanAssetByPath(t, e.ownerID, filepath.Join(source, "same-content.jpg"))
+	if !ok {
+		t.Fatal("the scan created no position row")
+	}
+	var borrowed int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+		pgUUID(album), uploaded.Id).Scan(&borrowed); err != nil {
+		t.Fatalf("count the borrowed membership: %v", err)
+	}
+	if borrowed != 0 {
+		t.Errorf("the borrowed membership rows = %d, want the convergence to drop them", borrowed)
+	}
+	var own int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+		pgUUID(album), pgUUID(positionRow.id)).Scan(&own); err != nil {
+		t.Fatalf("count the position membership: %v", err)
+	}
+	if own != 1 {
+		t.Errorf("the position row's membership rows = %d, want 1", own)
+	}
+	// The blob row keeps its sync membership: the upload is still an
+	// upload.
+	var syncMembers int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+		pgUUID(syncAlbum), uploaded.Id).Scan(&syncMembers); err != nil {
+		t.Fatalf("count the sync membership: %v", err)
+	}
+	if syncMembers != 1 {
+		t.Errorf("the blob row's sync membership rows = %d, want 1 (the upload keeps its home)", syncMembers)
+	}
+
+	// Idempotence: the second scan deletes nothing and stays green.
+	membersBefore := e.albumMemberCount(t, album)
+	run := e.rescan(t, album)
+	if state := e.waitRescanFinished(t, run); state != "succeeded" {
+		t.Fatalf("the re-scan closed %s, want succeeded", state)
+	}
+	if got := e.albumMemberCount(t, album); got != membersBefore {
+		t.Errorf("the re-scan's membership rows = %d, want %d unchanged", got, membersBefore)
+	}
+}
+
+// TestAlbumRescanRevivesReturningFile pins the position key's third
+// state: a file that vanishes (the orphan mark) and returns to the
+// same path revives its own row -- the position identity is the
+// file's, not the content's -- while the membership row never left.
+func TestAlbumRescanRevivesReturningFile(t *testing.T) {
+	e := newEnv(t)
+
+	root := t.TempDir()
+	source := filepath.Join(root, "family")
+	if err := os.MkdirAll(source, 0o755); err != nil {
+		t.Fatalf("create the source directory: %v", err)
+	}
+	stamp := time.Date(2026, 6, 4, 10, 0, 0, 0, time.UTC)
+	photo := filepath.Join(source, "keeper.jpg")
+	writeSourceFile(t, photo, jpegBytes(t), stamp)
+
+	album := e.createDirectoryAlbum(t, "Family archive", source)
+	e.waitCreationScan(t, album)
+	before, ok := e.rescanAssetByPath(t, e.ownerID, photo)
+	if !ok {
+		t.Fatal("the first scan created no row")
+	}
+
+	// The file leaves: the orphan mark lands on the row.
+	if err := os.Remove(photo); err != nil {
+		t.Fatalf("remove the source file: %v", err)
+	}
+	run := e.rescan(t, album)
+	if state := e.waitRescanFinished(t, run); state != "succeeded" {
+		t.Fatalf("the vanish scan closed %s, want succeeded", state)
+	}
+	gone, ok := e.rescanAssetByPath(t, e.ownerID, photo)
+	if !ok || !gone.deletedAt.Valid {
+		t.Fatal("the vanish arm marked nothing, want the row dead")
+	}
+
+	// The file returns with NEW bytes at the same path: the row
+	// revives carrying the new content (the position is the file's).
+	changed := append(jpegBytes(t), []byte("revived")...)
+	writeSourceFile(t, photo, changed, stamp.Add(6*time.Hour))
+	run = e.rescan(t, album)
+	if state := e.waitRescanFinished(t, run); state != "succeeded" {
+		t.Fatalf("the return scan closed %s, want succeeded", state)
+	}
+	back, ok := e.rescanAssetByPath(t, e.ownerID, photo)
+	if !ok {
+		t.Fatal("the returning file has no row")
+	}
+	if back.id != before.id {
+		t.Errorf("the returning file's row = %s, want the position's own row %s revived", back.id, before.id)
+	}
+	if back.deletedAt.Valid {
+		t.Error("the returning file's row is still dead, want it revived")
+	}
+	if back.checksum == gone.checksum {
+		t.Error("the revived row kept the old checksum, want the file's current bytes")
+	}
+	var members int
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM album_items WHERE album_id = $1 AND asset_id = $2",
+		pgUUID(album), pgUUID(back.id)).Scan(&members); err != nil {
+		t.Fatalf("count the revived row's membership: %v", err)
+	}
+	if members != 1 {
+		t.Errorf("the revived row's membership rows = %d, want 1", members)
 	}
 }
 
