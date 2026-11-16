@@ -594,9 +594,14 @@
 	function boxClick(face: AssetFaceSummary): void {
 		// The edit mode's boxes are the editor's objects: a click
 		// selects the box instead of leaving the photo (the row's
-		// button and the box itself arm the same selection).
+		// button and the box itself arm the same selection). A drag's
+		// trailing click re-arms the already-selected box harmlessly
+		// -- the selection is the row button's toggle, never the
+		// box's (a drag must not clear what it just moved).
 		if (editFacesOpen) {
-			onboxedit(face);
+			if (boxEditFaceId !== face.id) {
+				onboxedit(face);
+			}
 			return;
 		}
 		if (face.clusterId !== null && face.label !== null) {
