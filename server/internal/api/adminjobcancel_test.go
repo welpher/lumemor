@@ -140,7 +140,7 @@ func TestListJobsCarriesTheRescanSubject(t *testing.T) {
 	owner := e.ownerID
 	albumID := uuid.MustParse("0192f8e9-7abe-9f0a-b1c2-3d4e5f6caba2")
 	if _, err := e.pool.Exec(context.Background(),
-		`INSERT INTO albums (id, owner_id, title, kind) VALUES ($1, $2, 'Family archive', 'directory')`,
+		`INSERT INTO albums (id, owner_id, title, type) VALUES ($1, $2, 'Family archive', 'directory')`,
 		pgUUID(albumID), pgUUID(owner)); err != nil {
 		t.Fatalf("seed the subject album: %v", err)
 	}
@@ -233,9 +233,9 @@ func TestModelParamsDomain(t *testing.T) {
 		`UPDATE instance_settings SET value = '{"autoDownload":true,"allowedHosts":["huggingface.co"],"mirrorBaseUrl":"","params":{"faceDetectMinScore":7,"faceRecognizeThreshold":"bad"}}' WHERE key = 'model_settings'`); err != nil {
 		t.Fatalf("corrupt the params row: %v", err)
 	}
-	settings, err := db.ModelSettingsOf(context.Background(), dbgen.New(env.pool))
-	if err != nil {
-		t.Fatalf("read the corrupt row: %v", err)
+	settings, corruptErr := db.ModelSettingsOf(context.Background(), dbgen.New(env.pool))
+	if corruptErr == nil {
+		t.Error("the corrupt row read answered no corruption error; the caller's log line would be silent")
 	}
 	if settings.Params.FaceDetectMinScore != 0.6 || settings.Params.FaceRecognizeThreshold != 0.55 {
 		t.Errorf("corrupt-row params = %v/%v, want the pipeline defaults 0.6/0.55",
