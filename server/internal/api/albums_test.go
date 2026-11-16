@@ -560,19 +560,23 @@ func TestAlbumWallOrdering(t *testing.T) {
 	}
 }
 
-// TestAlbumWallCoversAndCounts pins the wall's honesty: covers and
-// counts see live members only (hidden and trashed members excluded
-// everywhere; Live Photo component rows excluded like every live
-// view), and a pinned cover wins over the derived one. The pinned
-// sync card obeys the same honesty over its own members.
+// TestAlbumWallCoversAndCounts pins the wall's member rule: an album
+// is a reference container, so its counts and covers see its archived
+// members too (the archive removes an asset from the family flows,
+// never from the album that holds it), while a memory -- a
+// family-flow surface of its own -- drops them, and a trashed member
+// or a Live Photo component row counts nowhere. A pinned cover wins
+// over the derived one. The pinned sync card obeys the same container
+// rule over its own members.
 func TestAlbumWallCoversAndCounts(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	ownSync := env.syncAlbumIDOf(t, adminID)
 
-	// The sync album's own members: three live plus the three
-	// non-live newest of all -- the pinned card's count and derived
-	// cover must be exactly as honest as any album's.
+	// The sync album's own members: three live plus the archived
+	// member (a container member) and the two non-members (trashed,
+	// component) -- the pinned card's count and derived cover follow
+	// the container rule.
 	syncBase := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	syncLive := []uuid.UUID{
 		fixtureWallAssetID("51"),
@@ -601,9 +605,10 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		env.addTimelineItem(t, ownSync, row.id, adminID)
 	}
 
-	// The derived-cover album: the hidden, trashed and component
-	// members are the NEWEST -- an implementation that let any of them
-	// through would put them into the cover's head.
+	// The derived-cover album is a MEMORY (the memories boundary):
+	// its archived, trashed and component members are the NEWEST -- an
+	// implementation that let any of them through would put them into
+	// the cover's head.
 	derived := fixtureWallAlbumID("11")
 	env.insertWallAlbum(t, derived, adminID, "memory", "Derived cover", wallAlbumOpts{})
 	base := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
@@ -713,10 +718,11 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 		}
 	}
 
-	// The pinned sync card: the same honesty over its own members --
-	// three live count, the three live in the automatic group's
-	// sample (the non-live members are the newest of all and must
-	// lead nowhere).
+	// The pinned sync card: the same container rule over its own
+	// members -- the three live plus the archived member count (four
+	// members, three of them photos), and the automatic group samples
+	// exactly those four; the trashed and component rows are the
+	// newest of all and must lead nowhere.
 	syncAlbum, ok := byID[ownSync]
 	if !ok {
 		t.Fatalf("the caller's sync album is missing from the wall (got %v)", wall.Albums)
@@ -724,32 +730,39 @@ func TestAlbumWallCoversAndCounts(t *testing.T) {
 	if syncAlbum.Type != apigen.AlbumSummaryTypeSync {
 		t.Errorf("sync card type = %q, want sync", syncAlbum.Type)
 	}
-	if syncAlbum.ItemCount != 3 {
-		t.Errorf("sync card itemCount = %d, want 3 (the live members only)", syncAlbum.ItemCount)
+	if syncAlbum.ItemCount != 4 {
+		t.Errorf("sync card itemCount = %d, want 4 (the container members: live plus archived)", syncAlbum.ItemCount)
 	}
-	if syncAlbum.PhotoCount != 2 {
-		t.Errorf("sync card photoCount = %d, want 2 (the live members MINUS the video: "+
+	if syncAlbum.PhotoCount != 3 {
+		t.Errorf("sync card photoCount = %d, want 3 (the members MINUS the video: "+
 			"the card's image-glyph count says photos)", syncAlbum.PhotoCount)
 	}
-	if len(syncAlbum.CoverAssetIds) != len(syncLive) {
-		t.Fatalf("sync card coverAssetIds = %v, want the 3 live members %v",
-			syncAlbum.CoverAssetIds, syncLive)
+	if len(syncAlbum.CoverAssetIds) != 4 {
+		t.Fatalf("sync card coverAssetIds = %v, want the four container members", syncAlbum.CoverAssetIds)
 	}
-	syncGot := make(map[uuid.UUID]bool, len(syncLive))
+	syncContainer := make(map[uuid.UUID]bool, 4)
+	for _, id := range append(append([]uuid.UUID{}, syncLive...), fixtureWallAssetID("61")) {
+		syncContainer[id] = true
+	}
+	syncGot := make(map[uuid.UUID]bool, 4)
 	for _, raw := range syncAlbum.CoverAssetIds {
-		syncGot[uuid.UUID(raw)] = true
+		id := uuid.UUID(raw)
+		if !syncContainer[id] {
+			t.Errorf("sync card coverAssetIds = %v, want container members only", syncAlbum.CoverAssetIds)
+		}
+		syncGot[id] = true
 	}
-	for _, id := range syncLive {
+	for id := range syncContainer {
 		if !syncGot[id] {
 			t.Errorf("sync card coverAssetIds = %v, want %s among them", syncAlbum.CoverAssetIds, id)
 		}
 	}
 
 	// The sync album's own detail parts the two counts the same way:
-	// three live members, two of them photos.
+	// four members, three of them photos.
 	syncDetail := env.getAlbumDetail(t, env.cookie, ownSync, "")
-	if syncDetail.ItemCount != 3 || syncDetail.PhotoCount != 2 {
-		t.Errorf("sync detail itemCount/photoCount = %d/%d, want 3/2",
+	if syncDetail.ItemCount != 4 || syncDetail.PhotoCount != 3 {
+		t.Errorf("sync detail itemCount/photoCount = %d/%d, want 4/3",
 			syncDetail.ItemCount, syncDetail.PhotoCount)
 	}
 
@@ -992,10 +1005,17 @@ func TestSyncAlbumDetail(t *testing.T) {
 	graceSync := fixtureWallAlbumID("78")
 	env.insertWallAlbum(t, graceSync, graceID, "sync", "Sync", wallAlbumOpts{})
 
-	// Five live members plus the non-live newest of all: the count
-	// and the pages see the live ones only.
+	// Five live members plus the archived member (a container
+	// member) and the two non-members (trashed, component): the count
+	// and the pages carry the container's members.
 	base := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	wantOrder := make([]uuid.UUID, 0, 5)
+	// The walk's expectation: the archived member first (it is the
+	// newest container member), then the five live ones.
+	wantOrder := make([]uuid.UUID, 0, 6)
+	wantOrder = append(wantOrder, fixtureWallAssetID("75"))
+	env.insertTimelineAsset(t, fixtureWallAssetID("75"), adminID, base.Add(time.Duration(9)*time.Hour),
+		timelineAssetOpts{isHidden: true})
+	env.addTimelineItem(t, ownSync, fixtureWallAssetID("75"), adminID)
 	for i := 0; i < 5; i++ {
 		id := fixtureWallAssetID(fmt.Sprintf("7%d", i))
 		env.insertTimelineAsset(t, id, adminID, base.Add(time.Duration(5-i)*time.Hour), timelineAssetOpts{})
@@ -1006,7 +1026,6 @@ func TestSyncAlbumDetail(t *testing.T) {
 		id   uuid.UUID
 		opts timelineAssetOpts
 	}{
-		{fixtureWallAssetID("75"), timelineAssetOpts{isHidden: true}},
 		{fixtureWallAssetID("76"), timelineAssetOpts{deleted: true}},
 		{fixtureWallAssetID("77"), timelineAssetOpts{isComponent: true}},
 	} {
@@ -1034,8 +1053,8 @@ func TestSyncAlbumDetail(t *testing.T) {
 		if page.CallerRole != apigen.AlbumDetailCallerRoleOwner {
 			t.Errorf("detail callerRole = %q, want owner (the caller's own stream)", page.CallerRole)
 		}
-		if page.ItemCount != 5 {
-			t.Errorf("detail itemCount = %d, want 5 (the live members only)", page.ItemCount)
+		if page.ItemCount != 6 {
+			t.Errorf("detail itemCount = %d, want 6 (the container members: live plus archived)", page.ItemCount)
 		}
 		if page.InTimeline != nil {
 			t.Errorf("detail inTimeline = %v, want absent (the core stream is never excludable)", page.InTimeline)
@@ -1046,8 +1065,8 @@ func TestSyncAlbumDetail(t *testing.T) {
 			t.Errorf("detail shares = %v, want the owner's present empty list", page.Shares)
 		}
 
-		// The keyset walk: 5 live members at 2 per page.
-		seen := make([]uuid.UUID, 0, 5)
+		// The keyset walk: 6 container members at 2 per page.
+		seen := make([]uuid.UUID, 0, 6)
 		cursor := ""
 		pages := 0
 		for {
@@ -1064,7 +1083,7 @@ func TestSyncAlbumDetail(t *testing.T) {
 			cursor = *page.NextCursor
 		}
 		if pages != 3 {
-			t.Fatalf("walked %d pages, want 3 (5 items at 2 per page)", pages)
+			t.Fatalf("walked %d pages, want 3 (6 items at 2 per page)", pages)
 		}
 		if len(seen) != len(wantOrder) {
 			t.Fatalf("walked %d items, want %d", len(seen), len(wantOrder))
