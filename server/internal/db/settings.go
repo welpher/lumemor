@@ -569,33 +569,29 @@ func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, erro
 	// Unmarshal above keeps whatever the row carried -- including a
 	// NaN-shaped or negative entry the save endpoint's validation
 	// should have kept honest.
-	settings.Params.normalize()
+	if err := settings.Params.normalize(); err != nil {
+		return settings, err
+	}
 	return settings, nil
 }
 
 // normalize restores each param that sits outside its 0-1 domain (or
 // failed to decode as a number) to the pipeline's default, reporting
-// the first drift it repaired. The receiver form keeps the accessor's
+// the drift it repaired. The receiver form keeps the accessor's
 // corrupt-field discipline local to the params type.
 func (p *MlModelParams) normalize() error {
-	drift := func(value *float64, fallback float64) bool {
-		if err := checkUnit(*value); err != nil {
-			*value = fallback
-			return true
+	var corrupt error
+	if checkUnit(p.FaceDetectMinScore) != nil {
+		p.FaceDetectMinScore = MlModelParamsDefault.FaceDetectMinScore
+		corrupt = fmt.Errorf("db: instance setting %s params.faceDetectMinScore drifted outside the 0-1 domain; it answered the pipeline default", ModelSettingsKey)
+	}
+	if checkUnit(p.FaceRecognizeThreshold) != nil {
+		p.FaceRecognizeThreshold = MlModelParamsDefault.FaceRecognizeThreshold
+		if corrupt == nil {
+			corrupt = fmt.Errorf("db: instance setting %s params.faceRecognizeThreshold drifted outside the 0-1 domain; it answered the pipeline default", ModelSettingsKey)
 		}
-		return false
 	}
-	corrupt := false
-	if drift(&p.FaceDetectMinScore, MlModelParamsDefault.FaceDetectMinScore) {
-		corrupt = true
-	}
-	if drift(&p.FaceRecognizeThreshold, MlModelParamsDefault.FaceRecognizeThreshold) {
-		corrupt = true
-	}
-	if corrupt {
-		return fmt.Errorf("db: instance setting %s params drifted outside the 0-1 domain; the drifted knobs answered the pipeline defaults", ModelSettingsKey)
-	}
-	return nil
+	return corrupt
 }
 
 // checkUnit refuses a value outside the closed 0-1 domain (NaN
