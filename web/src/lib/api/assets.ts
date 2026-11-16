@@ -231,6 +231,9 @@ function detailFrom(body: unknown): AssetDetail | null {
 		if (album.callerRole !== 'owner' && album.callerRole !== 'viewer') {
 			return null;
 		}
+		if (typeof album.sourceWritable !== 'boolean') {
+			return null;
+		}
 	}
 	// The place face is required and nullable: a present value must
 	// carry the deep link's key and the display name.
