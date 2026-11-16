@@ -115,6 +115,14 @@ services:
       # other host untouched. Empty keeps the manifest's pinned
       # upstreams.
       LUMEMOR_MODELS_HF_MIRROR: ${LUMEMOR_MODELS_HF_MIRROR:-}
+      # Optional passthrough: the folder live sync's cadence -- how
+      # often the periodic directory-snapshot diff re-reads every
+      # directory album's source folder, so its wall follows the
+      # folder's adds, removes and changes. A Go duration ("90s");
+      # "0" turns the sweep off, and empty keeps the server's 60s
+      # default. The e2e harness shortens it (3s) so a scene observes
+      # the diff inside the test's own bounds.
+      LUMEMOR_FOLDER_SYNC_INTERVAL: ${LUMEMOR_FOLDER_SYNC_INTERVAL:-}
       # Optional passthrough: turn the scheduled release check off at
       # the deployment level (the test harness does, so no stack it
       # boots ever reaches the outside world). Unset or empty keeps the

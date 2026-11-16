@@ -110,6 +110,16 @@ type Config struct {
 	// and the queue wires its own dispatcher; the rescan tests inject
 	// fakes of the same contract.
 	RescanDispatch RescanDispatchFunc
+	// FolderSyncInterval is the folder live sync's cadence: the
+	// periodic directory-snapshot diff that keeps every directory
+	// album's wall converged with its folder. Zero means the default
+	// production window (60s); a negative value disables the periodic
+	// registration entirely (the tests' determinism, and the
+	// operator's off switch for a deployment that never references a
+	// folder). The deployment knob is LUMEMOR_FOLDER_SYNC_INTERVAL;
+	// the e2e harness shortens it so a scene observes the diff inside
+	// the test's own bounds.
+	FolderSyncInterval time.Duration
 	// Places is the in-memory place grid the metadata job's GPS step
 	// and the places re-resolution run resolve against, built once at
 	// boot from the baked GeoNames data (geodata.Prepare). Nil is the
@@ -141,6 +151,10 @@ type Queue struct {
 	// places is the in-memory place grid (the bake's centroids, built
 	// at boot); the places rerun enqueue refuses to start without it.
 	places *geodata.Index
+	// snapshots is the folder sync's baseline store, shared by the two
+	// halves that touch it: the rescan workers record what their walks
+	// saw, the periodic sweep compares against it.
+	snapshots *AlbumSnapshots
 	// logger is the queue's own diagnostics sink: the automatic model
 	// fill's policy read and the missing-weights lines land here.
 	logger *slog.Logger
@@ -279,12 +293,23 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		logger:  logger,
 		budget:  budget,
 	})
+	// The folder sync's baseline store: in memory, per process (see
+	// AlbumSnapshots), shared by the rescan workers that record a
+	// walk and the periodic sweep that compares against it.
+	snapshots := NewAlbumSnapshots()
 	rescanWorker := &AlbumRescanWorker{
-		pool:   cfg.Pool,
-		bus:    cfg.Bus,
-		logger: logger,
+		pool:      cfg.Pool,
+		bus:       cfg.Bus,
+		snapshots: snapshots,
+		logger:    logger,
 	}
 	river.AddWorker(workers, rescanWorker)
+	folderSyncWorker := &FolderSyncWorker{
+		pool:      cfg.Pool,
+		snapshots: snapshots,
+		logger:    logger,
+	}
+	river.AddWorker(workers, folderSyncWorker)
 	faceDetectWorker := &FaceDetectWorker{
 		pool:     cfg.Pool,
 		dataDir:  cfg.DataDir,
@@ -353,13 +378,21 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		// periodic registrations and separate workers on purpose:
 		// independent failure and retry, independent kinds and counts
 		// -- see retentionPeriodicJobs.
-		PeriodicJobs: periodicJobs(),
+		PeriodicJobs: periodicJobs(folderSyncCadence(cfg.FolderSyncInterval)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("jobs: create river client: %w", err)
 	}
 
-	queue := &Queue{client: client, pool: cfg.Pool, models: models, registry: registry, places: cfg.Places, logger: logger}
+	queue := &Queue{
+		client:    client,
+		pool:      cfg.Pool,
+		models:    models,
+		registry:  registry,
+		places:    cfg.Places,
+		snapshots: snapshots,
+		logger:    logger,
+	}
 
 	// Wire the ML readiness seam into the three pipeline workers: the
 	// dispatch is the queue's EnqueueMlJobs method value, and the
@@ -406,6 +439,11 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	} else {
 		rescanWorker.dispatch = queue.dispatchRescan
 	}
+	// The folder sync's enqueue: the periodic diff starts an album's
+	// scan through the queue's own enqueue (the job_runs row and the
+	// River job in one transaction), the same call the rescan endpoint
+	// makes. Wired before the client starts, like every other seam.
+	folderSyncWorker.enqueue = queue.EnqueueAlbumRescan
 
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)

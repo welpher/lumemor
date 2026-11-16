@@ -236,6 +236,47 @@ func (q *Queries) ListAlbumExternalMembers(ctx context.Context, albumID pgtype.U
 	return items, nil
 }
 
+const listDirectoryAlbums = `-- name: ListDirectoryAlbums :many
+SELECT id, root_path
+FROM albums
+WHERE type = 'directory'
+  AND root_path IS NOT NULL
+ORDER BY created_at, id
+`
+
+type ListDirectoryAlbumsRow struct {
+	ID       pgtype.UUID `json:"id"`
+	RootPath pgtype.Text `json:"root_path"`
+}
+
+// The folder sync's scope: every directory album the periodic
+// snapshot diff follows, with the root it walks. A directory album
+// IS a scan of the folder it references (the domain's own
+// definition), so "every directory album" and "every actively
+// tracked folder" are the same set -- there is no paused or
+// archived state for one to be in. The root arm keeps the walk
+// total: a row without a resolved path has nothing to compare and
+// is skipped by the query rather than by every caller.
+func (q *Queries) ListDirectoryAlbums(ctx context.Context) ([]ListDirectoryAlbumsRow, error) {
+	rows, err := q.db.Query(ctx, listDirectoryAlbums)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDirectoryAlbumsRow
+	for rows.Next() {
+		var i ListDirectoryAlbumsRow
+		if err := rows.Scan(&i.ID, &i.RootPath); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markExternalAssetVanished = `-- name: MarkExternalAssetVanished :execrows
 UPDATE assets SET
     deleted_at = now(),

@@ -163,6 +163,12 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 		ModelsManifest:  manifest,
 		MlRerunDispatch: rerunDispatch,
 		Places:          places,
+		// The folder live sync's periodic registration is off in the
+		// test environment: a tick enqueuing a second scan behind a
+		// test's own would make every count and event assertion a
+		// race. The folder sync's own tests drive RunFolderSync (or
+		// the worker) directly, on their own clock.
+		FolderSyncInterval: -1,
 	})
 	if err != nil {
 		t.Fatalf("start queue: %v", err)

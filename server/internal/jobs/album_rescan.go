@@ -138,7 +138,12 @@ type AlbumRescanWorker struct {
 	// wiring bug -- and the run closes failed rather than ingesting
 	// assets whose pipeline never starts.
 	dispatch RescanDispatchFunc
-	logger   *slog.Logger
+	// snapshots is the folder sync's baseline store: the run records
+	// the walk's own view of the source here, which is what the
+	// periodic diff compares against. Nil (a directly constructed
+	// worker) simply leaves the diff to its next convergence scan.
+	snapshots *AlbumSnapshots
+	logger    *slog.Logger
 }
 
 // Timeout is the worker's execution envelope; see albumRescanTimeout.
@@ -269,24 +274,10 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// whose bytes fail the sniff stays a unit and counts failed).
 	// WalkDir visits in lexical order, so the resolution order is
 	// deterministic and a retry's re-walk resolves the same units in
-	// the same sequence.
-	files := make([]string, 0, len(members))
-	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.Type()&fs.ModeSymlink != 0 {
-			return nil
-		}
-		if !d.Type().IsRegular() {
-			return nil
-		}
-		if _, known := storage.LookupUploadFormat(extensionOf(path)); !known {
-			return nil
-		}
-		files = append(files, path)
-		return nil
-	})
+	// the same sequence. The walk's stamps are the folder sync's
+	// comparison set as well, so the periodic diff and this scan can
+	// never disagree about what the folder holds.
+	files, err := walkSource(root)
 	if err != nil {
 		// An unreadable subtree (or a vanished root racing the
 		// guard above) fails the run: the diff would be a lie about
@@ -294,6 +285,15 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		w.logger.Error("the rescan walk failed", "job_run_id", jobRunID,
 			"album_id", albumID, "root", root, "error", err)
 		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+	}
+	// The folder sync's baseline, recorded at the walk's own moment
+	// and BEFORE any arm moves: a file that arrives (or changes) while
+	// the arms work is absent from this set, so the next tick sees it
+	// as a difference and enqueues the scan that resolves it. The
+	// conservative direction on purpose -- a redundant scan, never a
+	// missed file.
+	if w.snapshots != nil {
+		w.snapshots.Store(albumID, stampsOf(files))
 	}
 
 	// The sizing write: the enqueue-time total was the database's
@@ -304,8 +304,8 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// unchanged directory writes nothing to the run row either
 	// (beyond the run lifecycle's own transitions).
 	matched := 0
-	for _, path := range files {
-		if _, ok := members[path]; ok {
+	for _, file := range files {
+		if _, ok := members[file.path]; ok {
 			matched++
 		}
 	}
@@ -322,15 +322,16 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// The resolution. done counts resolved units (files and
 	// vanishings alike, the no-op matches included -- a unit the
 	// diff answered is work performed); failed counts the units the
-	// arms could not resolve. membershipGrown collects the add arm's
-	// story for the one album.items-changed the run publishes if
-	// any membership row landed; diffChanged collects whether the
-	// run wrote anything at all (the album's scan clock stamps only
-	// then -- the idempotence pin keeps an unchanged re-scan free
-	// of every write).
+	// arms could not resolve. liveSetChanged collects whether the
+	// album's LIVE membership moved at all -- the add arm's growth or
+	// the vanish arm's departure -- for the one album.items-changed
+	// the run publishes; diffChanged collects whether the run wrote
+	// anything at all (the album's scan clock stamps only then -- the
+	// idempotence pin keeps an unchanged re-scan free of every
+	// write).
 	resolvedUnits, done, failed := 0, 0, 0
 	lastEvent := time.Now()
-	membershipGrown := false
+	liveSetChanged := false
 	diffChanged := false
 	progress := func() {
 		if resolvedUnits%albumRescanProgressBatch != 0 {
@@ -349,7 +350,8 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		}
 	}
 
-	for _, path := range files {
+	for _, file := range files {
+		path := file.path
 		resolvedUnits++
 		info, err := os.Stat(path)
 		if err != nil {
@@ -394,7 +396,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		} else {
 			done++
 			if added {
-				membershipGrown = true
+				liveSetChanged = true
 				diffChanged = true
 			}
 		}
@@ -430,6 +432,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			// matches nothing and stays silent -- the batch surface's
 			// own event discipline, applied per arm.
 			diffChanged = true
+			liveSetChanged = true
 			w.bus.Publish("asset.trashed", map[string]string{
 				"assetId": member.id.String(),
 				"kind":    string(member.kind),
@@ -438,12 +441,18 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		progress()
 	}
 
-	// The album's story: one event when the add arm grew the
-	// membership (the membership write's own predicate, widened to
-	// both directions of the write). The vanish arm published
-	// nothing album-level -- the membership rows never changed, the
-	// live views' deleted_at filter is the whole story.
-	if membershipGrown {
+	// The album's story: one event when the album's LIVE membership
+	// moved in either direction -- the add arm's growth (a row landed
+	// or a live duplicate was linked) or the vanish arm's departure
+	// (the row is marked, the membership row stays, and the live
+	// views' deleted_at filter is what hides it). The vanish arm
+	// speaks at the album level too, because the held-open surfaces
+	// count MEMBERS, not rows: without this event an open album page
+	// would lose the tile to asset.trashed while its count kept the
+	// departed member until a manual reload. One event per run
+	// either way -- the payload is the album id and its owner, never
+	// state.
+	if liveSetChanged {
 		w.bus.Publish("album.items-changed", map[string]string{
 			"albumId": albumID.String(),
 			"userId":  owner.String(),
@@ -680,6 +689,70 @@ func (w *AlbumRescanWorker) closeRescan(ctx context.Context, jobRunID uuid.UUID,
 	}
 	w.bus.Publish("job.finished", jobEventPayload(jobRunID, AlbumRescanKind, total, done, failed, state))
 	return nil
+}
+
+// sourceFile is one walked candidate: the path the diff matches on,
+// and the size+mtime stamp the folder sync's baseline keeps. The
+// scan's arms re-stat the file at their own moment (the freshness
+// comparison and the change arm read the filesystem NOW); the
+// walk-time stamp is the diff's view of what the folder held when
+// the listing happened.
+type sourceFile struct {
+	path  string
+	size  int64
+	mtime time.Time
+}
+
+// walkSource lists one source root's candidate files in the walk's
+// lexical order: the scan's candidacy filter and the folder sync's
+// snapshot in one pass, so the periodic diff and the scan's own walk
+// can never disagree about which entries count. Symlinked entries are
+// skipped outright (files and directories alike -- the pin), and only
+// regular files whose extension sits in the media whitelist are
+// candidates: a README or a .DS_Store in the source is the family's
+// own noise, and its change must never wake a scan.
+func walkSource(root string) ([]sourceFile, error) {
+	files := make([]sourceFile, 0, 64)
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		if _, known := storage.LookupUploadFormat(extensionOf(path)); !known {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, sourceFile{
+			path:  path,
+			size:  info.Size(),
+			mtime: info.ModTime().Truncate(time.Microsecond),
+		})
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// stampsOf projects the walk's candidates onto the folder sync's
+// comparison set, keyed by path -- the identity both sides match on
+// (the album row stores the resolved root and the walk follows no
+// symlink, so plain path equality IS identity).
+func stampsOf(files []sourceFile) map[string]fileStamp {
+	stamps := make(map[string]fileStamp, len(files))
+	for _, file := range files {
+		stamps[file.path] = fileStamp{size: file.size, mtime: file.mtime}
+	}
+	return stamps
 }
 
 // extensionOf derives the canonical (lowercase, dotless) extension
