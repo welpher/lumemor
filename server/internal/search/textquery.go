@@ -101,7 +101,9 @@ func runTextQuery(ctx context.Context, tx pgx.Tx, caller uuid.UUID, filters Filt
 // best matched source's trigram similarity as its rank. The table
 // lives for the transaction; ON COMMIT DROP cleans it. The
 // relational sources (tags, album titles, person labels) are per-user
-// state: they probe the CALLER's rows only.
+// state: they probe the CALLER's rows only. The library representative
+// rides the domain like the scope carries it: a hidden twin's own text
+// never ranks a hit the wall would not show.
 func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, plain string) error {
 	_, err := tx.Exec(ctx, `
 		CREATE TEMP TABLE search_text_hits ON COMMIT DROP AS
@@ -149,6 +151,7 @@ func createTextHits(ctx context.Context, tx pgx.Tx, caller uuid.UUID, pattern, p
 		WHERE a.deleted_at IS NULL
 		  AND a.is_hidden = false
 		  AND a.is_component = false
+		  AND asset_library_representative(a.id)
 		  AND caller_asset_visible($1, a.id)
 		  AND (
 		      f_unaccent(a.original_filename) ILIKE $2

@@ -11,6 +11,55 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const convergeAlbumMembersToPositionRows = `-- name: ConvergeAlbumMembersToPositionRows :execrows
+DELETE FROM album_items ai
+USING assets member, assets pos, album_items pi
+WHERE ai.album_id = $1
+  AND ai.asset_id = member.id
+  AND member.owner_id = $2
+  AND pos.owner_id = member.owner_id
+  AND pos.checksum = member.checksum
+  AND pos.id <> member.id
+  AND pos.storage_kind = 'external'
+  AND pos.deleted_at IS NULL
+  AND pi.album_id = ai.album_id
+  AND pi.asset_id = pos.id
+  AND (
+      member.storage_kind = 'blob'
+      OR (
+          member.storage_kind = 'external'
+          AND member.deleted_at IS NOT NULL
+          AND member.trash_path IS NULL
+      )
+  )
+`
+
+type ConvergeAlbumMembersToPositionRowsParams struct {
+	AlbumID pgtype.UUID `json:"album_id"`
+	OwnerID pgtype.UUID `json:"owner_id"`
+}
+
+// The position model's convergence arm: an album that still holds a
+// same-content membership which is NOT one of its own position rows
+// swaps that membership for the position row's -- the pre-fork
+// scan's dedup links (a blob row the album borrowed, a twin row of
+// another album's source) leave the album, while the blob row keeps
+// its sync membership. It runs AFTER the walk and the vanish arm, so
+// every LIVE external member of the album is by then a position row
+// at a walked path; a same-content folder genuinely holding two
+// identical files keeps both (each is its own position). Dead
+// external members whose trash copy the server holds are left alone:
+// their restore returns them to this album. Idempotent by
+// construction -- after one pass no non-position member with a
+// position twin remains, so a re-run deletes nothing.
+func (q *Queries) ConvergeAlbumMembersToPositionRows(ctx context.Context, arg ConvergeAlbumMembersToPositionRowsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, convergeAlbumMembersToPositionRows, arg.AlbumID, arg.OwnerID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countLiveAlbumExternalMembers = `-- name: CountLiveAlbumExternalMembers :one
 SELECT count(*)
 FROM album_items ai
@@ -89,6 +138,73 @@ func (q *Queries) CreateExternalAsset(ctx context.Context, arg CreateExternalAss
 		arg.PendingJobs,
 		arg.FileMtime,
 	)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.StorageKind,
+		&i.FilePath,
+		&i.Checksum,
+		&i.OriginalFilename,
+		&i.FileSize,
+		&i.MimeType,
+		&i.MediaKind,
+		&i.LivePhotoVideoID,
+		&i.IsComponent,
+		&i.Width,
+		&i.Height,
+		&i.DurationMs,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.PlaceID,
+		&i.Blurhash,
+		&i.Phash,
+		&i.IsHidden,
+		&i.Description,
+		&i.DeletedAt,
+		&i.OriginalPath,
+		&i.TrashPath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
+		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
+		&i.MotionExtracted,
+		&i.LivePhotoCid,
+	)
+	return i, err
+}
+
+const getExternalAssetByOwnerFilePath = `-- name: GetExternalAssetByOwnerFilePath :one
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted, live_photo_cid FROM assets
+WHERE owner_id = $1
+  AND file_path = $2
+  AND storage_kind = 'external'
+`
+
+type GetExternalAssetByOwnerFilePathParams struct {
+	OwnerID  pgtype.UUID `json:"owner_id"`
+	FilePath string      `json:"file_path"`
+}
+
+// The position key's lookup: the owner's external row at one source
+// path. The add arm reaches it only after the insert violated
+// assets_owner_file_path_external_uq -- a walked file whose position
+// already holds a row -- and the row's state decides the resolution:
+// LIVE, the row is another album's reference to the same file (or a
+// racing scan's), and the album links it; DEAD with a trash_path, the
+// row's bytes sit in the server's trash area (the position the walk
+// saw cannot be that row -- its file_path names the trash copy), so
+// the scan leaves it alone; DEAD without a trash_path, the row is the
+// vanish arm's orphan mark of this very file, and the walk's return
+// revives it (the position model's own three-state shape, the
+// upload's restore-or-replace read from the source side).
+func (q *Queries) GetExternalAssetByOwnerFilePath(ctx context.Context, arg GetExternalAssetByOwnerFilePathParams) (Asset, error) {
+	row := q.db.QueryRow(ctx, getExternalAssetByOwnerFilePath, arg.OwnerID, arg.FilePath)
 	var i Asset
 	err := row.Scan(
 		&i.ID,
@@ -300,9 +416,10 @@ type MarkExternalAssetVanishedParams struct {
 // racing restore, matches nothing and the re-run of a driver retry
 // counts no second transition), and the album_items row is
 // deliberately NOT touched -- soft delete never removed membership
-// rows (the trash queries' own discipline), the live views filter
-// on deleted_at, and the next scan's add arm ingests a returning
-// file as a NEW row that lands its OWN membership.
+// rows (the trash queries' own discipline) and the live views filter
+// on deleted_at, so a file that returns to this very path revives
+// this row through the add arm's position-key resolution
+// (ReviveExternalAsset) with its membership already in place.
 func (q *Queries) MarkExternalAssetVanished(ctx context.Context, arg MarkExternalAssetVanishedParams) (int64, error) {
 	result, err := q.db.Exec(ctx, markExternalAssetVanished, arg.ID, arg.OwnerID)
 	if err != nil {
@@ -340,16 +457,73 @@ type RefreshExternalSnapshotParams struct {
 // of an already-refreshed row (same snapshot now -- the comparison
 // no longer differs) never reaches this statement at all, and a
 // row that vanished or trashed mid-run matches nothing rather
-// than stamping a vanished file's truth onto a dead row. A unique
-// violation here (the changed file's new content exactly equals
-// another row's checksum of the same owner) is the caller's
-// honest failure count, never a silent skip.
+// than stamping a vanished file's truth onto a dead row. The write
+// cannot collide: a position row's keys are its own path and the
+// blob domain's content key does not see external rows, so a changed
+// file's new content is the row's to carry whatever else the owner
+// holds.
 func (q *Queries) RefreshExternalSnapshot(ctx context.Context, arg RefreshExternalSnapshotParams) (int64, error) {
 	result, err := q.db.Exec(ctx, refreshExternalSnapshot,
 		arg.ID,
 		arg.Checksum,
 		arg.FileSize,
 		arg.FileMtime,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const reviveExternalAsset = `-- name: ReviveExternalAsset :execrows
+UPDATE assets SET
+    checksum = $1,
+    original_filename = $2,
+    file_size = $3,
+    mime_type = $4,
+    media_kind = $5,
+    file_mtime = $6,
+    deleted_at = NULL,
+    updated_at = now()
+WHERE id = $7
+  AND owner_id = $8
+  AND storage_kind = 'external'
+  AND deleted_at IS NOT NULL
+  AND trash_path IS NULL
+`
+
+type ReviveExternalAssetParams struct {
+	Checksum         string             `json:"checksum"`
+	OriginalFilename string             `json:"original_filename"`
+	FileSize         int64              `json:"file_size"`
+	MimeType         string             `json:"mime_type"`
+	MediaKind        MediaKind          `json:"media_kind"`
+	FileMtime        pgtype.Timestamptz `json:"file_mtime"`
+	ID               pgtype.UUID        `json:"id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+}
+
+// The add arm's revival of an orphan-marked row: the file is back at
+// the position its dead row recorded, so the row comes back to life
+// carrying the file's CURRENT identity -- the checksum and size the
+// walk just read (the file may have changed while it was away), the
+// stat's mtime snapshot, and the name/mime/kind the walk resolved.
+// Only an orphan mark matches (external, deleted, no trash_path): a
+// row whose bytes the trash holds never revives from a source path,
+// and a live row is not the arm's to rewrite. taken_at is left alone:
+// the metadata job refunds it from the file's own EXIF on the re-run
+// this arm dispatches, so the walk never overwrites a refined capture
+// time with a filesystem stamp.
+func (q *Queries) ReviveExternalAsset(ctx context.Context, arg ReviveExternalAssetParams) (int64, error) {
+	result, err := q.db.Exec(ctx, reviveExternalAsset,
+		arg.Checksum,
+		arg.OriginalFilename,
+		arg.FileSize,
+		arg.MimeType,
+		arg.MediaKind,
+		arg.FileMtime,
+		arg.ID,
 		arg.OwnerID,
 	)
 	if err != nil {

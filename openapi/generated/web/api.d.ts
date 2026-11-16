@@ -5988,6 +5988,19 @@ export interface components {
              */
             blurhash: string | null;
             /**
+             * @description How many OTHER live rows of the same owner carry this
+             *     asset's content (same checksum) -- the twin copies a
+             *     delete leaves behind. A directory album mirrors its
+             *     folder, so one photo can be an uploaded copy and a source
+             *     copy at once; trashing one leaves the other. 0 means this
+             *     row is the content's only live copy. The count is
+             *     owner-scoped: it never reveals rows outside the asset's
+             *     owner, and it counts rows, not surfaces. The PATCH
+             *     response serves the same value, exactly as the GET serves
+             *     it.
+             */
+            contentCopies: number;
+            /**
              * Format: uuid
              * @description For a Live Photo image, the id of its linked component
              *     video row (never in the timeline; its original is

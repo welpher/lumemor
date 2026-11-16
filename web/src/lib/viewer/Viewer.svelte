@@ -409,16 +409,27 @@
 	);
 
 	/**
-	 * The trash arm's gate (the read-only source rule): the caller
-	 * owns the photo AND the photo reaches them through some album
-	 * that is not the sync stream. The sync album is the scan's
-	 * verdict -- system-managed and read-only -- so its own wall
-	 * offers no curation (the album detail's empty arm), and a photo
-	 * whose only home is that stream must not offer the delete here
-	 * either: one photo cannot be curatable in the album and
-	 * un-curatable in the viewer. A photo another album holds
-	 * (a directory source, a memory, a shared album the caller
-	 * owns) keeps the arm, exactly like that album's wall does.
+	 * The trash arm's gate: can the application really delete THIS
+	 * copy? The question is per copy, not per content (the position
+	 * model): one photo can be the caller's upload and a directory
+	 * album's mirrored file at once, and the delete removes the row it
+	 * sits on, never the content's other copies. So the gate reads the
+	 * row's own homes:
+	 *
+	 *   - the sync membership is the app's own blob -- the uploaded
+	 *     copy is deletable (its photos ARE deletable; the sync card
+	 *     itself stays read-only);
+	 *   - a directory album backs the row's trash exactly when its
+	 *     source accepts the application's writes (the creation-time
+	 *     probe's stored fact) -- a read-only source's copy is the
+	 *     scan's verdict alone, no delete affordance, never a grayed
+	 *     one.
+	 *
+	 * A position row reached only through a read-only source therefore
+	 * offers nothing, while the same photo's uploaded copy keeps the
+	 * arm in "My photos": two details, two answers, each true to the
+	 * copy it shows. The toast that follows says how many copies the
+	 * delete leaves behind (contentCopies).
 	 *
 	 * The RESTORE arm never hides: a trashed photo's reachability is
 	 * the trash itself (the record keeps its live album rows), and
@@ -426,13 +437,6 @@
 	 * The favorite stays for everyone -- per-user state, not a write
 	 * on the collection.
 	 */
-	// The trash arm's gate, the owner's settled semantics: the
-	// caller's own photos are deletable wherever the source can take
-	// the application's writes -- the sync card's blobs are the
-	// app's own (its photos ARE deletable; the card itself is not),
-	// and a writable directory backs the row's trash. A photo housed
-	// ONLY in a read-only source is the scan's verdict alone: no
-	// delete affordance, never a grayed one.
 	const canTrash = $derived(
 		isOwner &&
 			detail !== null &&

@@ -2232,6 +2232,18 @@ type AssetDetail struct {
 	// prefix of the entity tags the media endpoints serve.
 	Checksum string `json:"checksum"`
 
+	// ContentCopies How many OTHER live rows of the same owner carry this
+	// asset's content (same checksum) -- the twin copies a
+	// delete leaves behind. A directory album mirrors its
+	// folder, so one photo can be an uploaded copy and a source
+	// copy at once; trashing one leaves the other. 0 means this
+	// row is the content's only live copy. The count is
+	// owner-scoped: it never reveals rows outside the asset's
+	// owner, and it counts rows, not surfaces. The PATCH
+	// response serves the same value, exactly as the GET serves
+	// it.
+	ContentCopies int `json:"contentCopies"`
+
 	// CreatedAt When the asset record was created (RFC 3339 UTC).
 	CreatedAt time.Time `json:"createdAt"`
 
