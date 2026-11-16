@@ -227,7 +227,7 @@ test('tiles pack into justified rows at the engine-computed sizes', async () => 
 	await settle();
 
 	// jsdom has neither a ResizeObserver nor box metrics, so the wall
-	// packs against the content-column fallback width (1200px): every
+	// packs against the content-column fallback width (1352px): every
 	// day group holds ONE 4:3 item -- a single tail row at the TARGET
 	// height (216px), tile width 216 * 4/3 = 288px, and the day BLOCK
 	// its natural width (the tile's width).
