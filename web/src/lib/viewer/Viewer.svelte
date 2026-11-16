@@ -426,8 +426,17 @@
 	 * The favorite stays for everyone -- per-user state, not a write
 	 * on the collection.
 	 */
+	// The trash arm's gate, the owner's settled semantics: the
+	// caller's own photos are deletable wherever the source can take
+	// the application's writes -- the sync card's blobs are the
+	// app's own (its photos ARE deletable; the card itself is not),
+	// and a writable directory backs the row's trash. A photo housed
+	// ONLY in a read-only source is the scan's verdict alone: no
+	// delete affordance, never a grayed one.
 	const canTrash = $derived(
-		isOwner && detail !== null && (detail.isTrashed || detail.albums.some((album) => album.type !== 'sync'))
+		isOwner &&
+			detail !== null &&
+			(detail.isTrashed || detail.albums.some((album) => album.type === 'sync' || album.sourceWritable))
 	);
 
 	// The per-asset interaction reset: navigating replaces the asset,
