@@ -101,6 +101,7 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS item_count,
        (
            SELECT count(*)
@@ -111,6 +112,7 @@ SELECT sqlc.embed(al),
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS photo_count,
        p.in_timeline,
        0::int AS arm_rank,
@@ -139,6 +141,7 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS item_count,
        (
            SELECT count(*)
@@ -149,6 +152,7 @@ SELECT sqlc.embed(al),
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS photo_count,
        p.in_timeline,
        1::int AS arm_rank,
@@ -184,6 +188,7 @@ SELECT sqlc.embed(al),
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS item_count,
        (
            SELECT count(*)
@@ -195,6 +200,7 @@ SELECT sqlc.embed(al),
              AND a.is_component = false
              AND a.media_kind = 'image'
              AND (al.type <> 'memory' OR caller_asset_visible(al.owner_id, a.id))
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS photo_count,
        p.in_timeline,
        2::int AS arm_rank,
@@ -305,6 +311,7 @@ WHERE ai.album_id = ANY(sqlc.arg('album_ids')::uuid[])
       OR al.owner_id = sqlc.arg('user_id')
       OR caller_asset_visible(al.owner_id, a.id)
   )
+  AND (al.type = 'directory' OR asset_library_representative(a.id))
 ORDER BY ai.album_id, a.taken_at DESC, a.id DESC;
 
 -- name: DeleteAlbumCoverPicks :exec
@@ -384,6 +391,7 @@ SELECT sqlc.embed(al),
                  OR al.owner_id = sqlc.arg('user_id')
                  OR caller_asset_visible(al.owner_id, a.id)
              )
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS item_count,
        (
            SELECT count(*)
@@ -399,6 +407,7 @@ SELECT sqlc.embed(al),
                  OR al.owner_id = sqlc.arg('user_id')
                  OR caller_asset_visible(al.owner_id, a.id)
              )
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS photo_count,
        p.in_timeline
 FROM albums al
@@ -443,6 +452,10 @@ WHERE ai.album_id = sqlc.arg('album_id')
       OR al.owner_id = sqlc.arg('user_id')
       OR caller_asset_visible(al.owner_id, a.id)
   )
+  -- The same face split as the album timeline's: a directory album's
+  -- items ARE its source's membership (every member a row), while the
+  -- sync stream and a memory dedup the display.
+  AND (al.type = 'directory' OR asset_library_representative(a.id))
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
@@ -538,6 +551,7 @@ SELECT sqlc.embed(al),
              AND a.deleted_at IS NULL
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS item_count,
        (
            SELECT count(*)
@@ -548,6 +562,7 @@ SELECT sqlc.embed(al),
              AND (al.type <> 'memory' OR a.is_hidden = false)
              AND a.is_component = false
              AND a.media_kind = 'image'
+             AND (al.type = 'directory' OR asset_library_representative(a.id))
        ) AS photo_count,
        p.in_timeline
 FROM albums al

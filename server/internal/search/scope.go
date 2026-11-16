@@ -1,9 +1,9 @@
 // The scope composer: the shared WHERE fragments every
 // search statement builds on -- the timeline's live-row filters, the
-// caller-visible union predicate and the filter dimensions. Each
-// facet query re-composes the scope EXCLUDING its own dimension; the
-// result pages compose it with every dimension applied. All dynamic
-// values ride as placeholder arguments.
+// caller-visible union predicate, the library representative and the
+// filter dimensions. Each facet query re-composes the scope EXCLUDING
+// its own dimension; the result pages compose it with every dimension
+// applied. All dynamic values ride as placeholder arguments.
 package search
 
 import (
@@ -46,14 +46,17 @@ func (s *scope) args() []any {
 	return s.values
 }
 
-// newScope starts the scope with the timeline's live-row filters and
-// the caller-visible union predicate.
+// newScope starts the scope with the timeline's live-row filters, the
+// library representative and the caller-visible union predicate: the
+// search wall is a library face, so one photo held as an uploaded
+// copy and as a directory album's position row is one hit.
 func newScope(caller uuid.UUID) *scope {
 	s := &scope{}
 	s.clauses = append(s.clauses,
 		"a.deleted_at IS NULL",
 		"a.is_hidden = false",
 		"a.is_component = false",
+		"asset_library_representative(a.id)",
 	)
 	s.callerArg = len(s.values) + 1
 	s.values = append(s.values, caller)

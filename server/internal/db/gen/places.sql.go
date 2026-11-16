@@ -81,9 +81,11 @@ WHERE key = $1
 // re-resolution run then refills.
 //
 // The read surface's domain is the caller-visible asset union
-// (caller_asset_visible): the city grouping counts and covers
-// only what the calling account can see, the same honest-counts
-// discipline as the people surface. Place display names join through
+// (caller_asset_visible) narrowed to the library faces' display
+// representative (asset_library_representative): the city grouping
+// counts and covers only what the calling account can see, once per
+// content -- a photo uploaded and mirrored by a directory album is
+// one photo of the city, not two. Place display names join through
 // place_names at read time in the request's locale, falling back to
 // the canonical name -- the assets rows never carry locale strings,
 // so a locale switch touches no asset row.
@@ -113,6 +115,7 @@ LEFT JOIN place_names pn
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible($2, a.id)
 GROUP BY p.id, p.name, pn.name, p.country_code, p.lat, p.lon
 ORDER BY taken_at_to DESC, p.id ASC
@@ -276,6 +279,7 @@ FROM (
       AND a.deleted_at IS NULL
       AND a.is_hidden = false
       AND a.is_component = false
+      AND asset_library_representative(a.id)
       AND caller_asset_visible($2, a.id)
 ) ranked
 WHERE ranked.recency_rank <= 4

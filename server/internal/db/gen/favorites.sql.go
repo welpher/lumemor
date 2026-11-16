@@ -22,6 +22,7 @@ WHERE a.owner_id = $1
   AND a.is_hidden = true
   AND a.deleted_at IS NULL
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND (
       $2::timestamptz IS NULL
       OR (a.taken_at, a.id) < ($2::timestamptz, $3::uuid)
@@ -125,6 +126,7 @@ JOIN user_favorites f ON f.asset_id = a.id AND f.user_id = $1
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible($1, a.id)
   AND (
       $2::timestamptz IS NULL
@@ -155,7 +157,12 @@ type ListFavoriteAssetsRow struct {
 // way: trashed rows, and the component video rows of Live Photos,
 // never appear -- the two views differ only in which assets they
 // select (the caller's favorites rows vs the caller's own archived
-// rows -- is_hidden is the archive switch's column).
+// rows -- is_hidden is the archive switch's column). Both are library
+// faces, so both show the content group's representative once
+// (asset_library_representative): a photo the caller favorited as the
+// uploaded copy and that a directory album also mirrors as a position
+// row is one heart, one tile -- the favorite row stays the caller's
+// own fact on the row they hearted.
 // The favorites view: the caller's favorites rows joined to the live
 // caller-visible assets behind them, newest capture first. The
 // favorites row is the selection; the asset's state is the filter --
