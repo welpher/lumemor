@@ -14,6 +14,8 @@ import 'package:lumemor_api/src/api_util.dart';
 import 'package:lumemor_api/src/model/cluster_detail.dart';
 import 'package:lumemor_api/src/model/cluster_face_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
+import 'package:lumemor_api/src/model/face_box_patch_request.dart';
+import 'package:lumemor_api/src/model/face_box_patch_response.dart';
 import 'package:lumemor_api/src/model/face_create_request.dart';
 import 'package:lumemor_api/src/model/face_created.dart';
 import 'package:lumemor_api/src/model/label_person_request.dart';
@@ -227,6 +229,64 @@ class PeopleApi {
       statusMessage: _response.statusMessage,
       extra: _response.extra,
     );
+  }
+
+  /// Delete this person outright.
+  /// The person&#39;s real delete, distinct from the two softer actions that also remove things today: removing the caller&#39;s own label (DELETE /people/{clusterId}/label -- the person returns to that caller&#39;s unnamed region) and releasing one face (DELETE /faces/{faceId} -- the face row survives, its membership does not). This write deletes the PERSON: the cluster row AND every one of its face rows go away in one transaction -- the photos lose the person&#39;s chips, the people lists lose the person, and the unnamed pool gains NOTHING (the faces are deleted, never unassigned). The asset rows themselves are untouched.  The domain is the instance administrator&#39;s: the ML records are shared instance state (clusters are global; a delete reshapes every account&#39;s view), so a caller whose role is not admin answers &#x60;403 AUTH_FORBIDDEN&#x60; with the domain in the message. A member&#39;s honest removal action is their own label delete.  The visibility gate is the people surface&#39;s own count (the same gate every people write fronts): a cluster the caller cannot see answers the same &#x60;PERSON_NOT_FOUND&#x60; as an unknown id -- anti-enumeration, byte for byte.  The write publishes &#x60;person.deleted&#x60; with the cluster id and the acting user&#39;s id, so every open list converges. 
+  ///
+  /// Parameters:
+  /// * [clusterId] - Identifier of the face cluster to delete.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future]
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<void>> deletePerson({ 
+    required String clusterId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/people/{clusterId}'.replaceAll('{' r'clusterId' '}', encodeQueryParameter(_serializers, clusterId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'DELETE',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    return _response;
   }
 
   /// Release one face from its person.
@@ -946,6 +1006,114 @@ class PeopleApi {
     }
 
     return Response<MoveFaceResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Rewrite one face&#39;s bounding box.
+  /// The face-box editor&#39;s write: the caller adjusts a face&#39;s bounding box on the photo (drag to move, drag a corner to resize) and the PATCH stores the adjusted box. The body carries the box NORMALIZED to the image (0-1, four values required -- x/y the top-left corner, width/height the extents); the server stores it in the faces table&#39;s own per-mille units (the same numbers the crop endpoint and the on-photo face-box layer address).  The box must stay in frame: every coordinate and extent within 0-1 with x + width &lt;&#x3D; 1 and y + height &lt;&#x3D; 1, and neither extent below 0.01 (a box smaller than a hundredth of the image is nothing worth storing). Any other body answers &#x60;400 VALIDATION_FAILED&#x60;.  The guard is the face writes&#39; own: the face must sit on an asset the caller OWNS and that is live -- an unknown face, another account&#39;s asset, or a trashed, archived or Live Photo component asset answers the same byte-identical 404 &#x60;PERSON_NOT_FOUND&#x60; (anti-enumeration).  On success the face&#39;s crop is recomputed from the new box -- the crop endpoint derives it at query time, so the change converges through the face row&#39;s own &#x60;updated_at&#x60; (the crop ETag&#39;s change signal). The write publishes &#x60;person.face_box_updated&#x60; with the face id and the acting user&#39;s id. 
+  ///
+  /// Parameters:
+  /// * [faceId] - Identifier of the face whose box is rewritten.
+  /// * [faceBoxPatchRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [FaceBoxPatchResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<FaceBoxPatchResponse>> patchFaceBox({ 
+    required String faceId,
+    required FaceBoxPatchRequest faceBoxPatchRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/faces/{faceId}'.replaceAll('{' r'faceId' '}', encodeQueryParameter(_serializers, faceId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'PATCH',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(FaceBoxPatchRequest);
+      _bodyData = _serializers.serialize(faceBoxPatchRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    FaceBoxPatchResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(FaceBoxPatchResponse),
+      ) as FaceBoxPatchResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<FaceBoxPatchResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

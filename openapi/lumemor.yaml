@@ -6064,6 +6064,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    delete:
+      operationId: deletePerson
+      tags:
+        - people
+      summary: Delete this person outright.
+      description: |
+        The person's real delete, distinct from the two softer
+        actions that also remove things today: removing the caller's
+        own label (DELETE /people/{clusterId}/label -- the person
+        returns to that caller's unnamed region) and releasing one
+        face (DELETE /faces/{faceId} -- the face row survives, its
+        membership does not). This write deletes the PERSON: the
+        cluster row AND every one of its face rows go away in one
+        transaction -- the photos lose the person's chips, the
+        people lists lose the person, and the unnamed pool gains
+        NOTHING (the faces are deleted, never unassigned). The
+        asset rows themselves are untouched.
+
+        The domain is the instance administrator's: the ML records
+        are shared instance state (clusters are global; a delete
+        reshapes every account's view), so a caller whose role is
+        not admin answers `403 AUTH_FORBIDDEN` with the domain in
+        the message. A member's honest removal action is their own
+        label delete.
+
+        The visibility gate is the people surface's own count (the
+        same gate every people write fronts): a cluster the caller
+        cannot see answers the same `PERSON_NOT_FOUND` as an
+        unknown id -- anti-enumeration, byte for byte.
+
+        The write publishes `person.deleted` with the cluster id and
+        the acting user's id, so every open list converges.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: clusterId
+          in: path
+          required: true
+          description: Identifier of the face cluster to delete.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: |
+            The person is deleted: the cluster, all of its face rows
+            and every account's label rows are gone; the photos
+            themselves are untouched. The response has no body.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is signed in but not the administrator: the
+            instance's ML records are the admin domain's curation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                authForbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: the instance's ML records are the administrator's curation
+        '404':
+          description: |
+            No such person for this caller: the id is unknown, or
+            the cluster exists but none of its faces sits on an
+            asset visible to the caller -- indistinguishable by
+            design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                personNotFound:
+                  value:
+                    code: PERSON_NOT_FOUND
+                    message: no such person for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /people/{clusterId}/label:
     put:
       operationId: labelPerson
@@ -6751,6 +6847,131 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
   /faces/{faceId}:
+    patch:
+      operationId: patchFaceBox
+      tags:
+        - people
+      summary: Rewrite one face's bounding box.
+      description: |
+        The face-box editor's write: the caller adjusts a face's
+        bounding box on the photo (drag to move, drag a corner to
+        resize) and the PATCH stores the adjusted box. The body
+        carries the box NORMALIZED to the image (0-1, four values
+        required -- x/y the top-left corner, width/height the
+        extents); the server stores it in the faces table's own
+        per-mille units (the same numbers the crop endpoint and the
+        on-photo face-box layer address).
+
+        The box must stay in frame: every coordinate and extent
+        within 0-1 with x + width <= 1 and y + height <= 1, and
+        neither extent below 0.01 (a box smaller than a hundredth of
+        the image is nothing worth storing). Any other body answers
+        `400 VALIDATION_FAILED`.
+
+        The guard is the face writes' own: the face must sit on an
+        asset the caller OWNS and that is live -- an unknown face,
+        another account's asset, or a trashed, archived or Live
+        Photo component asset answers the same byte-identical 404
+        `PERSON_NOT_FOUND` (anti-enumeration).
+
+        On success the face's crop is recomputed from the new box --
+        the crop endpoint derives it at query time, so the change
+        converges through the face row's own `updated_at` (the crop
+        ETag's change signal). The write publishes
+        `person.face_box_updated` with the face id and the acting
+        user's id.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: faceId
+          in: path
+          required: true
+          description: Identifier of the face whose box is rewritten.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaceBoxPatchRequest'
+            examples:
+              adjusted:
+                summary: A box moved to the upper right quadrant.
+                value:
+                  x: 0.56
+                  y: 0.38
+                  width: 0.14
+                  height: 0.14
+      responses:
+        '200':
+          description: |
+            The box is stored: the response is the updated face's
+            identity, its crop URL and the box in the stored per-mille
+            units.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaceBoxPatchResponse'
+              examples:
+                updated:
+                  value:
+                    faceId: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                    thumbnail: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+                    bbox:
+                      x: 560
+                      y: 380
+                      w: 140
+                      h: 140
+        '400':
+          description: |
+            The body is not a well-formed in-frame box: a missing or
+            non-numeric value, a coordinate or extent outside 0-1, a
+            box crossing the frame, or an extent below 0.01.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                validationFailed:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: the box must carry four in-frame normalized values with extents of at least 0.01
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '404':
+          description: |
+            No such editable face for this caller: the face id is
+            unknown, its asset is not the caller's own live asset --
+            indistinguishable by design.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                personNotFound:
+                  value:
+                    code: PERSON_NOT_FOUND
+                    message: no such person for this caller
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       operationId: detachFace
       tags:
@@ -16391,6 +16612,79 @@ components:
             carry).
           examples:
             - /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f74/thumbnail
+    FaceBoxPatchRequest:
+      type: object
+      description: |
+        One adjusted face box, normalized to the image: x/y the
+        top-left corner, width/height the extents, each a number in
+        0-1 with x + width <= 1 and y + height <= 1 and both extents
+        at least 0.01. All four values are required. The server
+        stores the box in the faces table's per-mille units.
+      required:
+        - x
+        - y
+        - width
+        - height
+      properties:
+        x:
+          type: number
+          format: double
+          description: The box's left edge, as a fraction of the image's width.
+          minimum: 0
+          maximum: 1
+          examples:
+            - 0.56
+        y:
+          type: number
+          format: double
+          description: The box's top edge, as a fraction of the image's height.
+          minimum: 0
+          maximum: 1
+          examples:
+            - 0.38
+        width:
+          type: number
+          format: double
+          description: The box's width, as a fraction of the image's width (at least 0.01).
+          minimum: 0.01
+          maximum: 1
+          examples:
+            - 0.14
+        height:
+          type: number
+          format: double
+          description: The box's height, as a fraction of the image's height (at least 0.01).
+          minimum: 0.01
+          maximum: 1
+          examples:
+            - 0.14
+    FaceBoxPatchResponse:
+      type: object
+      description: |
+        One committed face-box rewrite: the face's identity, its
+        crop URL, and the stored box in the per-mille units the
+        crop endpoint and the on-photo face-box layer address.
+      required:
+        - faceId
+        - thumbnail
+        - bbox
+      properties:
+        faceId:
+          type: string
+          format: uuid
+          description: Identifier of the rewritten face.
+          examples:
+            - 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+        thumbnail:
+          type: string
+          description: |
+            URL of the face's crop, which now derives from the new
+            box (the crop endpoint computes at query time; the
+            change signal is the face row's updated_at).
+          examples:
+            - /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+        bbox:
+          $ref: '#/components/schemas/FaceBbox'
     PlaceSummary:
       type: object
       description: |

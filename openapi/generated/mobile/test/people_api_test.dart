@@ -25,6 +25,15 @@ void main() {
       // TODO
     });
 
+    // Delete this person outright.
+    //
+    // The person's real delete, distinct from the two softer actions that also remove things today: removing the caller's own label (DELETE /people/{clusterId}/label -- the person returns to that caller's unnamed region) and releasing one face (DELETE /faces/{faceId} -- the face row survives, its membership does not). This write deletes the PERSON: the cluster row AND every one of its face rows go away in one transaction -- the photos lose the person's chips, the people lists lose the person, and the unnamed pool gains NOTHING (the faces are deleted, never unassigned). The asset rows themselves are untouched.  The domain is the instance administrator's: the ML records are shared instance state (clusters are global; a delete reshapes every account's view), so a caller whose role is not admin answers `403 AUTH_FORBIDDEN` with the domain in the message. A member's honest removal action is their own label delete.  The visibility gate is the people surface's own count (the same gate every people write fronts): a cluster the caller cannot see answers the same `PERSON_NOT_FOUND` as an unknown id -- anti-enumeration, byte for byte.  The write publishes `person.deleted` with the cluster id and the acting user's id, so every open list converges. 
+    //
+    //Future deletePerson(String clusterId) async
+    test('test deletePerson', () async {
+      // TODO
+    });
+
     // Release one face from its person.
     //
     // The single-face detach: the face's cluster assignment goes NULL, returning it to the not-yet-grouped pool it came from (the state a freshly detected face holds before the clustering assigns it). The face row survives -- it still lists among its asset's faces, now carrying no person -- and any later assign write can re-home it.  The refusal discipline is the face move's own: the face must sit on an asset the caller OWNS and that is live -- any other state (unknown face, another account's asset, an asset shared to the caller but not owned, a trashed, archived or Live Photo component asset) answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration). A face the clustering has not yet assigned to any cluster is part of no person and answers the same 404: there is no membership to release.  The source cluster does NOT dissolve unless this detach emptied it; the vacated cluster re-homes its representative to the best surviving member, and an emptied cluster dissolves WITH its label rows cascading -- the same honest cost a merge pays. The whole structural change lands as ONE transaction. The write publishes `person.face_detached` with the face id, the cluster the face left and the acting user's id. 
@@ -94,6 +103,15 @@ void main() {
     //
     //Future<MoveFaceResponse> moveFace(String faceId, MoveFaceRequest moveFaceRequest) async
     test('test moveFace', () async {
+      // TODO
+    });
+
+    // Rewrite one face's bounding box.
+    //
+    // The face-box editor's write: the caller adjusts a face's bounding box on the photo (drag to move, drag a corner to resize) and the PATCH stores the adjusted box. The body carries the box NORMALIZED to the image (0-1, four values required -- x/y the top-left corner, width/height the extents); the server stores it in the faces table's own per-mille units (the same numbers the crop endpoint and the on-photo face-box layer address).  The box must stay in frame: every coordinate and extent within 0-1 with x + width <= 1 and y + height <= 1, and neither extent below 0.01 (a box smaller than a hundredth of the image is nothing worth storing). Any other body answers `400 VALIDATION_FAILED`.  The guard is the face writes' own: the face must sit on an asset the caller OWNS and that is live -- an unknown face, another account's asset, or a trashed, archived or Live Photo component asset answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration).  On success the face's crop is recomputed from the new box -- the crop endpoint derives it at query time, so the change converges through the face row's own `updated_at` (the crop ETag's change signal). The write publishes `person.face_box_updated` with the face id and the acting user's id. 
+    //
+    //Future<FaceBoxPatchResponse> patchFaceBox(String faceId, FaceBoxPatchRequest faceBoxPatchRequest) async
+    test('test patchFaceBox', () async {
       // TODO
     });
 

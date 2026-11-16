@@ -2308,7 +2308,36 @@ export interface paths {
         get: operations["getPersonCluster"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete this person outright.
+         * @description The person's real delete, distinct from the two softer
+         *     actions that also remove things today: removing the caller's
+         *     own label (DELETE /people/{clusterId}/label -- the person
+         *     returns to that caller's unnamed region) and releasing one
+         *     face (DELETE /faces/{faceId} -- the face row survives, its
+         *     membership does not). This write deletes the PERSON: the
+         *     cluster row AND every one of its face rows go away in one
+         *     transaction -- the photos lose the person's chips, the
+         *     people lists lose the person, and the unnamed pool gains
+         *     NOTHING (the faces are deleted, never unassigned). The
+         *     asset rows themselves are untouched.
+         *
+         *     The domain is the instance administrator's: the ML records
+         *     are shared instance state (clusters are global; a delete
+         *     reshapes every account's view), so a caller whose role is
+         *     not admin answers `403 AUTH_FORBIDDEN` with the domain in
+         *     the message. A member's honest removal action is their own
+         *     label delete.
+         *
+         *     The visibility gate is the people surface's own count (the
+         *     same gate every people write fronts): a cluster the caller
+         *     cannot see answers the same `PERSON_NOT_FOUND` as an
+         *     unknown id -- anti-enumeration, byte for byte.
+         *
+         *     The write publishes `person.deleted` with the cluster id and
+         *     the acting user's id, so every open list converges.
+         */
+        delete: operations["deletePerson"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2610,7 +2639,37 @@ export interface paths {
         delete: operations["detachFace"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Rewrite one face's bounding box.
+         * @description The face-box editor's write: the caller adjusts a face's
+         *     bounding box on the photo (drag to move, drag a corner to
+         *     resize) and the PATCH stores the adjusted box. The body
+         *     carries the box NORMALIZED to the image (0-1, four values
+         *     required -- x/y the top-left corner, width/height the
+         *     extents); the server stores it in the faces table's own
+         *     per-mille units (the same numbers the crop endpoint and the
+         *     on-photo face-box layer address).
+         *
+         *     The box must stay in frame: every coordinate and extent
+         *     within 0-1 with x + width <= 1 and y + height <= 1, and
+         *     neither extent below 0.01 (a box smaller than a hundredth of
+         *     the image is nothing worth storing). Any other body answers
+         *     `400 VALIDATION_FAILED`.
+         *
+         *     The guard is the face writes' own: the face must sit on an
+         *     asset the caller OWNS and that is live -- an unknown face,
+         *     another account's asset, or a trashed, archived or Live
+         *     Photo component asset answers the same byte-identical 404
+         *     `PERSON_NOT_FOUND` (anti-enumeration).
+         *
+         *     On success the face's crop is recomputed from the new box --
+         *     the crop endpoint derives it at query time, so the change
+         *     converges through the face row's own `updated_at` (the crop
+         *     ETag's change signal). The write publishes
+         *     `person.face_box_updated` with the face id and the acting
+         *     user's id.
+         */
+        patch: operations["patchFaceBox"];
         trace?: never;
     };
     "/faces/{faceId}/cluster": {
@@ -7344,6 +7403,60 @@ export interface components {
             thumbnail: string;
         };
         /**
+         * @description One adjusted face box, normalized to the image: x/y the
+         *     top-left corner, width/height the extents, each a number in
+         *     0-1 with x + width <= 1 and y + height <= 1 and both extents
+         *     at least 0.01. All four values are required. The server
+         *     stores the box in the faces table's per-mille units.
+         */
+        FaceBoxPatchRequest: {
+            /**
+             * Format: double
+             * @description The box's left edge, as a fraction of the image's width.
+             * @example 0.56
+             */
+            x: number;
+            /**
+             * Format: double
+             * @description The box's top edge, as a fraction of the image's height.
+             * @example 0.38
+             */
+            y: number;
+            /**
+             * Format: double
+             * @description The box's width, as a fraction of the image's width (at least 0.01).
+             * @example 0.14
+             */
+            width: number;
+            /**
+             * Format: double
+             * @description The box's height, as a fraction of the image's height (at least 0.01).
+             * @example 0.14
+             */
+            height: number;
+        };
+        /**
+         * @description One committed face-box rewrite: the face's identity, its
+         *     crop URL, and the stored box in the per-mille units the
+         *     crop endpoint and the on-photo face-box layer address.
+         */
+        FaceBoxPatchResponse: {
+            /**
+             * Format: uuid
+             * @description Identifier of the rewritten face.
+             * @example 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+             */
+            faceId: string;
+            /**
+             * @description URL of the face's crop, which now derives from the new
+             *     box (the crop endpoint computes at query time; the
+             *     change signal is the face row's updated_at).
+             * @example /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
+             */
+            thumbnail: string;
+            bbox: components["schemas"]["FaceBbox"];
+        };
+        /**
          * @description One city group of the caller's places list: a GeoNames place
          *     holding at least one caller-visible live asset. The count and
          *     the covers are the caller's honest view -- the same place can
@@ -11930,6 +12043,78 @@ export interface operations {
             };
         };
     };
+    deletePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face cluster to delete. */
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The person is deleted: the cluster, all of its face rows
+             *     and every account's label rows are gone; the photos
+             *     themselves are untouched. The response has no body.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is signed in but not the administrator: the
+             *     instance's ML records are the admin domain's curation.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such person for this caller: the id is unknown, or
+             *     the cluster exists but none of its faces sits on an
+             *     asset visible to the caller -- indistinguishable by
+             *     design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     labelPerson: {
         parameters: {
             query?: never;
@@ -12397,6 +12582,84 @@ export interface operations {
              *     unknown, its asset is not the caller's own live asset,
              *     or the face belongs to no cluster -- indistinguishable
              *     by design.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchFaceBox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the face whose box is rewritten. */
+                faceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FaceBoxPatchRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The box is stored: the response is the updated face's
+             *     identity, its crop URL and the box in the stored per-mille
+             *     units.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FaceBoxPatchResponse"];
+                };
+            };
+            /**
+             * @description The body is not a well-formed in-frame box: a missing or
+             *     non-numeric value, a coordinate or extent outside 0-1, a
+             *     box crossing the frame, or an extent below 0.01.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description No such editable face for this caller: the face id is
+             *     unknown, its asset is not the caller's own live asset --
+             *     indistinguishable by design.
              */
             404: {
                 headers: {
