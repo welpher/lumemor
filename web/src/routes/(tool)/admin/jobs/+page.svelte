@@ -12,7 +12,7 @@
 	// stream is alive. History rows are static, and the unmount
 	// unsubscribes both.
 	//
-	// THE FOUR STATES, FOUR SHAPES (not one row with a swapped badge):
+	// THE FIVE STATES, FIVE SHAPES (not one row with a swapped badge):
 	// a queued run draws NO progress bar -- it has not touched any
 	// work yet, and a bar at zero would read as a stalled run; a
 	// running run carries the live bar, its counts and its start; a
@@ -21,7 +21,9 @@
 	// danger color stopping where the work broke, the REASON --
 	// derived from what the panel can honestly know, never the bare
 	// word "failed" -- and a retry only where the run's kind has a
-	// trigger the web surface owns.
+	// trigger the web surface owns; a CANCELLED run (E41) is the
+	// admin's own deliberate ending -- the outlined neutral chip, the
+	// kept counts, and no retry.
 	//
 	// THE PROGRESS UNITS: each run's counts carry its own work's
 	// units -- the model download's are pinned bytes (rendered as
@@ -37,20 +39,26 @@
 	// page. Otherwise the row reports the failed count in the run's
 	// units and names where the detail lives (the server's log --
 	// the deployment's own surface, which no web route mirrors).
+	// THE THREE-STATE ACTION DISCIPLINE (E41): a running or queued
+	// row carries the cancel (the new contract; the request only
+	// flags the run -- the driver closes it cancelled at the next
+	// chunk boundary, the committed portion keeps its counts); a
+	// failed row keeps the retry + the log's own reason (existing);
+	// a completed row carries NOTHING -- honesty, no decorative
+	// buttons on work that is done.
+	//
+	// THE ROW SPEAKS (E41): a rescan run names its album (the
+	// subject rides the listing read) -- the mass of repeated rows
+	// reads like a log, not a stack of identical kinds.
 	import { _ } from 'svelte-i18n';
 	import { locale } from 'svelte-i18n';
 	import Button from '$lib/components/Button.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
 	import { toast } from '$lib/components/toast.svelte';
-	import { listJobRuns, type JobRun } from '$lib/api/jobruns';
+	import { cancelJobRun, listJobRuns, type JobRun } from '$lib/api/jobruns';
 	import { listModels, rerunModel, startModelDownload, type AdminModel, type ModelSlotId } from '$lib/api/models';
 	import { reresolvePlaces } from '$lib/api/places';
-	import {
-		getRunBudgetSettings,
-		saveRunBudgetSettings,
-		stopDerivativesRebuild,
-		type RunBudgetSettings
-	} from '$lib/api/adminSettings';
+	import { getRunBudgetSettings, saveRunBudgetSettings, type RunBudgetSettings } from '$lib/api/adminSettings';
 	import { formatMegabytes, formatDuration } from '$lib/format';
 	import { subscribeJobEvents } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
@@ -76,7 +84,8 @@
 		queued: 'admin_jobs_state_queued',
 		running: 'admin_jobs_state_running',
 		succeeded: 'admin_jobs_state_succeeded',
-		failed: 'admin_jobs_state_failed'
+		failed: 'admin_jobs_state_failed',
+		cancelled: 'admin_jobs_state_cancelled'
 	};
 
 	/**
@@ -135,8 +144,10 @@
 	let budgetErrorKey = $state('');
 	/** Bumping re-reads the budget (a failed save's refetch arm). */
 	let budgetTick = $state(0);
-	/** The stop in flight, pinned to its run (null while none). */
-	let stopping = $state<string | null>(null);
+	/** The cancel in flight, pinned to its run (null while none). */
+	let cancelling = $state<string | null>(null);
+	/** The last failed cancel, pinned to its row (null while none). */
+	let cancelError = $state<{ jobId: string; errorKey: string } | null>(null);
 
 	const activeLocale = $derived($locale ?? 'en');
 	/** The fallback poll's cadence, in milliseconds. */
@@ -240,19 +251,28 @@
 		savingBudget = false;
 	}
 
-	/** The stop: asks the in-flight rebuild to close at its next breakpoint. */
-	async function stopRun(job: JobRun): Promise<void> {
-		if (stopping !== null) {
+	/**
+	 * The cancel (E41): asks the in-flight run to end at its next
+	 * chunk boundary. The 204 is only the flag's receipt -- the
+	 * toast speaks the honest account (the finished count, read off
+	 * the row at the click), the row itself converges to cancelled
+	 * through the driver's close and its finished event. A 409 (the
+	 * run finished between the listing and the click) lands INLINE
+	 * under the row it belongs to.
+	 */
+	async function cancelRun(job: JobRun): Promise<void> {
+		if (cancelling !== null) {
 			return;
 		}
-		stopping = job.id;
-		const outcome = await stopDerivativesRebuild();
-		stopping = null;
+		cancelling = job.id;
+		cancelError = null;
+		const outcome = await cancelJobRun(job.id);
+		cancelling = null;
 		if (!outcome.ok) {
-			toast($_('admin_jobs_stop_failed'), 'danger');
+			cancelError = { jobId: job.id, errorKey: outcome.errorKey };
 			return;
 		}
-		toast($_('admin_jobs_stop_requested'));
+		toast($_('admin_jobs_cancelled', { values: { count: job.done } }));
 		retryTick += 1;
 	}
 
@@ -622,7 +642,17 @@
 					>
 						<header class="jobs__row-head flex items-center justify-between gap-2.5">
 							<h2 class="jobs__kind font-body font-semibold text-[16px] leading-[1.4] text-text">
-								{kindLabel(job)}
+								{#if job.subject !== null && job.subject !== undefined}
+									<!-- The row speaks (E41): the rescan names its album.
+									     The instance-wide reruns have no subject and get
+									     the kind's own label -- nothing is invented. -->
+									<span
+										class="jobs__subject font-body font-normal text-[14px] leading-[1.4] text-text-soft"
+										>{$_('admin_jobs_subject_rescan', { values: { name: job.subject } })}</span
+									>
+								{:else}
+									{kindLabel(job)}
+								{/if}
 							</h2>
 							<span
 								class="jobs__badge jobs__badge--{job.state} inline-block px-2.5 py-0.5 font-body font-semibold text-[12px] leading-[1.6] text-text-soft bg-accent-soft rounded-control"
@@ -630,7 +660,16 @@
 							>
 						</header>
 
-						{#if job.state === 'queued'}
+						{#if job.kind === 'album_rescan' && job.state !== 'queued' && job.done === job.total && job.failed === 0}
+							<!-- The rescan's own line (E41): the row reads like a log
+							     -- a scan that got through its scope without a single
+							     failure says what it saw, in the run's own units. -->
+							<p
+								class="jobs__counts font-body font-medium text-[14px] leading-[1.4] text-text tabular-nums"
+							>
+								{$_('admin_jobs_rescan_unchanged', { values: { count: job.done } })}
+							</p>
+						{:else if job.state === 'queued'}
 							<!-- A queued run has touched nothing yet: the bar
 							     would sit at zero and read as a stall. -->
 							<p class="jobs__waiting m-0 font-body font-normal text-[14px] leading-[1.4] text-text-soft">
@@ -707,20 +746,35 @@
 							{/if}
 						{/if}
 
-						<!-- The rebuild's stop: the explicit end of the run the
-						     admin started. The flag lands between the walk's
-						     assets; the work already done stays on disk. -->
-						{#if job.kind === 'rebuild_derivatives' && (job.state === 'running' || job.state === 'queued')}
+						<!-- The cancel (E41): the three-state action discipline --
+						     running and queued carry it, the failed rows keep
+						     their own retry, and a completed row carries NOTHING
+						     (honesty -- there is nothing to do about finished
+						     work). The request flags the run; the driver closes
+						     it at the next chunk boundary with the committed
+						     portion kept. -->
+						{#if job.state === 'running' || job.state === 'queued'}
 							<div class="jobs__actions flex flex-wrap items-center gap-2">
 								<Button
 									variant="ghost"
-									disabled={stopping !== null}
-									data-testid="job-stop"
-									onclick={() => void stopRun(job)}
+									disabled={cancelling !== null}
+									data-testid="job-cancel"
+									onclick={() => void cancelRun(job)}
 								>
-									{$_('admin_jobs_stop')}
+									{$_('admin_jobs_cancel')}
 								</Button>
 							</div>
+						{/if}
+						{#if cancelError !== null && cancelError.jobId === job.id}
+							<!-- The 409's inline error: the refusal lands under the
+							     row it belongs to, never a toast over the listing. -->
+							<p
+								class="jobs__cancel-error m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text"
+								role="alert"
+								data-testid="job-cancel-error"
+							>
+								{errorText(cancelError.errorKey)}
+							</p>
 						{/if}
 
 						<p class="jobs__times font-body font-normal text-[13px] leading-[1.5] text-text-faint">
@@ -753,6 +807,15 @@
 	.jobs__badge--failed {
 		color: var(--color-danger-text);
 		background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+	}
+
+	/* The cancelled chip (E41): the admin's own deliberate ending --
+	 * an ended run, outlined neutral -- never the danger tones a
+	 * broken run wears. */
+	.jobs__badge--cancelled {
+		color: var(--color-text-soft);
+		background-color: transparent;
+		border: 1px solid var(--color-border);
 	}
 
 	.jobs__progress-fill--failed {

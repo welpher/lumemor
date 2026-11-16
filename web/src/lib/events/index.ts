@@ -90,7 +90,7 @@ export type JobEvent = {
 export type JobEventListener = (event: JobEvent) => void;
 
 /** The job run lifecycle states, the JobRunResponse contract's enum. */
-export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed';
+export type JobRunState = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 /**
  * The people surface's person.* events: the label, entity-attribute
