@@ -672,6 +672,10 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 			Title:      row.Title,
 			Type:       apigen.AssetAlbumRefType(row.Type),
 			CallerRole: role,
+			// The source's own writability: the detail faces gate the
+			// destructive affordances on it (a read-only directory's
+			// photo is the scan's verdict alone).
+			SourceWritable: row.SourceWritable,
 		})
 	}
 	return albums, nil

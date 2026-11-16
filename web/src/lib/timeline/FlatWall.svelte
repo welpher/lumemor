@@ -33,7 +33,7 @@
 	// search page arms none -- the hover check and the first click
 	// are the entry, as on every wall).
 	import { SvelteSet } from 'svelte/reactivity';
-	import { packRows, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedRow } from './layout';
+	import { packRows, WALL_FALLBACK_WIDTH, WALL_TILE_SEAM, type PackedRow } from './layout';
 	import PhotoTile from './PhotoTile.svelte';
 	import BatchBar from './BatchBar.svelte';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
@@ -129,7 +129,7 @@
 		};
 	});
 
-	const containerWidth = $derived(measuredWidth > 0 ? measuredWidth : WALL_MAX_WIDTH);
+	const containerWidth = $derived(measuredWidth > 0 ? measuredWidth : WALL_FALLBACK_WIDTH);
 	const rows: PackedRow[] = $derived(packRows(items, containerWidth));
 
 	function toggleSelected(id: string, next: boolean): void {

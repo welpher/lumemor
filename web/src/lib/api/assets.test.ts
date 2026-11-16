@@ -207,8 +207,8 @@ test('the detail fetch carries the place face and the albums array at the reques
 		jsonResponse(200, {
 			...detailBody,
 			albums: [
-				{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner' },
-				{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'viewer' }
+				{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner', sourceWritable: true },
+				{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'viewer', sourceWritable: true }
 			],
 			place: { placeId: 2988507, name: '巴黎' }
 		})
@@ -228,7 +228,7 @@ test('the detail fetch carries the place face and the albums array at the reques
 	// place drops to the generic failure, never a broken drawer.
 	for (const broken of [
 		{ albums: 'no' },
-		{ albums: [{ id: 'al-1', title: 'Trip', type: 'weird', callerRole: 'owner' }] },
+		{ albums: [{ id: 'al-1', title: 'Trip', type: 'weird', callerRole: 'owner', sourceWritable: true }] },
 		{ albums: [{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'nobody' }] },
 		{ place: 'Paris' },
 		{ place: { placeId: 'x', name: 'Paris' } }

@@ -288,13 +288,20 @@
 
 	/* The wall's layout tokens. The row math runs in TypeScript
 	 * (src/lib/timeline/layout.ts), where CSS custom properties
-	 * cannot be read, so the three row-math values are mirrored
-	 * there as pinned constants -- keep the pairs in sync exactly
-	 * like the @theme/Layer 2 mirrors above. The tile seam is the
-	 * photo-first density statement; the month gap (the band's
-	 * ceiling) keeps the group separation breathing at five times
-	 * the seam, which is the hierarchy the wall reads on. */
-	--wall-row-target: 216px; /* target tile height of a packed row */
+	 * cannot be read, so the row-math values are mirrored there as
+	 * pinned constants -- keep the pairs in sync exactly like the
+	 * @theme/Layer 2 mirrors above. The row target scales with the
+	 * wall's own width (the photos shrink when the window narrows);
+	 * the factor is calibrated so the 1440 reference width keeps its
+	 * 216px rows, the min is the readability floor and the max stops
+	 * an ultra-wide display from growing billboard tiles. The tile
+	 * seam is the photo-first density statement; the month gap (the
+	 * band's ceiling) keeps the group separation breathing at five
+	 * times the seam, which is the hierarchy the wall reads on. */
+	--wall-row-target: 216px; /* the row target at the 1440 reference width */
+	--wall-row-factor: 0.16; /* the target's growth against the usable width */
+	--wall-row-min: 162px; /* the target's floor (the readability guard) */
+	--wall-row-max: 320px; /* the target's ceiling (the ultra-wide cap) */
 	--wall-row-tolerance: 0.25; /* the FLOOR under the target: a row closes
 	                              while its natural height stays above
 	                              target*(1-tolerance); closed rows may sit

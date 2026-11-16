@@ -22,10 +22,14 @@
 //     headers.
 //  4. The place detail: the card opens the place's own wall; the bar
 //     carries back + city + country + count and nothing on the right;
-//     the wall's month header and tile; the selection's batch subset.
+//     the wall's month header and tile (its row target riding the
+//     container width: 192 at the 1280 viewport, the 162 floor at
+//     1024, 218 at 1440, never sideways); the selection's batch
+//     subset.
 //  5. The map face: the stubbed source draws, the page does not
 //     scroll, the footer counts, and the pin opens the side panel
-//     without leaving the page (70/30, the wall, the axis).
+//     without leaving the page (70/30, the wall, the axis, its rows
+//     packing below the page wall's at the same viewport).
 //  6. The viewer round trip: a panel photo opens the viewer, and
 //     coming back restores the same panel.
 //  7. The degradation: a source that fails withdraws the base layer
@@ -65,6 +69,11 @@ const tileFixture = await readFile(path.join(specDir, 'fixtures/tile-256.png'));
 // The storage-state file the sign-in scene writes and every later
 // scene replays (git-ignored, recreated per run).
 const adminStatePath = `${specDir}/.auth/e19-admin-state.json`;
+
+// The place wall's row height at the 1440 viewport, measured by
+// scene 4: scene 5's panel is the same wall in a narrower container,
+// so its rows must pack smaller than the page's at the same width.
+let placeWallRowAt1440 = 0;
 
 test.beforeAll(async ({ playwright }) => {
 	// The first-run bootstrap: the setup API creates the
@@ -225,6 +234,47 @@ test.describe('the signed-in scenes', () => {
 		await expect(bar.getByRole('button', { name: 'Trash' })).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Add tag' })).toHaveCount(0);
 		await page.keyboard.press('Escape');
+
+		// THE PROPORTIONAL SCALE: the row target is a fraction of the
+		// wall's own content width (the viewport minus the edges and
+		// the axis slot), so the photos shrink with the window instead
+		// of only thinning the row -- the same tile at three widths,
+		// with the narrow one resting on the scale's floor, and no
+		// width overflowing (the always-full, never-sideways rule).
+		const geometry = () =>
+			page.evaluate(() => {
+				const row = document.querySelector<HTMLElement>('.wall__row');
+				const cell = document.querySelector<HTMLElement>('.wall__cell');
+				const wall = document.querySelector<HTMLElement>('.wall__groups');
+				return {
+					row: row?.getBoundingClientRect().height ?? 0,
+					cell: cell?.getBoundingClientRect().width ?? 0,
+					scrollWidth: wall?.scrollWidth ?? 0,
+					clientWidth: wall?.clientWidth ?? 0,
+					pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth
+				};
+			});
+
+		await page.setViewportSize({ width: 1280, height: 800 });
+		await expect.poll(async () => Math.round((await geometry()).row)).toBe(192);
+		const reference = await geometry();
+		expect(reference.scrollWidth).toBeLessThanOrEqual(reference.clientWidth + 1);
+		expect(reference.pageOverflow).toBeLessThanOrEqual(0);
+
+		await page.setViewportSize({ width: 1024, height: 800 });
+		await expect.poll(async () => Math.round((await geometry()).row)).toBe(162);
+		const narrow = await geometry();
+		expect(narrow.cell).toBeLessThan(reference.cell);
+		expect(narrow.scrollWidth).toBeLessThanOrEqual(narrow.clientWidth + 1);
+
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await expect.poll(async () => Math.round((await geometry()).row)).toBe(218);
+		const wide = await geometry();
+		expect(wide.cell).toBeGreaterThan(reference.cell);
+		expect(wide.scrollWidth).toBeLessThanOrEqual(wide.clientWidth + 1);
+		placeWallRowAt1440 = Math.round(wide.row);
+		expect(placeWallRowAt1440).toBeGreaterThan(0);
+		await page.setViewportSize({ width: 1280, height: 720 });
 	});
 
 	test('scene 5: the map fills the viewport and the pin opens the panel in place', async ({ page }) => {
@@ -297,6 +347,18 @@ test.describe('the signed-in scenes', () => {
 					};
 		});
 		expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
+
+		// THE PANEL'S OWN SCALE: the same wall in the narrow frame, so
+		// its rows pack below the page wall's at the same viewport
+		// (scene 4's 1440 measurement) -- the panel shrinks its photos
+		// too, which is the scale reaching every container.
+		const panelRow = await page.evaluate(
+			() =>
+				document.querySelector<HTMLElement>('.wall__groups--panel .wall__row')?.getBoundingClientRect()
+					.height ?? 0
+		);
+		expect(panelRow).toBeGreaterThan(0);
+		expect(panelRow).toBeLessThan(placeWallRowAt1440);
 
 		// The same pin again collapses the panel (and the address).
 		await pin.click();

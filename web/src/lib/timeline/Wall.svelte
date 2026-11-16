@@ -62,9 +62,11 @@
 	// a group boundary -- the pinned rule), rows fill the container
 	// width at true tile aspects with the tile seam between them, and
 	// a group's tail row clamps to the target height left-aligned.
-	// The pack re-derives whenever the container resizes (a
+	// The target itself is a clamped fraction of the container width
+	// (the engine owns the math), so the photos scale with the
+	// window. The pack re-derives whenever the container resizes (a
 	// ResizeObserver feeds the measured width; a layout-less host
-	// falls back to the content column maximum so the wall still
+	// falls back to the design's reference width so the wall still
 	// renders deterministically).
 	//
 	// THE HEADERS: opaque page-colored bands with NO dividing edge
@@ -103,7 +105,7 @@
 	// visible row.
 	import { locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
-	import { packWall, WALL_MAX_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
+	import { packWall, WALL_FALLBACK_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import { groupTimelineItems } from './grouping';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import PhotoTile from './PhotoTile.svelte';
@@ -278,7 +280,7 @@
 		};
 	});
 
-	const containerWidth = $derived(measuredWidth > 0 ? measuredWidth : WALL_MAX_WIDTH);
+	const containerWidth = $derived(measuredWidth > 0 ? measuredWidth : WALL_FALLBACK_WIDTH);
 	const packed: PackedMonth[] = $derived(packWall(groups, containerWidth));
 
 	// THE MONTH AXIS (the wall's own organ -- the header pin): the

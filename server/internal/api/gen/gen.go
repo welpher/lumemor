@@ -2137,6 +2137,15 @@ type AssetAlbumRef struct {
 	// Id Identifier of the album (the detail face's deep link).
 	Id openapi_types.UUID `json:"id"`
 
+	// SourceWritable Whether the album's source directory can take the
+	// application's writes. False only for a directory album
+	// whose creation-time write probe answered no -- every
+	// other type (sync, memory, a writable directory) is true.
+	// The photo-detail faces read this to gate the destructive
+	// affordances: a photo housed only in a read-only source
+	// is the scan's verdict alone and offers no delete.
+	SourceWritable bool `json:"sourceWritable"`
+
 	// Title The album's display title (the sync card's internal label).
 	Title string `json:"title"`
 
