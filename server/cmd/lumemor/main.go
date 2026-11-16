@@ -203,6 +203,10 @@ func run(logger *slog.Logger) error {
 		// The place grid the metadata job's GPS step and the places
 		// rerun resolve against (nil without the baked place data).
 		Places: placeIndex,
+		// The folder live sync's cadence: the deployment's own window
+		// (60s unless configured), the e2e harness's shortened one, or
+		// the disabled marker.
+		FolderSyncInterval: cfg.FolderSyncInterval,
 	})
 	if err != nil {
 		return err
