@@ -106,8 +106,24 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 	jobRunID := job.Args.JobRunID
 	queries := dbgen.New(w.pool)
 
-	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
 		return fmt.Errorf("mark the rebuild run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the rebuild run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
 	}
 	// The started event echoes the row's enqueue-time total -- the
 	// durable truth the endpoint handed out -- not a recount.
@@ -167,15 +183,16 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 	}
 	for {
 		// The stop check per page: one boolean read. The run closes
-		// failed-with-zero-failures -- the panel's reason line says
-		// stopped -- and the work already done stays on disk.
+		// cancelled -- the admin's own deliberate ending (the task
+		// panel renders the cancelled state, never a broken run) --
+		// and the work already done stays on disk.
 		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
 		if err != nil {
 			return fmt.Errorf("check the stop flag of rebuild run %s: %w", jobRunID, err)
 		}
 		if stop {
 			w.logger.Info("rebuild run stopped at its own breakpoint", "job_run_id", jobRunID, "done", done)
-			return w.finishRebuild(ctx, jobRunID, total, done, 0, dbgen.JobStateFailed)
+			return w.finishRebuild(ctx, jobRunID, total, done, 0, dbgen.JobStateCancelled)
 		}
 
 		rows, err := queries.ListImageAssetPage(ctx, dbgen.ListImageAssetPageParams{

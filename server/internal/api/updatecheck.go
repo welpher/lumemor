@@ -235,17 +235,29 @@ func modelSettingsResponse(settings db.ModelSettings) apigen.ModelSettingsRespon
 		AutoDownload:  settings.AutoDownload,
 		AllowedHosts:  append([]string(nil), settings.AllowedHosts...),
 		MirrorBaseUrl: settings.MirrorBaseUrl,
+		Params:        modelParamsResponse(settings.Params),
+	}
+}
+
+// modelParamsResponse maps the stored pipeline params onto the
+// contract shape (E41): the two knobs, as float32s of the generated
+// type.
+func modelParamsResponse(params db.MlModelParams) apigen.ModelParams {
+	return apigen.ModelParams{
+		FaceDetectMinScore:     float32(params.FaceDetectMinScore),
+		FaceRecognizeThreshold: float32(params.FaceRecognizeThreshold),
 	}
 }
 
 // UpdateModelSettings implements PUT /api/v1/admin/settings/models:
 // every field is contract-required (an omitted one would decode as
 // its zero value and silently change the policy) and the values take
-// effect on the next download run. The allowed hosts must be
-// hostnames with an optional `*.` wildcard label; a mirror base,
-// when non-empty, must name a host -- and that host joins the saved
-// list automatically, so a mirror the list refuses would never fail
-// on its own first hop.
+// effect on the next dispatch. The allowed hosts must be hostnames
+// with an optional `*.` wildcard label; a mirror base, when
+// non-empty, must name a host -- and that host joins the saved list
+// automatically, so a mirror the list refuses would never fail on
+// its own first hop. The params must sit in the closed 0-1 domain --
+// the values the ML jobs read at their own dispatch.
 func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
@@ -263,14 +275,49 @@ func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	var presence map[string]json.RawMessage
 	_ = json.Unmarshal(body, &presence)
-	missing := make([]string, 0, 3)
-	for _, field := range []string{"autoDownload", "allowedHosts", "mirrorBaseUrl"} {
+	missing := make([]string, 0, 4)
+	for _, field := range []string{"autoDownload", "allowedHosts", "mirrorBaseUrl", "params"} {
 		if _, ok := presence[field]; !ok {
 			missing = append(missing, field)
 		}
 	}
 	if len(missing) > 0 {
 		s.writeValidationError(w, "required fields missing: "+strings.Join(missing, ", "), missing)
+		return
+	}
+	// The params' sub-fields are contract-required too: the nested
+	// object's own presence does not answer for its two knobs, whose
+	// silent zero would read as "accept nothing" (the detection's
+	// score floor) and "cluster everything apart" (the threshold).
+	paramPresence := make(map[string]json.RawMessage)
+	_ = json.Unmarshal(presence["params"], &paramPresence)
+	paramMissing := make([]string, 0, 2)
+	for _, field := range []string{"faceDetectMinScore", "faceRecognizeThreshold"} {
+		if _, ok := paramPresence[field]; !ok {
+			paramMissing = append(paramMissing, "params."+field)
+		}
+	}
+	if len(paramMissing) > 0 {
+		s.writeValidationError(w, "required fields missing: "+strings.Join(paramMissing, ", "), paramMissing)
+		return
+	}
+	// The closed 0-1 domain: out of bounds answers 400 naming the
+	// field, nothing written. NaN cannot arrive through
+	// encoding/json (a parse error above); the range check is the
+	// whole domain.
+	params := db.MlModelParams{
+		FaceDetectMinScore:     float64(req.Params.FaceDetectMinScore),
+		FaceRecognizeThreshold: float64(req.Params.FaceRecognizeThreshold),
+	}
+	invalid := make([]string, 0, 2)
+	if params.FaceDetectMinScore < 0 || params.FaceDetectMinScore > 1 {
+		invalid = append(invalid, "params.faceDetectMinScore")
+	}
+	if params.FaceRecognizeThreshold < 0 || params.FaceRecognizeThreshold > 1 {
+		invalid = append(invalid, "params.faceRecognizeThreshold")
+	}
+	if len(invalid) > 0 {
+		s.writeValidationError(w, "params must sit in the closed 0-1 domain", invalid)
 		return
 	}
 	hosts := make([]string, 0, len(req.AllowedHosts))
@@ -306,6 +353,7 @@ func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 		AutoDownload:  req.AutoDownload,
 		AllowedHosts:  hosts,
 		MirrorBaseUrl: mirror,
+		Params:        params,
 	}); err != nil {
 		s.internalError(w, r, "save the model settings", err)
 		return
@@ -314,6 +362,7 @@ func (s *server) UpdateModelSettings(w http.ResponseWriter, r *http.Request) {
 		AutoDownload:  req.AutoDownload,
 		AllowedHosts:  hosts,
 		MirrorBaseUrl: mirror,
+		Params:        params,
 	}))
 }
 
