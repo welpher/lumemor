@@ -162,8 +162,24 @@ func (w *MlRerunWorker) Work(ctx context.Context, job *river.Job[MlRerunArgs]) e
 	slot := ml.Slot(job.Args.Slot)
 	queries := dbgen.New(w.pool)
 
-	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
 		return fmt.Errorf("mark the rerun run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the rerun run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
 	}
 	// The started event echoes the row's enqueue-time total -- the
 	// durable truth the endpoint handed out -- not a recount.
@@ -202,10 +218,25 @@ func (w *MlRerunWorker) Work(ctx context.Context, job *river.Job[MlRerunArgs]) e
 	// directly, because the asset's work never started. expected is
 	// the walk's own account: every asset either enqueued (its job
 	// will report) or counted failed here. Assets that became ready
-	// during the run join the tail (they would otherwise miss both the
-	// readiness seam and the rerun).
+	// during the run join the tail (they would otherwise miss both
+	// the readiness seam and the rerun).
+	//
+	// The cancel boundary (E41): the flag check rides the page edge
+	// -- the walk stops dispatching at the next page boundary, the
+	// jobs already dispatched run to their own ends, and the close
+	// below lands cancelled with the converged counts.
+	cancelled := false
 	expected := 0
 	for offset := int32(0); ; offset += mlRerunPageSize {
+		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("check the stop flag of rerun run %s: %w", jobRunID, err)
+		}
+		if stop {
+			cancelled = true
+			w.logger.Info("rerun run cancelled at its own page boundary", "job_run_id", jobRunID, "expected", expected)
+			break
+		}
 		ids, err := queries.ListAssetIDsByKind(ctx, dbgen.ListAssetIDsByKindParams{
 			MediaKind: dbgen.MediaKindImage,
 			Limit:     mlRerunPageSize,
@@ -236,7 +267,9 @@ func (w *MlRerunWorker) Work(ctx context.Context, job *river.Job[MlRerunArgs]) e
 	// completions reach the walk's account. The envelope's expiry
 	// interrupts (the row stays running, River retries, the re-walk
 	// re-converges); the poll's reads drive the throttled progress
-	// events.
+	// events. A CANCELLED run waits the same way -- the jobs already
+	// dispatched finish, and their completions are the kept work the
+	// panel's honest account promises.
 	final, converged := w.awaitCompletions(ctx, jobRunID, kind, expected)
 	if !converged {
 		w.logger.Warn("the rerun run outlasted its envelope before the completions converged; the retry re-walks and re-waits",
@@ -245,7 +278,13 @@ func (w *MlRerunWorker) Work(ctx context.Context, job *river.Job[MlRerunArgs]) e
 	}
 
 	state := dbgen.JobStateSucceeded
-	if final.Failed > 0 {
+	if cancelled {
+		// The admin's own deliberate ending: the dispatched work's
+		// converged counts carry, the state reads cancelled -- the
+		// undispersed scope is what the cancel refused, never a
+		// failure of the work that ran.
+		state = dbgen.JobStateCancelled
+	} else if final.Failed > 0 {
 		state = dbgen.JobStateFailed
 	}
 	w.bus.Publish("job.progress",

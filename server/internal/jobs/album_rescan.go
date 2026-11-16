@@ -203,8 +203,24 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	albumID := job.Args.AlbumID
 	queries := dbgen.New(w.pool)
 
-	if err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID)); err != nil {
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
 		return fmt.Errorf("mark the rescan run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the rescan run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
 	}
 	// The started event echoes the row's enqueue-time total -- the
 	// durable truth the endpoint handed out -- not a recount; the
@@ -371,7 +387,34 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		}
 	}
 
+	// The cancel boundary (E41): the flag check rides the progress
+	// batch's cadence -- the walk stops at the next batch boundary
+	// and every block already committed keeps its writes. The check
+	// forces itself on the FIRST call (a queued-then-cancelled run
+	// must close at its pickup, not after another hundred units),
+	// and a failed flag read never stops the scan on a guess: the
+	// log carries it, the walk continues.
+	unitsSinceStopCheck := albumRescanProgressBatch
+	stopRequested := func() bool {
+		unitsSinceStopCheck++
+		if unitsSinceStopCheck <= albumRescanProgressBatch {
+			return false
+		}
+		unitsSinceStopCheck = 0
+		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		if err != nil {
+			w.logger.Warn("check the rescan run's stop flag", "job_run_id", jobRunID, "error", err)
+			return false
+		}
+		return stop
+	}
+
+	cancelledWalk := false
 	for _, file := range files {
+		if stopRequested() {
+			cancelledWalk = true
+			break
+		}
 		path := file.path
 		resolvedUnits++
 		info, err := os.Stat(path)
@@ -426,10 +469,14 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// The vanish arm: every member left unmatched by the walk. The
 	// map's iteration order is random; the arms are independent, but
 	// the events ride a deterministic sequence so a retry replays
-	// the same order (and the tests assert stable orderings).
+	// the same order (and the tests assert stable orderings). A
+	// cancelled run skips the arm -- the scan stopped at its
+	// boundary, and the next scan's vanish arm owns the rest.
 	vanished := make([]string, 0, len(members))
-	for path := range members {
-		vanished = append(vanished, path)
+	if !cancelledWalk {
+		for path := range members {
+			vanished = append(vanished, path)
+		}
 	}
 	sort.Strings(vanished)
 	for _, path := range vanished {
@@ -470,18 +517,22 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// copy. The blob row keeps its sync membership; the directory
 	// album stops mirroring a file it does not hold. One statement per
 	// run, idempotent: a converged album matches nothing.
-	converged, err := queries.ConvergeAlbumMembersToPositionRows(ctx, dbgen.ConvergeAlbumMembersToPositionRowsParams{
-		AlbumID: pgUUID(albumID),
-		OwnerID: pgUUID(owner),
-	})
-	if err != nil {
-		return fmt.Errorf("converge the album's memberships onto its position rows: %w", err)
-	}
-	if converged > 0 {
-		liveSetChanged = true
-		diffChanged = true
-		w.logger.Info("the rescan converged borrowed memberships onto the album's own copies",
-			"job_run_id", jobRunID, "album_id", albumID, "converged", converged)
+	// A cancelled run skips the convergence: the scan stopped at its
+	// boundary, and the next scan's convergence arm owns the rest.
+	if !cancelledWalk {
+		converged, err := queries.ConvergeAlbumMembersToPositionRows(ctx, dbgen.ConvergeAlbumMembersToPositionRowsParams{
+			AlbumID: pgUUID(albumID),
+			OwnerID: pgUUID(owner),
+		})
+		if err != nil {
+			return fmt.Errorf("converge the album's memberships onto its position rows: %w", err)
+		}
+		if converged > 0 {
+			liveSetChanged = true
+			diffChanged = true
+			w.logger.Info("the rescan converged borrowed memberships onto the album's own copies",
+				"job_run_id", jobRunID, "album_id", albumID, "converged", converged)
+		}
 	}
 
 	// The album's story: one event when the album's LIVE membership
@@ -515,7 +566,12 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	}
 
 	state := dbgen.JobStateSucceeded
-	if failed > 0 {
+	if cancelledWalk {
+		// The admin's own deliberate ending: the committed blocks
+		// keep their counts, the state reads cancelled (E41) -- never
+		// a broken run, the panel says who asked for this ending.
+		state = dbgen.JobStateCancelled
+	} else if failed > 0 {
 		state = dbgen.JobStateFailed
 	}
 	// The final progress write lands the converged counts even when

@@ -469,12 +469,42 @@ func SaveTileSettings(ctx context.Context, q *dbgen.Queries, tilejsonURL string)
 // ModelSettings is the model store's policy and download sources:
 // whether an AI job whose slot is configured but whose weights are
 // missing may start the download on its own, the hosts the download
-// may travel through, and the mirror base that rewrites the pinned
-// huggingface.co hostnames.
+// may travel through, the mirror base that rewrites the pinned
+// huggingface.co hostnames, and the pipeline's steering params (E41:
+// the two knobs the v1 pipeline actually reads -- the face
+// detection's minimum confidence and the face recognition's
+// clustering threshold; the params set grows as the pipeline grows).
 type ModelSettings struct {
-	AutoDownload  bool     `json:"autoDownload"`
-	AllowedHosts  []string `json:"allowedHosts"`
-	MirrorBaseUrl string   `json:"mirrorBaseUrl"`
+	AutoDownload  bool          `json:"autoDownload"`
+	AllowedHosts  []string      `json:"allowedHosts"`
+	MirrorBaseUrl string        `json:"mirrorBaseUrl"`
+	Params        MlModelParams `json:"params"`
+}
+
+// MlModelParams is the pipeline's steering params (E41): the two
+// values the ML jobs read at their own dispatch. The JSON tags match
+// the contract's ModelParams field names, so the stored row's shape
+// and the API's shape are one shape.
+type MlModelParams struct {
+	// FaceDetectMinScore is the confidence a face detection needs to
+	// enter the library: a lower-scoring candidate never lands.
+	FaceDetectMinScore float64 `json:"faceDetectMinScore"`
+	// FaceRecognizeThreshold is the cosine-distance radius under
+	// which two embeddings belong to one person (the clusterer's
+	// eps).
+	FaceRecognizeThreshold float64 `json:"faceRecognizeThreshold"`
+}
+
+// MlModelParamsDefault is the params posture when the setting row is
+// absent (or the row lost the params object): the pipeline's own
+// defaults -- the detector's shipped score threshold and the
+// clusterer's shipped eps. The numbers are pinned on the pipeline
+// side by a jobs-package test against the ML wrapper's own constants,
+// so the two cannot drift; this leaf stays an importer of nothing
+// above it.
+var MlModelParamsDefault = MlModelParams{
+	FaceDetectMinScore:     0.6,
+	FaceRecognizeThreshold: 0.55,
 }
 
 // ModelSettingsDefaultAllowedHosts lists the hosts the manifest's own
@@ -505,11 +535,16 @@ var ModelSettingsDefault = ModelSettings{
 // rows answer the default with the corruption returned for the
 // caller's log line. The default's host slice is copied per read, so
 // a caller that extends its own answer never aliases the package
-// default.
+// default. The params object degrades per FIELD: a stored value
+// outside its 0-1 domain (or not a number) falls back to the
+// pipeline's own default for that one knob while the honest rest of
+// the document survives -- the ML jobs read this on every dispatch
+// and must never fail over a drifted entry.
 func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, error) {
 	settings := ModelSettings{
 		AutoDownload:  ModelSettingsDefault.AutoDownload,
 		MirrorBaseUrl: ModelSettingsDefault.MirrorBaseUrl,
+		Params:        MlModelParamsDefault,
 	}
 	settings.AllowedHosts = append([]string(nil), ModelSettingsDefault.AllowedHosts...)
 	raw, err := q.GetInstanceSetting(ctx, ModelSettingsKey)
@@ -523,11 +558,54 @@ func ModelSettingsOf(ctx context.Context, q *dbgen.Queries) (ModelSettings, erro
 		corrupt := ModelSettings{
 			AutoDownload:  ModelSettingsDefault.AutoDownload,
 			MirrorBaseUrl: ModelSettingsDefault.MirrorBaseUrl,
+			Params:        MlModelParamsDefault,
 		}
 		corrupt.AllowedHosts = append([]string(nil), ModelSettingsDefault.AllowedHosts...)
 		return corrupt, fmt.Errorf("db: instance setting %s = %s is not a JSON object", ModelSettingsKey, raw)
 	}
+	// The params' per-field validation: a value outside the 0-1
+	// domain (or a non-number) restores THAT knob's pipeline default
+	// and reports the drift; the honest rest survives. The plain
+	// Unmarshal above keeps whatever the row carried -- including a
+	// NaN-shaped or negative entry the save endpoint's validation
+	// should have kept honest.
+	settings.Params.normalize()
 	return settings, nil
+}
+
+// normalize restores each param that sits outside its 0-1 domain (or
+// failed to decode as a number) to the pipeline's default, reporting
+// the first drift it repaired. The receiver form keeps the accessor's
+// corrupt-field discipline local to the params type.
+func (p *MlModelParams) normalize() error {
+	drift := func(value *float64, fallback float64) bool {
+		if err := checkUnit(*value); err != nil {
+			*value = fallback
+			return true
+		}
+		return false
+	}
+	corrupt := false
+	if drift(&p.FaceDetectMinScore, MlModelParamsDefault.FaceDetectMinScore) {
+		corrupt = true
+	}
+	if drift(&p.FaceRecognizeThreshold, MlModelParamsDefault.FaceRecognizeThreshold) {
+		corrupt = true
+	}
+	if corrupt {
+		return fmt.Errorf("db: instance setting %s params drifted outside the 0-1 domain; the drifted knobs answered the pipeline defaults", ModelSettingsKey)
+	}
+	return nil
+}
+
+// checkUnit refuses a value outside the closed 0-1 domain (NaN
+// included -- Go's Unmarshal rejects NaN literals, but a hand-written
+// row could still carry one through a JSON number's parse).
+func checkUnit(value float64) error {
+	if value < 0 || value > 1 {
+		return fmt.Errorf("db: value %v is outside the 0-1 domain", value)
+	}
+	return nil
 }
 
 // SaveModelSettings writes the model store policy as one JSON object.

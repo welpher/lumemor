@@ -353,9 +353,10 @@ func TestModelSettingsRoundTrip(t *testing.T) {
 
 	// The save replaces the hosts wholesale and the mirror's host
 	// joins the saved list automatically: a mirror the list refuses
-	// would fail on its own first hop.
+	// would fail on its own first hop. The params ride the same
+	// whole-object save (E41).
 	saved := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
-		`{"autoDownload":false,"allowedHosts":["models.example.net"],"mirrorBaseUrl":"mirror.example.net"}`, env.cookie)
+		`{"autoDownload":false,"allowedHosts":["models.example.net"],"mirrorBaseUrl":"mirror.example.net","params":{"faceDetectMinScore":0.6,"faceRecognizeThreshold":0.55}}`, env.cookie)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("save: status = %d, want %d", saved.Code, http.StatusOK)
 	}
@@ -388,11 +389,11 @@ func TestModelSettingsRoundTrip(t *testing.T) {
 	// A malformed host entry is refused with the field named; the
 	// wildcard label is accepted (the shipped list carries one).
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
-		`{"autoDownload":false,"allowedHosts":["bad host*"],"mirrorBaseUrl":""}`, env.cookie); rec.Code != http.StatusBadRequest {
+		`{"autoDownload":false,"allowedHosts":["bad host*"],"mirrorBaseUrl":"","params":{"faceDetectMinScore":0.6,"faceRecognizeThreshold":0.55}}`, env.cookie); rec.Code != http.StatusBadRequest {
 		t.Errorf("malformed host: status = %d, want %d", rec.Code, http.StatusBadRequest)
 	}
 	saved2 := env.do(t, http.MethodPut, "/api/v1/admin/settings/models",
-		`{"autoDownload":false,"allowedHosts":["*.hf.co","huggingface.co"],"mirrorBaseUrl":""}`, env.cookie)
+		`{"autoDownload":false,"allowedHosts":["*.hf.co","huggingface.co"],"mirrorBaseUrl":"","params":{"faceDetectMinScore":0.6,"faceRecognizeThreshold":0.55}}`, env.cookie)
 	if saved2.Code != http.StatusOK {
 		t.Fatalf("wildcard host save: status = %d, want %d (body %q)", saved2.Code, http.StatusOK, saved2.Body.String())
 	}
