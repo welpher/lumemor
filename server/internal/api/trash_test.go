@@ -1203,12 +1203,14 @@ func TestTrashBatch(t *testing.T) {
 	taken := time.Date(2026, 6, 10, 10, 0, 0, 0, time.UTC)
 	trashedA := env.uploadPhotoAs(t, env.cookie, "batch-a", taken, jpegColorFixture(t, color.RGBA{R: 0xb0, G: 0xb1, B: 0xb2, A: 0xff}))
 	trashedB := env.uploadPhotoAs(t, env.cookie, "batch-b", taken.Add(time.Minute), jpegColorFixture(t, color.RGBA{R: 0xb3, G: 0xb4, B: 0xb5, A: 0xff}))
+	trashedC := env.uploadPhotoAs(t, env.cookie, "batch-c", taken.Add(time.Minute), jpegColorFixture(t, color.RGBA{R: 0xbc, G: 0xbd, B: 0xbe, A: 0xff}))
 	keptLive := env.uploadPhotoAs(t, env.cookie, "batch-live", taken.Add(2*time.Minute), jpegColorFixture(t, color.RGBA{R: 0xb6, G: 0xb7, B: 0xb8, A: 0xff}))
 	foreign := env.uploadPhotoAs(t, graceCookie, "batch-grace", taken, jpegColorFixture(t, color.RGBA{R: 0xb9, G: 0xba, B: 0xbb, A: 0xff}))
 	unknown := uuid.MustParse("31000000-0000-0000-0000-000000000003")
 
 	env.softDeleteAsset(t, uuid.UUID(trashedA.Id), adminID)
 	env.softDeleteAsset(t, uuid.UUID(trashedB.Id), adminID)
+	env.softDeleteAsset(t, uuid.UUID(trashedC.Id), adminID)
 	env.softDeleteAsset(t, uuid.UUID(foreign.Id), graceID)
 
 	// The validation bounds first: an empty id list, an unknown
@@ -1270,7 +1272,7 @@ func TestTrashBatch(t *testing.T) {
 	// asset.deleted announced), the already-restored row and the
 	// unknown id land in missing, and grace's trashed row is never
 	// the admin caller's to delete.
-	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedB.Id), uuid.UUID(trashedA.Id), unknown)
+	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedC.Id), uuid.UUID(trashedA.Id), unknown)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("batch delete status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -1285,23 +1287,23 @@ func TestTrashBatch(t *testing.T) {
 		uuid.UUID(report.Missing[1]) != unknown {
 		t.Errorf("batch delete missing = %v, want the already-restored and the unknown ids", report.Missing)
 	}
-	env.requireNoAssetRow(t, uuid.UUID(trashedB.Id))
+	env.requireNoAssetRow(t, uuid.UUID(trashedC.Id))
 	batchDeleted := busEventsOf(t, env.bus, "asset.deleted")
-	if len(batchDeleted) != 1 || batchDeleted[0]["assetId"] != trashedB.Id.String() {
+	if len(batchDeleted) != 1 || batchDeleted[0]["assetId"] != trashedC.Id.String() {
 		t.Errorf("asset.deleted events = %v, want exactly one for the batch delete's row", batchDeleted)
 	}
 
 	// A repeated delete finds the row gone from the trash: missing,
 	// not an error (the row already left the view, the same
 	// reading the single-row delete's already-cleaned arm pins).
-	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedB.Id))
+	rec = env.trashBatch(t, env.cookie, "delete", uuid.UUID(trashedC.Id))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("repeated batch delete status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &report); err != nil {
 		t.Fatalf("decode repeated batch delete body: %v", err)
 	}
-	if report.Affected != 0 || len(report.Missing) != 1 || uuid.UUID(report.Missing[0]) != uuid.UUID(trashedB.Id) {
+	if report.Affected != 0 || len(report.Missing) != 1 || uuid.UUID(report.Missing[0]) != uuid.UUID(trashedC.Id) {
 		t.Errorf("repeated batch delete report = affected %d missing %v, want the row in missing", report.Affected, report.Missing)
 	}
 }
