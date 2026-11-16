@@ -54,8 +54,11 @@ func TestRetentionPeriodicRegistration(t *testing.T) {
 	if got := len(retentionPeriodicJobs()); got != 1 {
 		t.Errorf("retention periodic jobs = %d, want exactly the one registration", got)
 	}
-	if got := len(periodicJobs()); got != 3 {
-		t.Errorf("queue periodic jobs = %d, want the sweep, the expiry and the pair maintenance (three registrations)", got)
+	if got := len(periodicJobs(defaultFolderSyncInterval)); got != 4 {
+		t.Errorf("queue periodic jobs = %d, want the sweep, the expiry, the pair maintenance and the folder sync (four registrations)", got)
+	}
+	if got := len(periodicJobs(-1)); got != 3 {
+		t.Errorf("queue periodic jobs with the folder sync disabled = %d, want the three hourly registrations", got)
 	}
 
 	e := newEnv(t)
@@ -67,6 +70,9 @@ func TestRetentionPeriodicRegistration(t *testing.T) {
 	}
 	if !e.queue.client.PeriodicJobs().RemoveByID(livePhotoSweepPeriodicJobID) {
 		t.Error("the Live Photo pair maintenance periodic job is not registered in the started queue")
+	}
+	if e.queue.client.PeriodicJobs().RemoveByID(folderSyncPeriodicJobID) {
+		t.Error("the folder sync periodic job is registered in a queue the test env disabled it on")
 	}
 }
 

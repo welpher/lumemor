@@ -157,3 +157,18 @@ WHERE id = $1
   AND owner_id = $5
   AND storage_kind = 'external'
   AND deleted_at IS NULL;
+
+-- name: ListDirectoryAlbums :many
+-- The folder sync's scope: every directory album the periodic
+-- snapshot diff follows, with the root it walks. A directory album
+-- IS a scan of the folder it references (the domain's own
+-- definition), so "every directory album" and "every actively
+-- tracked folder" are the same set -- there is no paused or
+-- archived state for one to be in. The root arm keeps the walk
+-- total: a row without a resolved path has nothing to compare and
+-- is skipped by the query rather than by every caller.
+SELECT id, root_path
+FROM albums
+WHERE type = 'directory'
+  AND root_path IS NOT NULL
+ORDER BY created_at, id;

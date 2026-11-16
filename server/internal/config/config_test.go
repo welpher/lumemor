@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadDefaults(t *testing.T) {
@@ -120,6 +121,35 @@ func TestLoadUploadLimitBytes(t *testing.T) {
 			}
 			if cfg.UploadLimitBytes != tt.want {
 				t.Errorf("cfg.UploadLimitBytes = %d, want %d", cfg.UploadLimitBytes, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadFolderSyncInterval(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    time.Duration
+		wantErr bool
+	}{
+		{"unset keeps the queue default", "", 0, false},
+		{"zero disables the sweep", "0", -1, false},
+		{"off disables the sweep", "off", -1, false},
+		{"a positive duration passes", "90s", 90 * time.Second, false},
+		{"minutes parse too", "5m", 5 * time.Minute, false},
+		{"nonsense fails the boot", "nonsense", 0, true},
+		{"negative fails the boot", "-5s", 0, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvFolderSyncInterval, tc.raw)
+			got, err := loadFolderSyncInterval()
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("loadFolderSyncInterval(%q) error = %v, wantErr %v", tc.raw, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("loadFolderSyncInterval(%q) = %v, want %v", tc.raw, got, tc.want)
 			}
 		})
 	}

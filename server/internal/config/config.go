@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // EnvListen is the environment variable overriding the HTTP listen address.
@@ -44,6 +45,17 @@ const EnvGeodataDir = "LUMEMOR_GEODATA_DIR"
 // instance's own settings. Unset or empty leaves the check under the
 // admin settings switch alone.
 const EnvUpdateCheckDisabled = "LUMEMOR_UPDATE_CHECK_DISABLED"
+
+// EnvFolderSyncInterval is the environment variable overriding the
+// folder live sync's cadence: how often the periodic directory-snapshot
+// diff re-reads every directory album's source folder so its wall
+// follows the folder's adds, removes and changes. A Go duration
+// ("90s", "5m"); "0" or "off" disables the periodic sweep at the
+// deployment level (a family instance that references no folder pays
+// nothing), and unset or empty keeps the queue's own 60s default. The
+// e2e harness shortens it so a scene observes the diff inside the
+// test's bounds.
+const EnvFolderSyncInterval = "LUMEMOR_FOLDER_SYNC_INTERVAL"
 
 // DefaultListen is the listen address used when EnvListen is unset or empty.
 const DefaultListen = ":8244"
@@ -84,6 +96,10 @@ type Config struct {
 	// release check (the environment's own, distinct from the
 	// admin settings switch).
 	UpdateCheckDisabled bool
+	// FolderSyncInterval is the folder live sync's cadence. Zero keeps
+	// the job queue's default window (60s); a negative value means
+	// disabled, the shape the queue's periodic bundle reads.
+	FolderSyncInterval time.Duration
 }
 
 // Load reads the configuration from the environment. It returns an
@@ -117,6 +133,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	folderSyncInterval, err := loadFolderSyncInterval()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Listen:              listen,
 		DatabaseURL:         databaseURL,
@@ -125,6 +146,7 @@ func Load() (Config, error) {
 		GeodataDir:          os.Getenv(EnvGeodataDir),
 		UploadLimitBytes:    uploadLimitBytes,
 		UpdateCheckDisabled: parseTruthyEnv(EnvUpdateCheckDisabled),
+		FolderSyncInterval:  folderSyncInterval,
 	}, nil
 }
 
@@ -139,6 +161,30 @@ func parseTruthyEnv(name string) bool {
 	default:
 		return false
 	}
+}
+
+// loadFolderSyncInterval parses EnvFolderSyncInterval. An unset or
+// empty variable keeps the queue's default (zero, "use the default");
+// "0" and "off" disable the sweep (the negative marker); anything else
+// must be a positive Go duration, so a typo fails the boot loudly
+// instead of silently disabling a feature or walking every folder in a
+// tight loop.
+func loadFolderSyncInterval() (time.Duration, error) {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(EnvFolderSyncInterval)))
+	switch raw {
+	case "":
+		return 0, nil
+	case "0", "off":
+		return -1, nil
+	}
+	interval, err := time.ParseDuration(raw)
+	if err != nil {
+		return 0, fmt.Errorf("%s: parse %q as a duration: %w", EnvFolderSyncInterval, raw, err)
+	}
+	if interval <= 0 {
+		return 0, fmt.Errorf("%s must be a positive duration, got %q", EnvFolderSyncInterval, raw)
+	}
+	return interval, nil
 }
 
 // loadUploadLimitBytes parses EnvUploadLimitBytes. An unset or empty

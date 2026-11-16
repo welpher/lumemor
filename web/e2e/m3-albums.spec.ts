@@ -1,9 +1,13 @@
 // The albums-as-sources story of the web app (reshaped by the
-// album-autonomy rework), walked end to end against the real compose stack:
+// album-autonomy rework and the folder live sync), walked end to end
+// against the real compose stack:
 // an album IS a source. The create dialog picks an EXISTING directory
 // on the server's filesystem (referenced in place -- zero copy, zero
-// move), the rescan reconciles the album's membership with what that
-// directory holds, the audience is an album property (the edit
+// move), the CREATION scans it (the album's first scan is the
+// creation's own -- the wall never waits for a manual rescan), and
+// the periodic folder sync then keeps the album's membership equal to
+// the folder: a file dropped into the source reaches the wall, a file
+// removed from it leaves. The audience is an album property (the edit
 // dialog's audience face, the full-set PUT), and the member's side of
 // the share is the read-only view. THE AUTONOMY BLOCK rides BOTH
 // dialogs (the lock's retirement reshaped it): the timeline-exclusion
@@ -112,13 +116,17 @@
 //     -- and no allowAppDeletion key). The write probe
 //     answers sourceWritable false -- the creation FEEDBACK carries
 //     the read-only note and the Done affordance acknowledges it
-//     (the honest report face; the card lands with the honest zero
-//     count -- creation references, it does not scan).
-//  5. The rescan: the trigger POSTs the run, the aria-live progress
-//     line converges to complete through the job events, and the
-//     album's membership becomes honest -- two tiles, two photos,
-//     the wall ready. The bar's count holds at a narrow viewport
-//     too (it rides the title's truncation instead of vanishing).
+//     (the honest report face). The card lands, and the CREATION'S
+//     OWN SCAN converges it to the folder's two photos -- no rescan
+//     is pressed anywhere in this scene.
+//  5. The creation scan's result: the album page already holds the
+//     two tiles (the scan the creation enqueued), both ready through
+//     the same pipeline fan-out an upload walks; then the manual
+//     rescan re-runs the same directory idempotently -- the trigger
+//     POSTs the run and the aria-live progress line converges to
+//     complete through the job events, the membership unchanged.
+//     The bar's count holds at a narrow viewport too (it rides the
+//     title's truncation instead of vanishing).
 //  6. The task panel: the rescan's job_runs row lists with its own
 //     label (the contract's JobRunKind carries album_rescan -- the
 //     row must never fall to the panel's generic failure).
@@ -157,8 +165,8 @@
 //     (allowAppDeletion true, inTimeline false), the probe answers
 //     sourceWritable true -- the writable, all-landed creation closes
 //     the dialog DIRECTLY (no report face), and the card lands.
-// 11. The writable album's rescan converges the seeded pair, and
-//     the edit dialog's autonomy block holds its writable shape --
+// 11. The writable album's creation scan converges the seeded pair,
+//     and the edit dialog's autonomy block holds its writable shape --
 //     the deletability row rendered (checked on) beside the
 //     exclusion toggle (reading unchecked: the creation landed the
 //     exclusion), the lock toggle gone.
@@ -175,6 +183,13 @@
 //     view carries the row, and the restore returns the file -- the
 //     album's fresh answer carries both photos again (the fixture
 //     healed).
+// 13b. The folder live sync on one held-open album wall: a NEW photo
+//     written straight into the bind-mounted source appears on the
+//     wall with no manual action (the periodic snapshot diff enqueues
+//     the album's own scan inside the shortened window), and REMOVING
+//     the file takes the tile away again through the pinned orphan
+//     semantics -- the row is soft-deleted, never the trash view's
+//     (the file was never the server's). The fixture heals itself.
 // 14. The removal's stage: the audience grant arms the member (the
 //     full-set PUT the edit dialog drives), the two portrait pairs'
 //     clusters converge (the cross-person separation is the
@@ -256,6 +271,14 @@ const RW_SEED_A = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait
 const RW_SEED_B = path.join(repoRoot, 'server/internal/ml/testdata/face-portrait-other-second.jpg');
 const RW_SOURCE_HOST_DIR = path.join(specDir, 'fixtures/m3-source-rw');
 
+// The folder sync scene's dropped photo: a plain PNG with no faces
+// (the story's people assertions count the portrait pairs' faces
+// alone), and bytes no other scene of this stack ever ingests -- the
+// owner+checksum dedup would otherwise resolve the drop into an
+// existing row instead of a fresh tile.
+const FOLDER_SYNC_PHOTO = path.join(specDir, 'fixtures/tile-256.png');
+const PHOTO_SYNC_NAME = 'IMG_SYNC_0001.png';
+
 // The cover story's source: the repository's four-photo trip fixture,
 // bound read-only at the mount root. The album card holds four frames,
 // so the cover scene needs a collection of exactly that size -- the
@@ -292,6 +315,20 @@ const MIXED_VIDEO_SOURCE = path.join(repoRoot, 'server/internal/media/testdata/t
 // 351 MB) is minutes, the warm re-verification is seconds; both
 // allow the cold bound.
 const DOWNLOAD_TIMEOUT_MS = 900_000;
+
+// The creation-time scan's bound: the creation enqueues the album's
+// first scan, and the wall converges as its ingest lands -- the walk
+// plus the pipeline's first jobs on a two-photo source is seconds on
+// a warm stack, and the cold bounds above already allow minutes.
+const CREATION_SCAN_TIMEOUT_MS = 120_000;
+
+// The folder live sync's bound: the periodic tick re-reads every
+// directory album's source and enqueues the album's scan when it
+// changed. The harness shortens the interval (the compose stack's
+// LUMEMOR_FOLDER_SYNC_INTERVAL, 3s in the e2e run), so one change
+// needs a tick plus the scan's own ingest -- well inside this bound
+// even with the pipeline's cold steps.
+const FOLDER_SYNC_TIMEOUT_MS = 120_000;
 
 // The storage-state files scene 1 (the admin) and scene 8 (the
 // member) write and the later scenes replay (git-ignored, recreated
@@ -569,32 +606,49 @@ test.describe('the administrator scenes', () => {
 		await dialog.getByRole('button', { name: 'Done', exact: true }).click();
 		await expect(dialog).toHaveCount(0);
 
-		// The SSE album.created echo converges the wall: the card
-		// lands with the honest zero count -- creation references the
-		// source, it does not scan it.
+		// The SSE album.created echo converges the wall, and the
+		// creation's OWN scan converges the card: no rescan is pressed
+		// here, and the folder's two photos land (the creation-time
+		// scan is the album's first scan). The count is the wall's own
+		// live number -- album.items-changed refetches the grid.
 		const card = page.locator('a.album-card').filter({ hasText: ALBUM_TITLE });
 		await expect(card).toBeVisible();
-		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '0 photos');
+		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '2 photos', {
+			timeout: CREATION_SCAN_TIMEOUT_MS
+		});
 
 		// The created album's id, for the later scenes' deep links.
 		albumId = (await card.getAttribute('href'))?.replace('/albums/', '') ?? '';
 		expect(albumId).not.toBe('');
 	});
 
-	test("scene 5: the rescan converges the album's membership with the source", async ({ page }) => {
+	test("scene 5: the creation's scan converges the album, and the manual rescan re-runs it idempotently", async ({
+		page
+	}) => {
 		await page.goto(`/albums/${albumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
-		// The rescan trigger: the POST answers the run's identifier
-		// (202 -- the freshly created run).
+		// THE CREATION'S OWN SCAN: the album page holds the folder's
+		// two photos already -- the scan the creation enqueued, never
+		// a button -- and the bar's count agrees with the grid.
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos', {
+			timeout: CREATION_SCAN_TIMEOUT_MS
+		});
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: CREATION_SCAN_TIMEOUT_MS });
+		await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
+
+		// The manual rescan is the owner's explicit re-run -- still the
+		// endpoint and still the same three-arm diff: the POST answers
+		// the run's identifier (202 the fresh run; 200 joins a run of
+		// this album still in flight, the endpoint's idempotence).
 		const rescanPosted = page.waitForResponse(
 			(response) =>
 				response.request().method() === 'POST' && response.url().endsWith(`/api/v1/albums/${albumId}/rescan`)
 		);
 		await page.getByRole('button', { name: 'Rescan', exact: true }).click();
 		const answer = await rescanPosted;
-		expect(answer.status()).toBe(202);
+		expect([200, 202]).toContain(answer.status());
 		const runBody = (await answer.json()) as { jobRunId?: string };
 		expect(runBody.jobRunId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
@@ -605,14 +659,12 @@ test.describe('the administrator scenes', () => {
 		await expect(progress).toBeVisible();
 		await expect(progress).toContainText('Rescan complete.', { timeout: 120_000 });
 
-		// The membership is honest: the bar's count and the wall's
-		// tiles converge onto the two fixture photos.
+		// The idempotent re-run changes nothing the user sees: the
+		// membership is still the two fixture photos.
 		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos', {
 			timeout: 120_000
 		});
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 120_000 });
-		await expect(page.getByRole('link', { name: PHOTO_A_NAME, exact: true })).toBeVisible();
-		await expect(page.getByRole('link', { name: PHOTO_B_NAME, exact: true })).toBeVisible();
 
 		// The bar's count is unconditional: a narrow window keeps it
 		// beside the truncating title (the one numeric statement the
@@ -623,13 +675,15 @@ test.describe('the administrator scenes', () => {
 		await expect(barCount).toHaveAttribute('aria-label', '2 photos');
 		await page.setViewportSize({ width: 1280, height: 720 });
 		// At the desktop width the count rides the bar as the sample
-		// draws it: the glyph BESIDE the digits on one line (the
+		// draws it: the glyph BESIDE the digits on ONE line (the
 		// retired gate blockified the count here -- the variant's
 		// display:inline beat the component's inline-flex and stacked
-		// the svg over the number; the computed style is the decisive
-		// assertion, the height the visual one).
+		// the svg over the number, a 35px-tall count). The height is
+		// the decisive check: a flex child's computed display always
+		// blockifies (inline-flex reads as flex), so the one-line
+		// geometry -- not the display value -- is what the pin can
+		// honestly assert.
 		await expect(barCount).toBeVisible();
-		expect(await barCount.evaluate((el) => getComputedStyle(el).display)).toBe('inline-flex');
 		expect(await barCount.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
 
 		// And the scan's pipeline ran to its end: the source ingest
@@ -1217,41 +1271,31 @@ test.describe('the writable source scenes', () => {
 		// path that closes silently is the one that speaks here).
 		await expect(page.locator('.toasts')).toContainText('Album created.');
 
-		// The card lands with the honest zero count.
+		// The card lands, and the creation's own scan converges it to
+		// the seeded pair -- the writable album's first scan is the
+		// creation's too (nothing is pressed here).
 		const card = page.locator('a.album-card').filter({ hasText: RW_ALBUM_TITLE });
 		await expect(card).toBeVisible();
-		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '0 photos');
+		await expect(card.locator('.album-card__count')).toHaveAttribute('aria-label', '2 photos', {
+			timeout: CREATION_SCAN_TIMEOUT_MS
+		});
 
 		// The writable album's id, for the later scenes' deep links.
 		rwAlbumId = (await card.getAttribute('href'))?.replace('/albums/', '') ?? '';
 		expect(rwAlbumId).not.toBe('');
 	});
 
-	test("scene 11: the writable album's rescan converges and the deletability row renders", async ({ page }) => {
+	test("scene 11: the writable album's creation scan converges the pair and the deletability row renders", async ({
+		page
+	}) => {
 		await page.goto(`/albums/${rwAlbumId}`);
 		await expect(page.locator('h1.album-bar__title')).toHaveText(RW_ALBUM_TITLE);
-		await expect(page.getByText('This album has no photos yet')).toBeVisible();
 
-		// The rescan: the trigger POSTs the run and the aria-live
-		// progress line converges to complete through the job events
-		// (the same walk as the read-only story's scene 5).
-		const rescanPosted = page.waitForResponse(
-			(response) =>
-				response.request().method() === 'POST' && response.url().endsWith(`/api/v1/albums/${rwAlbumId}/rescan`)
-		);
-		await page.getByRole('button', { name: 'Rescan', exact: true }).click();
-		const answer = await rescanPosted;
-		expect(answer.status()).toBe(202);
-
-		const progress = page.locator('[data-testid="album-rescan-progress"]');
-		await expect(progress).toBeVisible();
-		await expect(progress).toContainText('Rescan complete.', { timeout: 120_000 });
-
-		// The membership converges onto the seeded pair, and the
-		// scan's pipeline runs both files to ready (the models are
-		// warm; the fan-out is the same one the read-only story
-		// waited for).
-		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 120_000 });
+		// The creation's own scan, the same beat as the read-only
+		// story's scene 5: the seeded pair is already on the wall, and
+		// the scan's pipeline runs both files to ready (the models are
+		// warm; the fan-out is the one every ingest walks).
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: CREATION_SCAN_TIMEOUT_MS });
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
 		await expect
@@ -1413,6 +1457,57 @@ test.describe('the writable source scenes', () => {
 		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
 		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
 		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos');
+	});
+
+	test('scene 13b: the folder sync follows the folder — a dropped photo appears, a removed one leaves', async ({
+		page
+	}) => {
+		// The held-open album wall: everything below converges through
+		// the activity stream (the album's items-changed refetch and
+		// the vanish arm's asset.trashed), never a reload.
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.getByRole('link', { name: PHOTO_RW_A_NAME, exact: true })).toBeVisible();
+		await expect(page.getByRole('link', { name: PHOTO_RW_B_NAME, exact: true })).toBeVisible();
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos');
+
+		// THE ADD: the test writes straight into the bind-mounted
+		// source -- the host side of the mount the container sees. No
+		// trigger fires in the app: the periodic directory-snapshot
+		// diff notices a file the last scan never saw and enqueues the
+		// album's OWN scan, whose add arm ingests it through the same
+		// pipeline a manual rescan walks.
+		const dropped = path.join(RW_SOURCE_HOST_DIR, PHOTO_SYNC_NAME);
+		await copyFile(FOLDER_SYNC_PHOTO, dropped);
+
+		await expect(page.getByRole('link', { name: PHOTO_SYNC_NAME, exact: true })).toBeVisible({
+			timeout: FOLDER_SYNC_TIMEOUT_MS
+		});
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '3 photos', {
+			timeout: FOLDER_SYNC_TIMEOUT_MS
+		});
+		await expect(page.locator('.tile')).toHaveCount(3, { timeout: FOLDER_SYNC_TIMEOUT_MS });
+
+		// THE REMOVE: the file leaves the folder, and the wall loses
+		// the tile through the pinned orphan semantics -- the row is
+		// marked deleted_at directly, and the trash view NEVER lists
+		// it: the file was never the server's, so there is nothing of
+		// ours in the trash to restore or expire away.
+		await rm(dropped, { force: true });
+		await expect(page.getByRole('link', { name: PHOTO_SYNC_NAME, exact: true })).toHaveCount(0, {
+			timeout: FOLDER_SYNC_TIMEOUT_MS
+		});
+		await expect(page.locator('.album-bar .album-detail__count')).toHaveAttribute('aria-label', '2 photos', {
+			timeout: FOLDER_SYNC_TIMEOUT_MS
+		});
+		await page.goto('/trash');
+		await expect(page.getByText('The trash is empty', { exact: true })).toBeVisible();
+
+		// The fixture healed itself (the source tree is the seeded pair
+		// again), and the story's later scenes start from the two
+		// photos they already expect.
+		await page.goto(`/albums/${rwAlbumId}`);
+		await expect(page.getByRole('link', { name: PHOTO_SYNC_NAME, exact: true })).toHaveCount(0);
+		await expect(page.locator('.tile')).toHaveCount(2, { timeout: 60_000 });
 	});
 });
 

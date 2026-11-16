@@ -73,11 +73,18 @@ func (w *RetentionWorker) Work(ctx context.Context, job *river.Job[RetentionArgs
 
 // periodicJobs returns the queue's full periodic bundle: the requeue
 // sweep, the trash expiry and the Live Photo pair maintenance, each on
-// its own hourly schedule. The combined list is what the River client
-// starts with.
-func periodicJobs() []*river.PeriodicJob {
+// its own hourly schedule, plus the folder live sync on its own
+// cadence. The combined list is what the River client starts with.
+// The folder sync's cadence is the deployment's (60s unless
+// configured otherwise); a negative interval omits its registration
+// entirely -- the off switch, and the unit tests' determinism.
+func periodicJobs(folderSyncInterval time.Duration) []*river.PeriodicJob {
 	jobs := append(sweepPeriodicJobs(), retentionPeriodicJobs()...)
-	return append(jobs, livePhotoSweepPeriodicJobs()...)
+	jobs = append(jobs, livePhotoSweepPeriodicJobs()...)
+	if folderSyncInterval > 0 {
+		jobs = append(jobs, folderSyncPeriodicJobs(folderSyncInterval)...)
+	}
+	return jobs
 }
 
 // retentionPeriodicJobs returns the periodic job registration of the
