@@ -4,7 +4,7 @@
 // the account itself -- and everything it held is settled before it:
 //
 //   - The TRANSFER arm hands the departing account's content to
-//     another account: the photos (live, trashed, hidden and the Live
+//     another account: the photos (live, trashed, archived and the Live
 //     Photo components alike), the albums and memories, and the tags
 //     attached to them. The departing stream folds into the receiver's
 //     own stream, so the photos keep their place in the family

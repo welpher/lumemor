@@ -344,8 +344,8 @@ func TestSharedVisibilityAssets(t *testing.T) {
 		if uuid.UUID(detail.OwnerId) != adminID {
 			t.Errorf("detail ownerId = %s, want the album owner's %s", detail.OwnerId, adminID)
 		}
-		if detail.IsTrashed || detail.IsHidden {
-			t.Errorf("detail isTrashed/isHidden = %v/%v, want live values", detail.IsTrashed, detail.IsHidden)
+		if detail.IsTrashed || detail.IsArchived {
+			t.Errorf("detail isTrashed/isArchived = %v/%v, want live values", detail.IsTrashed, detail.IsArchived)
 		}
 
 		rec = env.serveGet(t, originalPath, graceCookie, nil)

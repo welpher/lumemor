@@ -233,7 +233,7 @@ type ListCallerTagsRow struct {
 // sorted by name case-insensitively with the tag id as the
 // deterministic tiebreak -- the named-people listing's own ordering
 // discipline, applied to the vocabulary. A tag whose every member
-// is trashed or hidden still lists, with its count of zero (the
+// is trashed or archived still lists, with its count of zero (the
 // assignment rows survive underneath, exactly like favorite rows;
 // the count returns with the restore or unhide).
 func (q *Queries) ListCallerTags(ctx context.Context, userID pgtype.UUID) ([]ListCallerTagsRow, error) {

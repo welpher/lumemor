@@ -19,7 +19,7 @@ void main() {
       // TODO
     });
 
-    // The tag's assignment rows joined to caller-visible live assets: the album union plus the timeline's live filters (not trashed, not hidden, no Live Photo component). A trashed or hidden member stops counting until it returns; the assignment row survives underneath, exactly like a favorite row. 
+    // The tag's assignment rows joined to caller-visible live assets: the album union plus the timeline's live filters (not trashed, not archived, no Live Photo component). A trashed or archived member stops counting until it returns; the assignment row survives underneath, exactly like a favorite row. 
     // int assetCount
     test('to test the property `assetCount`', () async {
       // TODO

@@ -12,11 +12,11 @@ part 'batch_request.g.dart';
 /// One batch action over a list of asset ids. The action applies to every id that resolves to a caller-owned asset; the rest (unknown or another account's, indistinguishable) are ignored and reported in the response's `missing` list -- a batch never fails over an individual id. `ids` carries between 1 and 1000 entries; repeated ids collapse to one application. 
 ///
 /// Properties:
-/// * [action] - The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (a hidden asset leaves every live view until unhidden); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
+/// * [action] - The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (an archived asset leaves every live view until unarchived); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
 /// * [ids] - The asset ids to apply the action to: at least 1, at most 1000. 
 @BuiltValue()
 abstract class BatchRequest implements Built<BatchRequest, BatchRequestBuilder> {
-  /// The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (a hidden asset leaves every live view until unhidden); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
+  /// The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (an archived asset leaves every live view until unarchived); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
   @BuiltValueField(wireName: r'action')
   BatchRequestActionEnum get action;
   // enum actionEnum {  favorite,  unfavorite,  hide,  unhide,  trash,  restore,  };
@@ -125,7 +125,7 @@ class _$BatchRequestSerializer implements PrimitiveSerializer<BatchRequest> {
 }
 
 
-/// The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (a hidden asset leaves every live view until unhidden); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
+/// The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (an archived asset leaves every live view until unarchived); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
 class BatchRequestActionEnum extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'favorite')

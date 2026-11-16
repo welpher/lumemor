@@ -710,7 +710,7 @@ type TransferAssetOwnershipParams struct {
 }
 
 // The transfer arm's photo handover: every row the departing account
-// owned -- live, trashed, hidden, components alike -- becomes the
+// owned -- live, trashed, archived, components alike -- becomes the
 // receiver's. The collision set is settled first over EVERY state pair
 // (the uniqueness index is total), so no row survives here that the
 // receiver already holds in any state; what is left is content the

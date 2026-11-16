@@ -483,7 +483,7 @@ export interface paths {
          *     in-stream curation would be pure duplication. One asset
          *     visible through several albums appears once.
          *
-         *     Every item is live by construction: hidden assets, assets in
+         *     Every item is live by construction: archived assets, assets in
          *     the trash, and the component video rows of Live Photos never
          *     appear.
          *
@@ -600,9 +600,11 @@ export interface paths {
          *
          *     The actions resolve to their single-row primitives: favorite
          *     / unfavorite write or remove the caller's per-user favorites
-         *     rows; hide / unhide flip the owner-level visibility switch of
-         *     the row the id names (a hidden asset leaves every live view
-         *     -- the timeline, the favorites -- until unhidden); trash /
+         *     rows; hide / unhide flip the owner-level archive switch of
+         *     the row the id names (an archived asset leaves every family
+         *     flow -- the timeline, the favorites, the people and places
+         *     walls, the map, the memories, the search -- until
+         *     unarchived); trash /
          *     restore run the trash lifecycle of the trash endpoints, Live
          *     Photo pair included (trashing or restoring the photo carries
          *     its component video row along, whichever row the id names).
@@ -628,8 +630,9 @@ export interface paths {
          *     actually changed -- the idempotent no-op stays silent, the
          *     same discipline as the single-asset restore: `asset.trashed`
          *     and `asset.restored` for trash and restore, `asset.updated`
-         *     for hide and unhide (visibility is owner-level state, and
-         *     every viewer of the shared timeline sees it change).
+         *     for hide and unhide (the archive switch is owner-level
+         *     state, and every viewer of the shared timeline sees it
+         *     change).
          *     favorite / unfavorite publish nothing: favorites are per-user
          *     state with no cross-user visibility effect, so no other
          *     session has anything to refresh.
@@ -651,7 +654,7 @@ export interface paths {
         /**
          * The caller's favorites, one keyset page at a time.
          * @description The favorites view: the assets the calling user favorites,
-         *     filtered to the live view -- hidden assets, assets in the
+         *     filtered to the live view -- archived assets, assets in the
          *     trash and the component video rows of Live Photos never
          *     appear -- with every item carrying `isFavorite: true` by
          *     construction (the listing joins the caller's favorites rows).
@@ -672,7 +675,7 @@ export interface paths {
          *     assets from the view (the favorite row itself survives and
          *     resurfaces if the album is shared again). Hiding (or
          *     trashing) a favorited asset removes it from this view; it
-         *     returns when unhidden (or restored), the favorite row
+         *     returns when unarchived (or restored), the favorite row
          *     untouched -- an idempotent per-user mark, not a copy of the
          *     asset.
          */
@@ -685,7 +688,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/assets/hidden": {
+    "/assets/archived": {
         parameters: {
             query?: never;
             header?: never;
@@ -693,24 +696,25 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * The caller's hidden assets, one keyset page at a time.
-         * @description The hidden view: the caller's own assets whose owner-level
-         *     visibility switch is off. Live rows only -- a trashed asset
-         *     stays in the trash view until restored or expired, and a
-         *     restored one returns here still hidden -- and no Live Photo
-         *     component rows (the pair is represented by its photo). The
-         *     same ordering and keyset pagination as the timeline:
-         *     `takenAt` descending with the id as the tiebreak, `limit`
-         *     absent meaning 100 and capped at 200, `nextCursor` exactly
-         *     when another page follows.
+         * The caller's archived assets, one keyset page at a time.
+         * @description The archived view: the caller's own assets whose archive
+         *     switch is on. Untrashed rows only -- a trashed asset stays in
+         *     the trash view until restored or expired, and a restored one
+         *     returns here still archived -- and no Live Photo component
+         *     rows (the pair is represented by its photo). The same ordering
+         *     and keyset pagination as the timeline: `takenAt` descending
+         *     with the id as the tiebreak, `limit` absent meaning 100 and
+         *     capped at 200, `nextCursor` exactly when another page follows.
          *
-         *     Unhiding through the batch endpoint returns an asset to every
-         *     live view (the timeline, the favorites if favorited).
-         *     `isFavorite` still reports the caller's favorites state of a
-         *     hidden asset -- the favorite row survives the hiding, exactly
-         *     like it survives the trash.
+         *     Unarchiving returns an asset to every family flow (the
+         *     timeline, the favorites if favorited, the people and places
+         *     walls, the map, the memories, the search); an album kept it
+         *     visible all along, since the album is a reference container.
+         *     `isFavorite` still reports the caller's favorites state of an
+         *     archived asset -- the favorite row survives the archiving,
+         *     exactly like it survives the trash.
          */
-        get: operations["getHidden"];
+        get: operations["getArchived"];
         put?: never;
         post?: never;
         delete?: never;
@@ -732,7 +736,7 @@ export interface paths {
          *     response plus the refinements the pipeline produced afterwards
          *     -- dimensions, duration, blurhash, the EXIF hot fields, and
          *     readiness -- the owner-level editable attributes
-         *     (`description`, `isHidden`, and the `takenAt` / `latitude` /
+         *     (`description`, `isArchived`, and the `takenAt` / `latitude` /
          *     `longitude` edits `PATCH` writes), which the asset detail view
          *     renders, the asset's faces
          *     with the caller's own label of each face's cluster (`faces`),
@@ -749,12 +753,13 @@ export interface paths {
          *     those cover answers the same 404 `ASSET_NOT_FOUND` as an id
          *     that does not exist, byte for byte, so asset ids cannot be
          *     enumerated. The owner's reads keep their current shape: a
-         *     trashed or hidden asset answers 200 (`isTrashed`, `isHidden`
+         *     trashed or archived asset answers 200 (`isTrashed`, `isArchived`
          *     honest) because the owner's album memberships outlive both
-         *     marks; for a sharee the same holds by id -- the album views
-         *     and the timeline list live members only, so a hidden or
-         *     trashed shared asset surfaces nowhere but stays readable at
-         *     its known id until the share itself goes.
+         *     marks; for a sharee the same holds by id -- the family flows
+         *     list live rows only, so an archived or trashed shared asset
+         *     surfaces only where its album keeps it (an album keeps its
+         *     archived members) and stays readable at its known id until
+         *     the share itself goes.
          *
          *     A trashed asset answers 200 with `isTrashed: true` -- the
          *     trash view reads the detail the same way. The component video
@@ -811,10 +816,10 @@ export interface paths {
          * Edit the owner-level attributes of one asset.
          * @description The partial edit of the owner-level attributes of an asset:
          *     `description`, the free text the detail panel renders,
-         *     `isHidden`, the owner-level visibility switch that keeps
-         *     the asset out of every live view until it returns, `takenAt`,
-         *     the manual capture-time edit, and the `latitude` / `longitude`
-         *     pair, the manual location edit. All body fields are optional
+         *     `isArchived`, the owner-level switch that keeps the asset out
+         *     of every family flow until it returns, `takenAt`, the manual
+         *     capture-time edit, and the `latitude` / `longitude` pair, the
+         *     manual location edit. All body fields are optional
          *     but at least one must be present (a field set to JSON null
          *     counts as absent, so a body of nulls is the empty patch); a
          *     request that carries none answers 400 `VALIDATION_FAILED`.
@@ -846,9 +851,9 @@ export interface paths {
          *     asset ids cannot be enumerated. A trashed asset is editable
          *     like it is readable (the detail answers 200 with `isTrashed:
          *     true`): the edit lands on the row and resurfaces with the
-         *     restore. The hidden switch this endpoint flips is the same
-         *     one the batch `hide` / `unhide` actions flip, so the two
-         *     surfaces agree on the state of an asset.
+         *     restore. The archive switch this endpoint flips is the same
+         *     one the batch endpoint's `hide` / `unhide` actions flip, so
+         *     the two surfaces agree on the state of an asset.
          *
          *     `description` carries at most 10,000 Unicode characters
          *     (runes); above that the request answers 400
@@ -1230,17 +1235,21 @@ export interface paths {
          *     is computed here; it is never the newest frames and never a
          *     client's random pick, and an upload mid-week cannot move it.
          *     Fewer frames than the card holds when the album has fewer
-         *     live members; empty for an album with none. `itemCount`
-         *     counts live members under the same predicate and
+         *     members; empty for an album with none. `itemCount`
+         *     counts the album's members under the container rule and
          *     `photoCount` the image-kind ones among them (the card's
-         *     image-glyph count renders `photoCount`): trashed,
-         *     hidden and Live Photo component rows never count (a hidden
-         *     asset is invisible to the whole family). For a shared-group
-         *     `memory` card the predicate widens the same way the detail's
-         *     does: both counts and the collage frames are the live members
-         *     the memory's owner currently sees -- the re-share ground,
-         *     revalidated at read time, so a revoked photo leaves the
-         *     sharee's card and collage with no snapshot residue.
+         *     image-glyph count renders `photoCount`): trashed and Live
+         *     Photo component rows never count, while an archived member
+         *     does -- an album keeps its archived members (it is a
+         *     reference container), and the count is the container's own
+         *     face. A `memory` card is the exception: the memories surface
+         *     is a family flow, so its archived members count nowhere. For
+         *     a shared-group `memory` card the predicate widens the same
+         *     way the detail's does: both counts and the collage frames
+         *     are the members the memory's owner currently sees -- the
+         *     re-share ground, revalidated at read time, so a revoked photo
+         *     leaves the sharee's card and collage with no snapshot
+         *     residue.
          *
          *     `isShared` reports whether the album carries at least one
          *     `album_shares` row -- the owner's "someone else sees this"
@@ -1458,8 +1467,8 @@ export interface paths {
          *     share -- with the one exception below.
          *
          *     The caller's OWN sync album answers 200: the default album's
-         *     read-only detail. `callerRole` is `owner`, the live members
-         *     page through the same keyset as any album's (the grid and
+         *     read-only detail. `callerRole` is `owner`, the members page
+         *     through the same keyset as any album's (the grid and
          *     the viewer work like any album's), but the album is
          *     system-managed: NO write affordance applies to it -- the
          *     property patch, the membership curation, the sharing face,
@@ -1483,37 +1492,41 @@ export interface paths {
          *     revoked before the request simply sits in that same invisible
          *     region.
          *
-         *     `itemCount` counts the album's live members and
-         *     `photoCount` the image-kind members among them (the bar's
-         *     "N photos" idiom reads the latter -- a video is a member,
-         *     never a photo); `items` is one
-         *     keyset page of them, ordered `takenAt` descending with the
-         *     asset id as the tiebreak -- the timeline's own ordering and
-         *     cursor pair, so the album grid pages with the timeline's
-         *     walking machinery. Every item carries the membership's
-         *     `addedAt` and the minimal asset context the grid renders;
-         *     `thumbnail` is the asset thumbnail endpoint's `tile`-size
-         *     URL. Live members only: trashed, hidden and Live Photo
-         *     component rows never appear (a hidden asset is
-         *     invisible to the whole family).
+         *     `itemCount` counts the album's members and `photoCount` the
+         *     image-kind members among them (the bar's "N photos" idiom
+         *     reads the latter -- a video is a member, never a photo);
+         *     `items` is one keyset page of them, ordered `takenAt`
+         *     descending with the asset id as the tiebreak -- the
+         *     timeline's own ordering and cursor pair, so the album grid
+         *     pages with the timeline's walking machinery. Every item
+         *     carries the membership's `addedAt` and the minimal asset
+         *     context the grid renders; `thumbnail` is the asset thumbnail
+         *     endpoint's `tile`-size URL. Trashed and Live Photo component
+         *     rows never appear; an ARCHIVED member does -- an album is a
+         *     reference container, so the archive removes an asset from
+         *     the family flows, never from the album that holds it, and
+         *     the owner unarchives from here. A `memory` is the exception:
+         *     the memories surface is a family flow of its own, so its
+         *     archived members leave the count and the pages exactly like
+         *     they leave the timeline.
          *
          *     For a `memory` seen by a VIEWER (a memory shared to the
          *     caller), the set is narrower: the count and the pages carry
-         *     the live members the memory's owner CURRENTLY sees -- the
-         *     re-share ground, revalidated at read time. When the owner's
-         *     sight of a photo dies (the album that carried it to the
-         *     owner was unshared, the row was trashed or hidden), the
-         *     photo leaves every shared view of the memory live: the next
-         *     read drops it, with no snapshot residue. The owner's own
-         *     detail keeps the plain live membership -- the curation is
-         *     the owner's own view of the set, and the owner's rows can
-         *     still be tidied through the membership remove.
+         *     the members the memory's owner CURRENTLY sees -- the re-share
+         *     ground, revalidated at read time. When the owner's sight of a
+         *     photo dies (the album that carried it to the owner was
+         *     unshared, the row was trashed, or -- on a memory -- it was
+         *     archived), the photo leaves every shared view of the memory
+         *     at once: the next read drops it, with no snapshot residue.
+         *     The owner's own detail keeps the plain membership -- the
+         *     curation is the owner's own view of the set, and the owner's
+         *     rows can still be tidied through the membership remove.
          *
          *     `coverAssetIds` is the owner's stored pin, in pick order: the
          *     frames the owner picked, exactly as written, or an empty
          *     array when the album is on the automatic weekly group. A
          *     pinned frame that has since left the album (moved out,
-         *     trashed, hidden) still appears here -- the picker seeds from
+         *     trashed, archived) still appears here -- the picker seeds from
          *     this list and marks the cells that are no longer in the
          *     album, so the detail answers the PIN, never the rendered
          *     card (the wall card's `coverAssetIds` is the filled group).
@@ -1645,11 +1658,13 @@ export interface paths {
          *     Cover validation (the application-layer check): a present
          *     `coverAssetIds` must carry 0 or exactly N distinct ids (N is
          *     the card's frame count: four on the album card, six on the
-         *     memory band), and every one must be a LIVE member of THIS
-         *     album -- the membership row exists and the asset passes the
-         *     live predicate (not trashed, not hidden, not a Live Photo
-         *     component row). Any other id -- an asset that is no member, a
-         *     trashed, hidden or component row, another account's asset --
+         *     memory band), and every one must be a renderable member of
+         *     THIS album -- the membership row exists and the asset is not
+         *     trashed and not a Live Photo component row. An archived
+         *     member is renderable on an album (the container keeps it) and
+         *     not on a memory (a family-flow surface drops it). Any other
+         *     id -- an asset that is no member, a trashed or component row,
+         *     an archived member of a memory, another account's asset --
          *     answers 400 `VALIDATION_FAILED` carrying the message key
          *     `album_cover_not_member` and the count of refused frames. A
          *     length that is neither 0 nor N, and a repeated id, answer
@@ -1695,7 +1710,7 @@ export interface paths {
          *     the creator must CURRENTLY see the photo (it is a member of
          *     at least one album that feeds the caller's view -- their
          *     sync stream, their directory albums, or an album shared to
-         *     them) AND it must be a live row (not trashed, not hidden,
+         *     them) AND it must be a live row (not trashed, not archived,
          *     not a Live Photo component). An id failing either check is
          *     skipped -- the row never lands -- and so is an id that is
          *     already a member (the set's idempotent no-op); an
@@ -2046,7 +2061,7 @@ export interface paths {
          *
          *     - it contains at least one face on an asset visible to the
          *       caller (an asset the caller can see that is live -- not
-         *       trashed, not hidden, no Live Photo component row: their
+         *       trashed, not archived, no Live Photo component row: their
          *       own, or one shared to them through an album), and
          *     - the caller has labeled it with a `user_face_labels` row of
          *       their own.
@@ -2093,7 +2108,7 @@ export interface paths {
          * @description The unnamed region of the people surface: every face cluster
          *     that contains at least one face on an asset visible to the
          *     caller (an asset the caller can see that is live -- not
-         *     trashed, not hidden, no Live Photo component row: their own,
+         *     trashed, not archived, no Live Photo component row: their own,
          *     or one shared to them through an album) and carries NO
          *     `user_face_labels` row of the caller. The moment the caller
          *     labels a cluster it moves to `GET /people` and out of this
@@ -2415,7 +2430,7 @@ export interface paths {
          *     The refusal discipline is the face writes' own: the face must
          *     sit on an asset the caller OWNS and that is live -- any other
          *     state (unknown asset, another account's asset, an asset shared
-         *     to the caller but not owned, a trashed, hidden or Live Photo
+         *     to the caller but not owned, a trashed, archived or Live Photo
          *     component asset) answers the same byte-identical 404
          *     `PERSON_NOT_FOUND` (anti-enumeration). A bbox value outside
          *     the 0..1000 bounds, a missing half, or a body that fails to
@@ -2459,7 +2474,7 @@ export interface paths {
          *     must sit on an asset the caller OWNS and that is live --
          *     any other state (unknown face, another account's asset, an
          *     asset shared to the caller but not owned, a trashed,
-         *     hidden or Live Photo component asset) answers the same
+         *     archived or Live Photo component asset) answers the same
          *     byte-identical 404 `PERSON_NOT_FOUND`
          *     (anti-enumeration). A face the clustering has not yet
          *     assigned to any cluster is part of no person and answers
@@ -2502,7 +2517,7 @@ export interface paths {
          *     must sit on an asset the caller OWNS and that is live --
          *     any other state (unknown face, another account's asset, an
          *     asset shared to the caller but not owned, a trashed,
-         *     hidden or Live Photo component asset) answers the same
+         *     archived or Live Photo component asset) answers the same
          *     byte-identical 404 `PERSON_NOT_FOUND`
          *     (anti-enumeration). A face the clustering has not yet
          *     assigned to any cluster is VALID here: the creation seeds
@@ -2603,7 +2618,7 @@ export interface paths {
          *     a live, non-component asset -- their own, or one shared to
          *     them through an album. Every other state answers the SAME
          *     byte-identical 404 PERSON_NOT_FOUND -- an unknown face id, a
-         *     face on another account's unshared (or a trashed, or hidden)
+         *     face on another account's unshared (or a trashed, or archived)
          *     asset, and an asset whose view derivative has not been
          *     derived yet (the thumbnail job has not run). Face ids cannot
          *     be probed for existence; the web renders its skeleton
@@ -2645,7 +2660,7 @@ export interface paths {
          *     the list when it carries a caller-visible live asset (the
          *     album union of the caller's own sync and directory albums
          *     plus every album shared to them, and the timeline's live-row
-         *     filters: not trashed, not hidden, no Live Photo component
+         *     filters: not trashed, not archived, no Live Photo component
          *     row); `assetCount` counts exactly those assets, so the same
          *     place can show different counts to different accounts -- the
          *     honest per-caller counting discipline the people surface
@@ -2749,7 +2764,7 @@ export interface paths {
          * @description The unified search over the caller-visible asset domain (the
          *     album union of the caller's own sync and directory albums plus
          *     every album shared to them, and the timeline's live-row
-         *     filters: not trashed, not hidden, no Live Photo component
+         *     filters: not trashed, not archived, no Live Photo component
          *     row). One optional text box drives TWO backend paths that
          *     merge deterministically; the optional filter parameters
          *     narrow both paths and the pure-filter mode (no text) is the
@@ -2848,7 +2863,7 @@ export interface paths {
          *     the tags' owner is always the caller, and no tag, name or
          *     count of another account ever surfaces here. The listing
          *     carries the vocabulary in full -- a tag whose every member is
-         *     trashed or hidden still lists, with its honest count of zero
+         *     trashed or archived still lists, with its honest count of zero
          *     (the assignment rows survive, exactly like a favorite row,
          *     and the count returns with the restore or unhide).
          *
@@ -2856,7 +2871,7 @@ export interface paths {
          *     CALLER-VISIBLE LIVE assets: the album union (the caller's
          *     own sync and directory albums plus every album shared to
          *     them) and the timeline's live filters -- not trashed, not
-         *     hidden, no Live Photo component -- the honest-counts
+         *     archived, no Live Photo component -- the honest-counts
          *     discipline of the people and places surfaces. A sharee's
          *     count covers the shared members they can see; a revoked
          *     share retracts them while the assignment rows survive
@@ -2979,7 +2994,7 @@ export interface paths {
          *     carries this tag is skipped too: assignment is a set, the
          *     add is idempotent. NO live-state filter applies to the
          *     resolution: the assignment row is per-user state written
-         *     whatever the asset's live state (a trashed or hidden asset
+         *     whatever the asset's live state (a trashed or archived asset
          *     carries the tag underneath the view's filters and the count
          *     returns with the restore or unhide, exactly like a favorite
          *     row). An all-skipped request still answers 200 with `added`
@@ -3327,7 +3342,7 @@ export interface paths {
          *
          *     - `transferTo` names another account that receives everything
          *       the departing account owned: its photos with their albums
-         *       and memories, their hidden and trash marks intact, and the
+         *       and memories, their archived and trash marks intact, and the
          *       tags attached to them. The photos join the receiver's own
          *       stream, so the family timeline continues without a gap, and
          *       the albums the departing account shared keep their grantees.
@@ -5833,7 +5848,7 @@ export interface components {
          * @description One asset as the detail endpoint returns it: the upload
          *     response's identity and storage fields, the pipeline's
          *     refinements, the owner-level attributes the PATCH
-         *     endpoint edits (`description`, `isHidden`, and the
+         *     endpoint edits (`description`, `isArchived`, and the
          *     `takenAt` / `latitude` / `longitude` edits), the asset's
          *     faces as the calling user sees them (`faces`), and the
          *     CALLER's tags on the asset (`tags`). The caller-visible
@@ -5923,14 +5938,17 @@ export interface components {
             /** @description True when the asset sits in the trash. */
             isTrashed: boolean;
             /**
-             * @description True while the owner-level visibility switch is off: the
-             *     asset is out of every live view (the timeline, the
-             *     favorites) and manageable only through the hidden view,
-             *     until it is unhidden. The same switch `PATCH
+             * @description True while the asset is archived: out of every family flow
+             *     -- the timeline, the favorites, the people and places
+             *     walls, the map, the memories, the search -- and listed
+             *     only through the archived view, until it is unarchived.
+             *     An album keeps its archived members (the album is a
+             *     reference container), and the owner unarchives from there
+             *     or from the archived view. The same switch `PATCH
              *     /assets/{id}` and the batch `hide` / `unhide` actions
              *     flip.
              */
-            isHidden: boolean;
+            isArchived: boolean;
             /**
              * @description The owner's free-text description of the asset, the text
              *     the detail panel renders; the empty string until the
@@ -6301,14 +6319,18 @@ export interface components {
         };
         /**
          * @description One asset of the timeline: the asset detail's fields minus the
-         *     `exif` object and the two detail-panel edit attributes
-         *     (`description`, `isHidden`) -- the detail endpoint renders the
-         *     EXIF panel and the edit controls; the timeline renders tiles.
-         *     Every item is live by construction --
-         *     hidden assets, trashed assets and the component video rows of
-         *     Live Photos never enter the timeline -- so `isTrashed` is
-         *     always false here and is carried only to keep the item shape
-         *     identical to the detail's. `isReady` still varies: a fresh
+         *     `exif` object, the `place` join and the `description` edit
+         *     attribute -- the detail endpoint renders the EXIF panel, the
+         *     place card and the edit controls; the timeline renders tiles.
+         *     An item is live on every family-flow wall by construction --
+         *     archived assets, trashed assets and the component video rows of
+         *     Live Photos never enter those -- so `isTrashed` is always false
+         *     there and is carried only to keep the item shape identical to
+         *     the detail's. The album narrow is the exception: an album keeps
+         *     its archived members, so its items carry `isArchived: true` for
+         *     them (the container's unarchive entry reads it); the archived
+         *     view's items are `true` by construction. `isReady` still
+         *     varies: a fresh
          *     upload enters the timeline immediately with its
          *     pipeline-dependent fields null, and the client upgrades the
          *     tile when `asset.ready` fires. The shape is fixed -- every
@@ -6379,6 +6401,13 @@ export interface components {
              */
             isTrashed: boolean;
             /**
+             * @description The row's archive state: `false` on every family-flow
+             *     wall (the flows exclude archived rows), `true` on the
+             *     archived view's items and on an album's archived members
+             *     (the container keeps them visible and unarchivable).
+             */
+            isArchived: boolean;
+            /**
              * @description Whether the REQUESTING user favorites this asset: the
              *     caller's own row of the per-user favorites state, written
              *     by the batch endpoint's favorite action. False whenever
@@ -6433,7 +6462,7 @@ export interface components {
         };
         /**
          * @description One page of a timeline-shaped view: the aggregated timeline,
-         *     the favorites view or the hidden view all answer with this
+         *     the favorites view or the archived view all answer with this
          *     page shape (the same ordering and the same cursor semantics).
          *     `nextCursor` is present exactly when another page follows the
          *     `items` of this one: the client passes it back as the
@@ -6606,7 +6635,7 @@ export interface components {
              * @description The set operation to apply. `favorite` / `unfavorite`
              *     write or remove the caller's per-user favorites rows;
              *     `hide` / `unhide` flip the owner-level visibility switch
-             *     (a hidden asset leaves every live view until unhidden);
+             *     (an archived asset leaves every live view until unarchived);
              *     `trash` / `restore` run the trash lifecycle of the trash
              *     endpoints, the Live Photo pair moving as one asset.
              * @enum {string}
@@ -6669,12 +6698,13 @@ export interface components {
              */
             description?: string;
             /**
-             * @description The owner-level visibility switch: `true` keeps the asset
-             *     out of every live view (the timeline, the favorites)
-             *     until it is unhidden; `false` returns it. The same switch
+             * @description The owner-level archive switch: `true` keeps the asset out
+             *     of every family flow until it is unarchived; `false`
+             *     returns it. An album keeps its archived members, so the
+             *     album surface is unaffected either way. The same switch
              *     the batch `hide` / `unhide` actions flip.
              */
-            isHidden?: boolean;
+            isArchived?: boolean;
             /**
              * Format: date-time
              * @description The owner's manual capture-time edit: the value replaces
@@ -7570,8 +7600,8 @@ export interface components {
             /**
              * @description The tag's assignment rows joined to caller-visible live
              *     assets: the album union plus the timeline's live filters
-             *     (not trashed, not hidden, no Live Photo component). A
-             *     trashed or hidden member stops counting until it
+             *     (not trashed, not archived, no Live Photo component). A
+             *     trashed or archived member stops counting until it
              *     returns; the assignment row survives underneath, exactly
              *     like a favorite row.
              */
@@ -7675,8 +7705,8 @@ export interface components {
             albums: components["schemas"]["AlbumSummary"][];
         };
         /**
-         * @description One album card of the wall: the metadata, the live member
-         *     count, the live PHOTO count and the collage source, plus the
+         * @description One album card of the wall: the metadata, the member count,
+         *     the PHOTO count and the collage source, plus the
          *     `callerRole` discriminator the client keys each card's face
          *     by (a viewer card carries the read-only mark; an own card
          *     its own shared state). Shared
@@ -7730,29 +7760,30 @@ export interface components {
              *     holds fewer than twice the frame count -- such an album
              *     keeps one stable sample of its own. A pinned frame that
              *     is no longer visible to the caller (moved out, trashed,
-             *     hidden) is filled silently from the caller's visible
+             *     archived) is filled silently from the caller's visible
              *     pool; a fully dead pin falls back to the automatic group.
              *
              *     The order is the render order and the length is at most
-             *     the card's frame count: a collection with fewer live
-             *     members than frames answers the frames it has (one
-             *     fills, two split, three lay one large beside two small),
-             *     and an album with no live members answers an empty array
-             *     (the card's empty cover, no placeholder photo).
+             *     the card's frame count: a collection with fewer members
+             *     than frames answers the frames it has (one fills, two
+             *     split, three lay one large beside two small), and an
+             *     album with no members answers an empty array (the card's
+             *     empty cover, no placeholder photo).
              */
             coverAssetIds: string[];
             /**
-             * @description The album's live member count: trashed, hidden and Live
-             *     Photo component rows never count (a hidden asset is
-             *     invisible to the whole family). The members of every
-             *     media kind count here -- this is the collection's own
-             *     size, the number the cover pool and the removal's
-             *     arithmetic consult.
+             * @description The album's member count: trashed and Live Photo component
+             *     rows never count, while an archived member does -- an
+             *     album is a reference container that keeps its archived
+             *     members (a memory, a family-flow surface, drops them).
+             *     The members of every media kind count here -- this is
+             *     the collection's own size, the number the cover pool and
+             *     the removal's arithmetic consult.
              */
             itemCount: number;
             /**
-             * @description The album's live PHOTO count: the same live-member
-             *     predicate narrowed to `kind: image` members. The
+             * @description The album's PHOTO count: the same member predicate
+             *     narrowed to `kind: image` members. The
              *     interface's count idiom beside the image glyph reads
              *     this field (it says "12 photos", so it counts photos);
              *     a video is a member but never a photo, and the wall
@@ -7824,8 +7855,8 @@ export interface components {
         };
         /**
          * @description One album's detail as the calling user sees it: the metadata,
-         *     the caller's role, the live member count, the live photo
-         *     count and one keyset page of the live items.
+         *     the caller's role, the member count, the photo count and one
+         *     keyset page of the members.
          */
         AlbumDetail: {
             /**
@@ -7853,7 +7884,7 @@ export interface components {
              *     returns the order given), or an empty array when the
              *     album is on the automatic weekly group. A pinned frame
              *     that has since left the album (moved out, trashed,
-             *     hidden) still appears here: the picker seeds from this
+             *     archived) still appears here: the picker seeds from this
              *     list and marks the cells that are no longer in the album.
              *     The wall card's own `coverAssetIds` is the FILLED group
              *     (the dead pins replaced from the caller's visible pool);
@@ -7911,13 +7942,13 @@ export interface components {
              */
             callerRole: "owner" | "viewer";
             /**
-             * @description The album's live member count, the same predicate as the
+             * @description The album's member count, the same predicate as the
              *     items below (every media kind).
              */
             itemCount: number;
             /**
-             * @description The album's live photo count: the live-item predicate
-             *     narrowed to image-kind members. The contextual bar's
+             * @description The album's photo count: the member predicate narrowed
+             *     to image-kind members. The contextual bar's
              *     count idiom renders this field (the image glyph says
              *     "photos"); the wall beside it carries videos as their
              *     own tiles, never as photos. Equal to `itemCount` when
@@ -7925,7 +7956,7 @@ export interface components {
              */
             photoCount: number;
             /**
-             * @description One page of the album's live members, `takenAt` descending
+             * @description One page of the album's members, `takenAt` descending
              *     with the asset id as the tiebreak.
              */
             items: components["schemas"]["AlbumItem"][];
@@ -7961,8 +7992,8 @@ export interface components {
             inTimeline?: boolean;
         };
         /**
-         * @description One live member of the album: the membership's identity and
-         *     the minimal asset context the detail grid renders.
+         * @description One member of the album: the membership's identity and the
+         *     minimal asset context the detail grid renders.
          */
         AlbumItem: {
             /**
@@ -8180,7 +8211,7 @@ export interface components {
              *     one). Repeated ids answer 400 too -- a cover is a set,
              *     and one frame cannot fill two cells. Every id must be a
              *     LIVE member of THIS album (the membership row exists and
-             *     the asset is not trashed, not hidden, not a Live Photo
+             *     the asset is not trashed, not archived, not a Live Photo
              *     component row); otherwise the answer is 400 with the
              *     message key `album_cover_not_member` and a `count` of the
              *     refused frames. Absent (or JSON null, which decodes as
@@ -9220,12 +9251,17 @@ export interface operations {
                  * @description Restrict the response to the timeline of this one album
                  *     (an album the caller owns or that is shared to the caller)
                  *     instead of the aggregate. An unknown or invisible album
-                 *     answers the empty list. For a memory shared to the caller
-                 *     the walk honors the re-share ground: the items are the
-                 *     live members the memory's owner currently sees,
-                 *     revalidated at read time (a photo whose source visibility
-                 *     died leaves the walk), while the memory's owner keeps the
-                 *     plain live membership.
+                 *     answers the empty list. An album is a reference
+                 *     container: its archived members ride the walk (the
+                 *     archive removes an asset from the family flows, never
+                 *     from the album that holds it). A memory is a family-flow
+                 *     surface of its own, so its archived members leave the
+                 *     walk exactly like they leave the aggregate -- and for a
+                 *     memory shared to the caller the walk honors the re-share
+                 *     ground: the items are the members the memory's owner
+                 *     currently sees, revalidated at read time (a photo whose
+                 *     source visibility died leaves the walk), while the
+                 *     memory's owner keeps the plain membership.
                  */
                 albumId?: string;
             };
@@ -9428,7 +9464,7 @@ export interface operations {
             };
         };
     };
-    getHidden: {
+    getArchived: {
         parameters: {
             query?: {
                 /**
@@ -9454,7 +9490,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description One page of the hidden view. `nextCursor` is present
+             * @description One page of the archived view. `nextCursor` is present
              *     exactly when another page follows; the last page carries
              *     none.
              */
@@ -10674,7 +10710,7 @@ export interface operations {
              *     whitespace-only or spans more than 64 characters; a
              *     present `coverAssetIds` carries a length other than 0 or
              *     the card's frame count, repeats an id, or names an id
-             *     that is not a live member of this album (the message key
+             *     that is not a renderable member of this album (the message key
              *     `album_cover_not_member` with the refused count); or a
              *     present `allowAppDeletion` names a non-directory album
              *     (the message key `album_deletable_not_directory`).
@@ -12189,7 +12225,7 @@ export interface operations {
             /**
              * @description No such face for this caller: the face id is unknown, its
              *     asset is not visible to the caller (another account's,
-             *     trashed, hidden, or a Live Photo component), or the
+             *     trashed, archived, or a Live Photo component), or the
              *     asset's view derivative does not exist yet -- all
              *     indistinguishable by design; the web renders a skeleton
              *     placeholder until the pixels exist.

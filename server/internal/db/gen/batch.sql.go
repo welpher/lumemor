@@ -26,10 +26,10 @@ type FavoriteAssetParams struct {
 // set semantics: favoriting a favorite is a no-op (zero rows), not
 // an error -- a repeat of the batch converges. The row carries no
 // state of the asset itself, so it is written whatever the asset's
-// live/hidden/trashed state: the favorites view filters on the
-// asset's state, the favorite survives trash and hiding and
-// resurfaces with the restore/unhide (an idempotent per-user mark,
-// not a copy of the asset).
+// live/archived/trashed state: the favorites view filters on the
+// asset's state, the favorite survives trash and archiving and
+// resurfaces with the restore/unarchive (an idempotent per-user
+// mark, not a copy of the asset).
 func (q *Queries) FavoriteAsset(ctx context.Context, arg FavoriteAssetParams) (int64, error) {
 	result, err := q.db.Exec(ctx, favoriteAsset, arg.UserID, arg.AssetID)
 	if err != nil {
@@ -163,22 +163,23 @@ type SetAssetHiddenParams struct {
 	OwnerID pgtype.UUID `json:"owner_id"`
 }
 
-// The owner-level visibility switch of one asset row: hide or unhide
-// in a single statement, the caller deciding the target value. The
-// is_hidden <> $3 arm is the set-semantics guard: switching a row
-// that already carries the target value matches nothing, so the
-// handler answers the idempotent repeat as the same success and the
-// event stays silent. Unlike the trash lifecycle this write is
-// deliberately single-row -- no Live Photo pair predicate: the
-// component video row never appears in any client-visible surface
-// (every view filters is_component), so its is_hidden is inert, and
-// the photo of the pair is the row that carries the pair's
-// visibility. No deleted_at arm either: hiding a trashed row (or
-// unhiding one) simply coexists with the trash mark -- the row
-// re-enters the live views still hidden once restored, which is the
-// documented behavior of the hidden view. The PATCH endpoint
-// reuses this write as its isHidden arm: one authority
-// for the switch, both surfaces agreeing on the state of an asset.
+// The owner-level archive switch of one asset row: archive or
+// unarchive in a single statement, the caller deciding the target
+// value. The is_hidden <> $3 arm is the set-semantics guard:
+// switching a row that already carries the target value matches
+// nothing, so the handler answers the idempotent repeat as the same
+// success and the event stays silent. Unlike the trash lifecycle
+// this write is deliberately single-row -- no Live Photo pair
+// predicate: the component video row never appears in any
+// client-visible surface (every view filters is_component), so its
+// is_hidden is inert, and the photo of the pair is the row that
+// carries the pair's state. No deleted_at arm either: archiving a
+// trashed row (or unarchiving one) simply coexists with the trash
+// mark -- the row re-enters the live views still archived once
+// restored, which is the documented behavior of the archived view.
+// The PATCH endpoint reuses this write as its isArchived arm: one
+// authority for the switch, both surfaces agreeing on the state of
+// an asset.
 func (q *Queries) SetAssetHidden(ctx context.Context, arg SetAssetHiddenParams) (int64, error) {
 	result, err := q.db.Exec(ctx, setAssetHidden, arg.Hidden, arg.ID, arg.OwnerID)
 	if err != nil {

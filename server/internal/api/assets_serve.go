@@ -687,7 +687,7 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 // job refines them (a real image is never 0 pixels wide), duration
 // and blurhash are nullable columns, and the exif hot fields are null
 // until the sidecar carries the extraction. The two owner-level
-// editable attributes (description, isHidden) cross as the row
+// editable attributes (description, the archive switch) cross as the row
 // carries them -- the PATCH response reuses this mapper, so the
 // applied values surface exactly as the GET endpoint serves them,
 // faces, tags, albums and place included (the caller passes the same
@@ -707,7 +707,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		TakenAtSource:    apigen.AssetDetailTakenAtSource(row.TakenAtSource),
 		TakenAtZone:      textValue(row.TakenAtZone),
 		IsTrashed:        row.DeletedAt.Valid,
-		IsHidden:         row.IsHidden,
+		IsArchived:       row.IsHidden,
 		Description:      row.Description,
 		IsReady:          row.ReadyAt.Valid,
 		Width:            dimensionValue(row.Width),

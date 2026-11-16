@@ -1,12 +1,11 @@
-// The favorites and hidden views: the two curated
-// timelines behind GET /assets/favorites and GET /assets/hidden.
+// The favorites and archived views: the two curated
+// timelines behind GET /assets/favorites and GET /assets/archived.
 // Both answer TimelineItem pages through the timeline's own
 // machinery -- the same page-parameter validation, the same keyset
 // cursor, the same page rendering -- so the wall UI that walks the
 // timeline walks these views unchanged. They differ only in which
 // rows the queries select: the caller's favorites rows joined to
-// live assets, or the caller's own live rows whose visibility switch
-// is off.
+// live assets, or the caller's own rows whose archive switch is on.
 package api
 
 import (
@@ -46,10 +45,10 @@ func (s *server) GetFavorites(w http.ResponseWriter, r *http.Request, params api
 	s.writeJSON(w, http.StatusOK, timelinePage(rows, limit, favoriteAssetFields))
 }
 
-// GetHidden implements GET /api/v1/assets/hidden: one keyset page of
-// the caller's hidden assets -- the owner-level visibility switch
-// turned off, live rows only, no Live Photo component rows.
-func (s *server) GetHidden(w http.ResponseWriter, r *http.Request, params apigen.GetHiddenParams) {
+// GetArchived implements GET /api/v1/assets/archived: one keyset page
+// of the caller's archived assets -- the owner-level archive switch
+// on, untrashed rows only, no Live Photo component rows.
+func (s *server) GetArchived(w http.ResponseWriter, r *http.Request, params apigen.GetArchivedParams) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
 		s.rejectUnauthenticated(w)
@@ -61,16 +60,16 @@ func (s *server) GetHidden(w http.ResponseWriter, r *http.Request, params apigen
 		return
 	}
 
-	rows, err := s.queries.ListHiddenAssets(r.Context(), dbgen.ListHiddenAssetsParams{
+	rows, err := s.queries.ListArchivedAssets(r.Context(), dbgen.ListArchivedAssetsParams{
 		UserID:        pgUUID(requester.userID),
 		CursorTakenAt: cursor.takenAt,
 		CursorID:      cursor.id,
 		LimitCount:    int32(limit) + 1,
 	})
 	if err != nil {
-		s.internalError(w, r, "load hidden assets", err)
+		s.internalError(w, r, "load archived assets", err)
 		return
 	}
 
-	s.writeJSON(w, http.StatusOK, timelinePage(rows, limit, hiddenAssetFields))
+	s.writeJSON(w, http.StatusOK, timelinePage(rows, limit, archivedAssetFields))
 }
