@@ -700,9 +700,11 @@
 			     "N photos" beside the image glyph): the album's
 			     `photoCount`, never the live-member `itemCount` --
 			     a video is a member of the album but not a photo,
-			     and the wall marks it with its own glyph. -->
+			     and the wall marks it with its own glyph. The count
+			     renders at every width (the bar's one numeric
+			     statement, and the title truncates instead). -->
 			<CountLabel
-				class="album-detail__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+				class="album-detail__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
 				count={detail.photoCount}
 				label={$_('albums_photo_count', { values: { count: detail.photoCount } })}
 			/>
