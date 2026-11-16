@@ -163,6 +163,27 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
+/** Boot the session store signed in as one role, the albums wall's pattern. */
+async function bootSession(role: 'admin' | 'user'): Promise<void> {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () =>
+			jsonResponse(200, [
+				{
+					id: '6f9c2d18-9a4c-4a1b-b1a1-000000000001',
+					kind: 'WEB',
+					userId: 'u1',
+					role,
+					deviceName: 'Mozilla/5.0 (test)',
+					createdAt: '2026-11-01T10:00:00Z',
+					lastSeenAt: '2026-11-02T10:00:00Z'
+				}
+			])
+		)
+	);
+	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
+}
+
 function modal(): HTMLElement | null {
 	return document.body.querySelector<HTMLElement>('.modal__panel');
 }
@@ -791,4 +812,100 @@ test('leaving the page unsubscribes from both streams', async () => {
 	flushSync();
 	expect(handlers).toHaveLength(0);
 	expect(assetHandlers).toHaveLength(0);
+});
+
+test("the danger zone is the admin's alone, and the confirm DELETEs the person and lands the list", async () => {
+	await bootSession('admin');
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073' && init?.method === 'DELETE') {
+			return new Response(null, { status: 204 });
+		}
+		const route = detailRoutes()[url];
+		if (route === undefined) {
+			throw new Error(`unexpected fetch ${url}`);
+		}
+		return route(init);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The danger zone's button rides the bar (admin domain).
+	const danger = buttonByLabel('Delete person');
+	danger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The confirm names the person and counts the caller's faces.
+	const dialog = modal();
+	expect(dialog?.textContent).toContain('Delete this person?');
+	expect(dialog?.textContent).toContain('This deletes Ada and the detection records of all 2 of their faces.');
+	expect(dialog?.textContent).toContain('The photos themselves are not affected. This cannot be undone.');
+
+	// The confirm runs the write; the echo lands and the people
+	// list takes over (the landing is the feedback).
+	buttonByText('Delete person', dialog!).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+	expect(document.body.querySelector('[role="dialog"]')).toBeNull();
+	const deletes = fetchMock.mock.calls.filter(
+		([input, init]) =>
+			String(input) === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073' && init?.method === 'DELETE'
+	);
+	expect(deletes).toHaveLength(1);
+	expect(toasts().map((entry) => entry.text)).toEqual(['Person deleted.']);
+	expect(vi.mocked(goto)).toHaveBeenCalledWith('/people');
+	unmount(page);
+	flushSync();
+});
+
+test("a member's session renders no delete affordance (the admin domain)", async () => {
+	await bootSession('user');
+	vi.stubGlobal('fetch', stubFetch(detailRoutes()));
+	const page = mountPage();
+	await settle();
+
+	// The bar carries the avatar and the merge entries; the delete
+	// person button does not exist anywhere on the page.
+	expect(() => buttonByLabel('Delete person')).toThrow();
+	expect(() => buttonByLabel('Merge into…')).not.toThrow();
+	unmount(page);
+	flushSync();
+});
+
+test('a refused delete keeps the dialog open beside the honest failure line', async () => {
+	await bootSession('admin');
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/people/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6073' && init?.method === 'DELETE') {
+			return jsonResponse(403, {
+				code: 'AUTH_FORBIDDEN',
+				message: "the instance's ML records are the administrator's curation"
+			});
+		}
+		const route = detailRoutes()[url];
+		if (route === undefined) {
+			throw new Error(`unexpected fetch ${url}`);
+		}
+		return route(init);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByLabel('Delete person').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+	const dialog = modal()!;
+	buttonByText('Delete person', dialog).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	await settle();
+
+	// The dialog stays open, the honest line renders, no echo, no
+	// navigation (the person still exists).
+	expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+	expect(document.body.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+		"You don't have permission to do this."
+	);
+	expect(toasts()).toHaveLength(0);
+	expect(vi.mocked(goto)).not.toHaveBeenCalled();
+	unmount(page);
+	flushSync();
 });

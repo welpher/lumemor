@@ -724,3 +724,30 @@ export async function patchFaceBox(
 	}
 	return { ok: true, face: body as FaceBoxPatchResponse };
 }
+
+/**
+ * DELETE /api/v1/people/{clusterId}: the person's REAL delete, the
+ * vocabulary's third tier beside the caller's own label delete (the
+ * person returns to the unnamed region) and the single-face detach
+ * (the face row survives). This write removes the cluster AND every
+ * one of its face rows -- the photos lose the person's chips, the
+ * lists lose the person, the unnamed pool gains nothing, and the
+ * photos themselves are untouched. The domain is the instance
+ * administrator's: a member's attempt answers the 403 whose code the
+ * caller maps, never a person-existence probe.
+ */
+export async function deletePerson(
+	clusterId: string,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<MutationResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(`/api/v1/people/${encodeURIComponent(clusterId)}`, { method: 'DELETE' }, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (response.ok) {
+		return { ok: true };
+	}
+	return { ok: false, errorKey: await errorKeyFrom(response) };
+}

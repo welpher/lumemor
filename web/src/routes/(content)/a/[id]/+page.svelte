@@ -350,6 +350,10 @@
 			// faces array.
 			case 'person.face_box_updated':
 				return faces.some((face) => face.id === event.faceId);
+			// The real delete removes the whole cluster: the photo
+			// loses the person's chips outright.
+			case 'person.deleted':
+				return faces.some((face) => face.clusterId === event.clusterId);
 		}
 	}
 
