@@ -23,6 +23,12 @@ void main() {
       // TODO
     });
 
+    // The run's subject label (E41): the directory album a rescan run walks, by title, so the panel's row names what it did (\"Album rescan · Family archive\"). Every other kind has no subject -- the instance-wide reruns never name one -- and answers null; a null subject renders the kind's own label alone. 
+    // String subject
+    test('to test the property `subject`', () async {
+      // TODO
+    });
+
     // The run's whole work, in the run's own units: the download group's pinned bytes, or the rerun scope's asset count. 
     // int total
     test('to test the property `total`', () async {

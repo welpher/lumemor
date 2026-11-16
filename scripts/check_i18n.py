@@ -612,6 +612,21 @@ NON_ERROR_KEYS = {
     "admin_jobs_stop",
     "admin_jobs_stop_requested",
     "admin_jobs_stop_failed",
+    # E41's admin-surface completion: the breathing user row's joined
+    # date, the speaking job rows (the cancel action, the cancelled
+    # state, the rescan's subject line and unchanged count) and the
+    # two slots' model params.
+    "admin_users_joined",
+    "admin_jobs_cancel",
+    "admin_jobs_cancelled",
+    "admin_jobs_state_cancelled",
+    "admin_jobs_subject_rescan",
+    "admin_jobs_rescan_unchanged",
+    "models_param_min_score",
+    "models_param_min_score_hint",
+    "models_param_cluster_threshold",
+    "models_param_cluster_hint",
+    "admin_models_params_saved",
     "admin_jobs_run_title",
     "admin_jobs_run_note",
     "admin_jobs_run_concurrency",

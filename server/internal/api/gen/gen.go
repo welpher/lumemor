@@ -420,6 +420,8 @@ const (
 	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
 	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
 	INTERNAL               ErrorCode = "INTERNAL"
+	JOBNOTCANCELLABLE      ErrorCode = "JOB_NOT_CANCELLABLE"
+	JOBRUNNOTFOUND         ErrorCode = "JOB_RUN_NOT_FOUND"
 	MODELCONFIRMREQUIRED   ErrorCode = "MODEL_CONFIRM_REQUIRED"
 	MODELDOWNLOADFAILED    ErrorCode = "MODEL_DOWNLOAD_FAILED"
 	MODELINVALID           ErrorCode = "MODEL_INVALID"
@@ -471,6 +473,10 @@ func (e ErrorCode) Valid() bool {
 	case AUTHRATELIMITED:
 		return true
 	case INTERNAL:
+		return true
+	case JOBNOTCANCELLABLE:
+		return true
+	case JOBRUNNOTFOUND:
 		return true
 	case MODELCONFIRMREQUIRED:
 		return true
@@ -631,6 +637,7 @@ func (e JobRunKind) Valid() bool {
 
 // Defines values for JobRunState.
 const (
+	JobRunStateCancelled JobRunState = "cancelled"
 	JobRunStateFailed    JobRunState = "failed"
 	JobRunStateQueued    JobRunState = "queued"
 	JobRunStateRunning   JobRunState = "running"
@@ -640,6 +647,8 @@ const (
 // Valid indicates whether the value is a known member of the JobRunState enum.
 func (e JobRunState) Valid() bool {
 	switch e {
+	case JobRunStateCancelled:
+		return true
 	case JobRunStateFailed:
 		return true
 	case JobRunStateQueued:
@@ -3214,8 +3223,19 @@ type JobRunResponse struct {
 
 	// State The lifecycle of a job run: `queued` from creation until the
 	// driver picks it up, `running` while it works, then
-	// `succeeded` or `failed`.
+	// `succeeded`, `failed` -- or `cancelled` when the
+	// administrator's cancel ended it at a chunk boundary (the
+	// committed portion keeps its counts; a cancelled run is the
+	// admin's own deliberate ending, never a broken one).
 	State JobRunState `json:"state"`
+
+	// Subject The run's subject label (E41): the directory album a
+	// rescan run walks, by title, so the panel's row names what
+	// it did ("Album rescan · Family archive"). Every other
+	// kind has no subject -- the instance-wide reruns never
+	// name one -- and answers null; a null subject renders the
+	// kind's own label alone.
+	Subject *string `json:"subject"`
 
 	// Total The run's whole work, in the run's own units: the
 	// download group's pinned bytes, or the rerun scope's
@@ -3225,7 +3245,10 @@ type JobRunResponse struct {
 
 // JobRunState The lifecycle of a job run: `queued` from creation until the
 // driver picks it up, `running` while it works, then
-// `succeeded` or `failed`.
+// `succeeded`, `failed` -- or `cancelled` when the
+// administrator's cancel ended it at a chunk boundary (the
+// committed portion keeps its counts; a cancelled run is the
+// admin's own deliberate ending, never a broken one).
 type JobRunState string
 
 // KindFacetCount One media family of the kinds facet.
@@ -3559,6 +3582,45 @@ type ModelListResponse struct {
 	Slots []SlotStateResponse `json:"slots"`
 }
 
+// ModelParams The pipeline's steering params (E41): the values the ML jobs
+// read at their own dispatch. The set is honest by contract --
+// v1 carries exactly the two knobs the pipeline actually reads,
+// and it grows only as the pipeline grows (a slot without a
+// knob renders no empty block).
+//
+// A change takes effect on the NEXT dispatch: each job reads
+// the params once at its own start, so work already in flight
+// runs to completion on the values it read; no in-flight job is
+// re-steered. A corrupt stored value (a row the save
+// endpoint's validation should have kept honest) answers the
+// pipeline default on the read -- 0.6 for the minimum score,
+// 0.55 for the clustering threshold -- with the corruption
+// logged server-side.
+type ModelParams struct {
+	// FaceDetectMinScore The face detection's minimum confidence, 0 to 1
+	// inclusive: a candidate scoring below it never enters the
+	// library. The shipped default is the pipeline's own 0.6;
+	// the admin value overrides the active model's manifest
+	// entry for this knob. Contract granularity is steps of
+	// 0.05 (the page's stepper); the domain is what validates.
+	//
+	//
+	// Examples: 0.6
+	FaceDetectMinScore float32 `json:"faceDetectMinScore"`
+
+	// FaceRecognizeThreshold The face recognition's clustering threshold, 0 to 1
+	// inclusive: two embeddings whose cosine distance is below
+	// it belong to one person. The shipped default is the
+	// pipeline's own 0.55; the admin value overrides the
+	// active model's manifest entry for this knob. Contract
+	// granularity is steps of 0.05 (the page's stepper); the
+	// domain is what validates.
+	//
+	//
+	// Examples: 0.55
+	FaceRecognizeThreshold float32 `json:"faceRecognizeThreshold"`
+}
+
 // ModelProbeAcceptedResponse The 202 answer of a probe POST: the identifier to poll.
 type ModelProbeAcceptedResponse struct {
 	ProbeId string `json:"probeId"`
@@ -3710,8 +3772,9 @@ type ModelScanResponse struct {
 	Registered []ModelResponse `json:"registered"`
 }
 
-// ModelSettingsResponse The model store's policy and download sources of
-// `GET /admin/settings/models` and the successful `PUT`.
+// ModelSettingsResponse The model store's policy, download sources and pipeline
+// params of `GET /admin/settings/models` and the successful
+// `PUT`.
 type ModelSettingsResponse struct {
 	// AllowedHosts The hosts the model download may travel through. A URL
 	// whose host matches no entry -- entries are exact
@@ -3744,6 +3807,22 @@ type ModelSettingsResponse struct {
 	//
 	// Examples: [""], hf-mirror.com
 	MirrorBaseUrl string `json:"mirrorBaseUrl"`
+
+	// Params The pipeline's steering params (E41): the values the ML jobs
+	// read at their own dispatch. The set is honest by contract --
+	// v1 carries exactly the two knobs the pipeline actually reads,
+	// and it grows only as the pipeline grows (a slot without a
+	// knob renders no empty block).
+	//
+	// A change takes effect on the NEXT dispatch: each job reads
+	// the params once at its own start, so work already in flight
+	// runs to completion on the values it read; no in-flight job is
+	// re-steered. A corrupt stored value (a row the save
+	// endpoint's validation should have kept honest) answers the
+	// pipeline default on the read -- 0.6 for the minimum score,
+	// 0.55 for the clustering threshold -- with the corruption
+	// logged server-side.
+	Params ModelParams `json:"params"`
 }
 
 // ModelSettingsUpdateRequest Payload of `PUT /admin/settings/models`.
@@ -3756,6 +3835,22 @@ type ModelSettingsUpdateRequest struct {
 
 	// MirrorBaseUrl The mirror base host to save, or the empty string to clear it.
 	MirrorBaseUrl string `json:"mirrorBaseUrl"`
+
+	// Params The pipeline's steering params (E41): the values the ML jobs
+	// read at their own dispatch. The set is honest by contract --
+	// v1 carries exactly the two knobs the pipeline actually reads,
+	// and it grows only as the pipeline grows (a slot without a
+	// knob renders no empty block).
+	//
+	// A change takes effect on the NEXT dispatch: each job reads
+	// the params once at its own start, so work already in flight
+	// runs to completion on the values it read; no in-flight job is
+	// re-steered. A corrupt stored value (a row the save
+	// endpoint's validation should have kept honest) answers the
+	// pipeline default on the read -- 0.6 for the minimum score,
+	// 0.55 for the clustering threshold -- with the corruption
+	// logged server-side.
+	Params ModelParams `json:"params"`
 }
 
 // ModelSlot The functional slot a model fills. `face_detect`,
@@ -5793,6 +5888,9 @@ type ServerInterface interface {
 	// ListJobs List the job runs of the task panel.
 	// (GET /admin/jobs)
 	ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams)
+	// CancelJobRun Cancel one in-flight job run.
+	// (POST /admin/jobs/{runId}/cancel)
+	CancelJobRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
 	// ListModels List the registered models and the download run's state.
 	// (GET /admin/models)
 	ListModels(w http.ResponseWriter, r *http.Request)
@@ -6123,6 +6221,12 @@ func (_ Unimplemented) GetDerivativesSummary(w http.ResponseWriter, r *http.Requ
 // ListJobs List the job runs of the task panel.
 // (GET /admin/jobs)
 func (_ Unimplemented) ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// CancelJobRun Cancel one in-flight job run.
+// (POST /admin/jobs/{runId}/cancel)
+func (_ Unimplemented) CancelJobRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -6807,6 +6911,32 @@ func (siw *ServerInterfaceWrapper) ListJobs(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListJobs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelJobRun operation middleware
+func (siw *ServerInterfaceWrapper) CancelJobRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "runId" -------------
+	var runId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "runId", chi.URLParam(r, "runId"), &runId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "runId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelJobRun(w, r, runId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9594,6 +9724,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/derivatives/rebuild/stop", wrapper.StopDerivativesRebuild)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/jobs/{runId}/cancel", wrapper.CancelJobRun)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/admin/jobs", wrapper.ListJobs)

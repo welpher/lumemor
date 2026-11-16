@@ -91,6 +91,7 @@ import 'package:lumemor_api/src/model/model_catalog_entry.dart';
 import 'package:lumemor_api/src/model/model_dimension_change.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
 import 'package:lumemor_api/src/model/model_list_response.dart';
+import 'package:lumemor_api/src/model/model_params.dart';
 import 'package:lumemor_api/src/model/model_probe_accepted_response.dart';
 import 'package:lumemor_api/src/model/model_probe_response.dart';
 import 'package:lumemor_api/src/model/model_probe_response_input_size.dart';
@@ -254,6 +255,7 @@ part 'serializers.g.dart';
   ModelDimensionChange,
   ModelDownloadResponse,
   ModelListResponse,
+  ModelParams,
   ModelProbeAcceptedResponse,
   ModelProbeResponse,
   ModelProbeResponseInputSize,

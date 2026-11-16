@@ -11286,9 +11286,10 @@ paths:
         re-derived, and the next rebuild's `missing` scope skips
         them.
 
-        The run closes `failed` with `failed` counting nothing: the
-        task panel renders the reason line as stopped, not as a
-        broken run -- the admin asked for this ending.
+        The run closes `cancelled` -- the task panel renders the
+        cancelled state, not a broken run: the admin asked for this
+        ending (E41 shared the flag-closed ending with the task
+        panel's per-run cancel, and the two speak one state).
 
         A stop with no rebuild in flight (the run finished between the
         panel's listing and the click, or none ever started) answers
@@ -11346,6 +11347,117 @@ paths:
                   value:
                     code: REBUILD_NOT_RUNNING
                     message: no derivative rebuild is in flight
+        '500':
+          description: Unexpected server failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: internal server error
+  /admin/jobs/{runId}/cancel:
+    post:
+      operationId: cancelJobRun
+      tags:
+        - admin
+      summary: Cancel one in-flight job run.
+      description: |
+        The task panel's cancel (E41): asks the named run to end at
+        its next chunk boundary. The request itself flags the run
+        only -- the run's driver checks the flag BETWEEN chunks (a
+        walk page, a rescan batch, one model of a download group) and
+        closes the run `cancelled` there, so:
+
+        - The committed portion stays: every chunk already finished
+        keeps its work on disk and its count in the run's `done`.
+        The response makes no promise about work that has not
+        committed yet.
+        - An in-flight asset-level job (one decode, one inference,
+        one encode) runs to its own end -- the boundary is between
+        chunks, never mid-asset.
+        - The run's state flips to `cancelled` when the driver
+        closes it, and the close rides the task panel's existing
+        events (`job.finished`) -- the listing converges through the
+        same stream it always converges through. A QUEUED run cancels
+        at once (its driver checks the flag before the first chunk).
+        - A run that already finished -- succeeded, failed or
+        cancelled -- answers 409 `JOB_NOT_CANCELLABLE`: nothing is in
+        flight to cancel, and the row's own state is the honest
+        answer. An unknown run id answers 404 `JOB_RUN_NOT_FOUND`.
+
+        The cancel takes no request body and answers no body: the
+        204 is the flag's whole receipt.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: The `job_runs` row identifier of the run to cancel.
+          schema:
+            type: string
+            format: uuid
+          example: 0192f8b2-6c7d-8e9f-a0b1-2c3d4e5f6070
+      responses:
+        '204':
+          description: |
+            The cancel was recorded against the in-flight run; its
+            driver closes it `cancelled` at the next chunk boundary.
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '404':
+          description: |
+            No run carries the id.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notFound:
+                  value:
+                    code: JOB_RUN_NOT_FOUND
+                    message: no job run carries this id
+        '409':
+          description: |
+            The run already finished: nothing is in flight to
+            cancel.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                notCancellable:
+                  value:
+                    code: JOB_NOT_CANCELLABLE
+                    message: this run has already finished and cannot be cancelled
         '500':
           description: Unexpected server failure.
           content:
@@ -12440,9 +12552,12 @@ paths:
         - admin
       summary: Read the model download settings.
       description: |
-        The model store's one policy switch: whether an AI job whose
-        slot is configured but whose weights are missing may start
-        the model group's download on its own.
+        The model store's policy switch, download sources and
+        pipeline params: whether an AI job whose slot is configured
+        but whose weights are missing may start the model group's
+        download on its own, where the bytes may travel, and the two
+        steering params the ML jobs read at their own dispatch (see
+        `ModelParams`).
 
         WHAT AUTO-FILLS: only a slot that already has an active
         model whose files are gone from the store -- the case of a
@@ -12452,7 +12567,8 @@ paths:
         active path, and an unconfigured slot keeps the honest
         no-AI degraded mode.
 
-        A corrupt settings row answers the default (on) with the
+        A corrupt settings row answers the defaults (the policy on,
+        the shipped hosts, the pipeline's own params) with the
         corruption logged server-side.
       security:
         - cookieAuth: []
@@ -12466,7 +12582,7 @@ paths:
                 $ref: '#/components/schemas/ModelSettingsResponse'
               examples:
                 defaults:
-                  summary: "The shipped default: auto-download on, the manifest's own hosts."
+                  summary: "The shipped default: auto-download on, the manifest's own hosts, the pipeline's own params."
                   value:
                     autoDownload: true
                     allowedHosts:
@@ -12474,6 +12590,9 @@ paths:
                       - '*.hf.co'
                       - hf-mirror.com
                     mirrorBaseUrl: ''
+                    params:
+                      faceDetectMinScore: 0.6
+                      faceRecognizeThreshold: 0.55
                 manualOnly:
                   summary: Only the administrator's own act.
                   value:
@@ -12481,6 +12600,9 @@ paths:
                     allowedHosts:
                       - huggingface.co
                     mirrorBaseUrl: ''
+                    params:
+                      faceDetectMinScore: 0.8
+                      faceRecognizeThreshold: 0.5
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -12524,10 +12646,10 @@ paths:
         - admin
       summary: Save the model download settings and download sources.
       description: |
-        The settings save. `autoDownload`, `allowedHosts` and
-        `mirrorBaseUrl` are required (an omitted field would decode
-        as its zero value, silently changing the policy): the caller
-        saves the whole object it read.
+        The settings save. `autoDownload`, `allowedHosts`,
+        `mirrorBaseUrl` and `params` are required (an omitted field
+        would decode as its zero value, silently changing the
+        policy): the caller saves the whole object it read.
 
         `allowedHosts` replaces the stored list wholesale; every
         entry must be a hostname, optionally with a leading `*.`
@@ -12535,8 +12657,15 @@ paths:
         non-empty, must be a host (or a full http/https URL whose
         host is kept); its host joins `allowedHosts` automatically,
         so saving a mirror never leaves it refusing its own first
-        hop. The values take effect on the next download run; no run
-        is started or cancelled by the save itself.
+        hop. `params` carries the two pipeline steering values, each
+        validated against the closed 0-1 domain -- a value outside it
+        answers 400 `VALIDATION_FAILED` naming the field, and nothing
+        is written.
+
+        The values take effect on the next dispatch (the download's
+        next run; the ML jobs' next per-asset enqueue) -- no run is
+        started or cancelled by the save itself, and work already in
+        flight runs to completion on the values it read.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -12556,6 +12685,9 @@ paths:
                     - '*.hf.co'
                     - hf-mirror.com
                   mirrorBaseUrl: ''
+                  params:
+                    faceDetectMinScore: 0.6
+                    faceRecognizeThreshold: 0.55
       responses:
         '200':
           description: The validated setting was saved.
@@ -12573,6 +12705,9 @@ paths:
                       - '*.hf.co'
                       - hf-mirror.com
                     mirrorBaseUrl: ''
+                    params:
+                      faceDetectMinScore: 0.6
+                      faceRecognizeThreshold: 0.55
         '400':
           description: |
             A required field is missing, a host entry is malformed, or
@@ -12597,6 +12732,13 @@ paths:
                     details:
                       fields:
                         - allowedHosts
+                badParam:
+                  value:
+                    code: VALIDATION_FAILED
+                    message: 'params must sit in the closed 0-1 domain'
+                    details:
+                      fields:
+                        - params.faceDetectMinScore
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -13963,12 +14105,14 @@ components:
     ModelSettingsResponse:
       type: object
       description: |
-        The model store's policy and download sources of
-        `GET /admin/settings/models` and the successful `PUT`.
+        The model store's policy, download sources and pipeline
+        params of `GET /admin/settings/models` and the successful
+        `PUT`.
       required:
         - autoDownload
         - allowedHosts
         - mirrorBaseUrl
+        - params
       properties:
         autoDownload:
           type: boolean
@@ -14008,6 +14152,56 @@ components:
           examples:
             - - ''
             - hf-mirror.com
+        params:
+          $ref: '#/components/schemas/ModelParams'
+    ModelParams:
+      type: object
+      description: |
+        The pipeline's steering params (E41): the values the ML jobs
+        read at their own dispatch. The set is honest by contract --
+        v1 carries exactly the two knobs the pipeline actually reads,
+        and it grows only as the pipeline grows (a slot without a
+        knob renders no empty block).
+
+        A change takes effect on the NEXT dispatch: each job reads
+        the params once at its own start, so work already in flight
+        runs to completion on the values it read; no in-flight job is
+        re-steered. A corrupt stored value (a row the save
+        endpoint's validation should have kept honest) answers the
+        pipeline default on the read -- 0.6 for the minimum score,
+        0.55 for the clustering threshold -- with the corruption
+        logged server-side.
+      required:
+        - faceDetectMinScore
+        - faceRecognizeThreshold
+      properties:
+        faceDetectMinScore:
+          type: number
+          description: |
+            The face detection's minimum confidence, 0 to 1
+            inclusive: a candidate scoring below it never enters the
+            library. The shipped default is the pipeline's own 0.6;
+            the admin value overrides the active model's manifest
+            entry for this knob. Contract granularity is steps of
+            0.05 (the page's stepper); the domain is what validates.
+          minimum: 0
+          maximum: 1
+          examples:
+            - 0.6
+        faceRecognizeThreshold:
+          type: number
+          description: |
+            The face recognition's clustering threshold, 0 to 1
+            inclusive: two embeddings whose cosine distance is below
+            it belong to one person. The shipped default is the
+            pipeline's own 0.55; the admin value overrides the
+            active model's manifest entry for this knob. Contract
+            granularity is steps of 0.05 (the page's stepper); the
+            domain is what validates.
+          minimum: 0
+          maximum: 1
+          examples:
+            - 0.55
     ModelSettingsUpdateRequest:
       type: object
       description: Payload of `PUT /admin/settings/models`.
@@ -14015,6 +14209,7 @@ components:
         - autoDownload
         - allowedHosts
         - mirrorBaseUrl
+        - params
       properties:
         autoDownload:
           type: boolean
@@ -14027,6 +14222,8 @@ components:
         mirrorBaseUrl:
           type: string
           description: The mirror base host to save, or the empty string to clear it.
+        params:
+          $ref: '#/components/schemas/ModelParams'
     MapConfigResponse:
       type: object
       description: |
@@ -14279,12 +14476,16 @@ components:
       description: |
         The lifecycle of a job run: `queued` from creation until the
         driver picks it up, `running` while it works, then
-        `succeeded` or `failed`.
+        `succeeded`, `failed` -- or `cancelled` when the
+        administrator's cancel ended it at a chunk boundary (the
+        committed portion keeps its counts; a cancelled run is the
+        admin's own deliberate ending, never a broken one).
       enum:
         - queued
         - running
         - succeeded
         - failed
+        - cancelled
     JobRunResponse:
       type: object
       description: |
@@ -14297,6 +14498,7 @@ components:
         - id
         - kind
         - state
+        - subject
         - total
         - done
         - failed
@@ -14311,6 +14513,17 @@ components:
           $ref: '#/components/schemas/JobRunKind'
         state:
           $ref: '#/components/schemas/JobRunState'
+        subject:
+          type:
+            - string
+            - 'null'
+          description: |
+            The run's subject label (E41): the directory album a
+            rescan run walks, by title, so the panel's row names what
+            it did ("Album rescan · Family archive"). Every other
+            kind has no subject -- the instance-wide reruns never
+            name one -- and answers null; a null subject renders the
+            kind's own label alone.
         total:
           type: integer
           description: |
@@ -18414,6 +18627,8 @@ components:
             - ASSET_TRASH_MOVE_FAILED
             - ASSET_RESTORE_MOVE_FAILED
             - REBUILD_NOT_RUNNING
+            - JOB_NOT_CANCELLABLE
+            - JOB_RUN_NOT_FOUND
         message:
           type: string
           description: English technical description for debugging.

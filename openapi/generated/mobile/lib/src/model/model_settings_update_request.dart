@@ -4,6 +4,7 @@
 
 // ignore_for_file: unused_element
 import 'package:built_collection/built_collection.dart';
+import 'package:lumemor_api/src/model/model_params.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
@@ -15,6 +16,7 @@ part 'model_settings_update_request.g.dart';
 /// * [autoDownload] - The policy to save.
 /// * [allowedHosts] - The allowed hosts to save, replacing the stored list wholesale.
 /// * [mirrorBaseUrl] - The mirror base host to save, or the empty string to clear it.
+/// * [params] 
 @BuiltValue()
 abstract class ModelSettingsUpdateRequest implements Built<ModelSettingsUpdateRequest, ModelSettingsUpdateRequestBuilder> {
   /// The policy to save.
@@ -28,6 +30,9 @@ abstract class ModelSettingsUpdateRequest implements Built<ModelSettingsUpdateRe
   /// The mirror base host to save, or the empty string to clear it.
   @BuiltValueField(wireName: r'mirrorBaseUrl')
   String get mirrorBaseUrl;
+
+  @BuiltValueField(wireName: r'params')
+  ModelParams get params;
 
   ModelSettingsUpdateRequest._();
 
@@ -66,6 +71,11 @@ class _$ModelSettingsUpdateRequestSerializer implements PrimitiveSerializer<Mode
     yield serializers.serialize(
       object.mirrorBaseUrl,
       specifiedType: const FullType(String),
+    );
+    yield r'params';
+    yield serializers.serialize(
+      object.params,
+      specifiedType: const FullType(ModelParams),
     );
   }
 
@@ -110,6 +120,13 @@ class _$ModelSettingsUpdateRequestSerializer implements PrimitiveSerializer<Mode
             specifiedType: const FullType(String),
           ) as String;
           result.mirrorBaseUrl = valueDes;
+          break;
+        case r'params':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(ModelParams),
+          ) as ModelParams;
+          result.params.replace(valueDes);
           break;
         default:
           unhandled.add(key);

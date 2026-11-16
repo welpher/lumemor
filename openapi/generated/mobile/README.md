@@ -88,6 +88,7 @@ All URIs are relative to */api/v1*
 Class | Method | HTTP request | Description
 ------------ | ------------- | ------------- | -------------
 [*AdminApi*](doc/AdminApi.md) | [**activateModel**](doc/AdminApi.md#activatemodel) | **PATCH** /admin/models/{id} | Activate the model (the model switch).
+[*AdminApi*](doc/AdminApi.md) | [**cancelJobRun**](doc/AdminApi.md#canceljobrun) | **POST** /admin/jobs/{runId}/cancel | Cancel one in-flight job run.
 [*AdminApi*](doc/AdminApi.md) | [**createUser**](doc/AdminApi.md#createuser) | **POST** /admin/users | Create one account.
 [*AdminApi*](doc/AdminApi.md) | [**deleteModel**](doc/AdminApi.md#deletemodel) | **DELETE** /admin/models/{id} | Delete one registered model.
 [*AdminApi*](doc/AdminApi.md) | [**deleteUser**](doc/AdminApi.md#deleteuser) | **DELETE** /admin/users/{id} | Delete one account, disposing of its content.
@@ -273,6 +274,7 @@ Class | Method | HTTP request | Description
  - [ModelDimensionChange](doc/ModelDimensionChange.md)
  - [ModelDownloadResponse](doc/ModelDownloadResponse.md)
  - [ModelListResponse](doc/ModelListResponse.md)
+ - [ModelParams](doc/ModelParams.md)
  - [ModelProbeAcceptedResponse](doc/ModelProbeAcceptedResponse.md)
  - [ModelProbeResponse](doc/ModelProbeResponse.md)
  - [ModelProbeResponseInputSize](doc/ModelProbeResponseInputSize.md)

@@ -167,6 +167,64 @@ class AdminApi {
     );
   }
 
+  /// Cancel one in-flight job run.
+  /// The task panel&#39;s cancel (E41): asks the named run to end at its next chunk boundary. The request itself flags the run only -- the run&#39;s driver checks the flag BETWEEN chunks (a walk page, a rescan batch, one model of a download group) and closes the run &#x60;cancelled&#x60; there, so:  - The committed portion stays: every chunk already finished keeps its work on disk and its count in the run&#39;s &#x60;done&#x60;. The response makes no promise about work that has not committed yet. - An in-flight asset-level job (one decode, one inference, one encode) runs to its own end -- the boundary is between chunks, never mid-asset. - The run&#39;s state flips to &#x60;cancelled&#x60; when the driver closes it, and the close rides the task panel&#39;s existing events (&#x60;job.finished&#x60;) -- the listing converges through the same stream it always converges through. A QUEUED run cancels at once (its driver checks the flag before the first chunk). - A run that already finished -- succeeded, failed or cancelled -- answers 409 &#x60;JOB_NOT_CANCELLABLE&#x60;: nothing is in flight to cancel, and the row&#39;s own state is the honest answer. An unknown run id answers 404 &#x60;JOB_RUN_NOT_FOUND&#x60;.  The cancel takes no request body and answers no body: the 204 is the flag&#39;s whole receipt. 
+  ///
+  /// Parameters:
+  /// * [runId] - The `job_runs` row identifier of the run to cancel.
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future]
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<void>> cancelJobRun({ 
+    required String runId,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/jobs/{runId}/cancel'.replaceAll('{' r'runId' '}', encodeQueryParameter(_serializers, runId, const FullType(String)).toString());
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    return _response;
+  }
+
   /// Create one account.
   /// The account creation of the admin surface, the management counterpart of the first-run wizard: an administrator provisions another account -- a family member&#39;s login, or a second administrator. The account rules mirror the wizard&#39;s exactly: the email is parsed and lower-cased as the login identity, the password is stored only as an Argon2id hash and never appears in any response, the id is a fresh UUIDv7, and the account&#39;s sync album -- the core backup stream every upload lands in and the timeline aggregates -- is created in the SAME transaction, so the new account can take uploads the moment it exists (a second creation point of the same wiring the wizard uses). The wizard&#39;s one-time guarantee is NOT part of this endpoint; it exists exactly because an administrator already does.  The role defaults to &#x60;user&#x60; when omitted; creating another administrator is the same request with &#x60;role: \&quot;admin\&quot;&#x60;. A duplicate email answers 409 USER_EMAIL_TAKEN -- the address is the account identity, unique instance-wide, and the login lookup depends on that uniqueness. 
   ///
@@ -778,7 +836,7 @@ class AdminApi {
   }
 
   /// Read the model download settings.
-  /// The model store&#39;s one policy switch: whether an AI job whose slot is configured but whose weights are missing may start the model group&#39;s download on its own.  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face&#39;s download button remain the administrator&#39;s active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the default (on) with the corruption logged server-side. 
+  /// The model store&#39;s policy switch, download sources and pipeline params: whether an AI job whose slot is configured but whose weights are missing may start the model group&#39;s download on its own, where the bytes may travel, and the two steering params the ML jobs read at their own dispatch (see &#x60;ModelParams&#x60;).  WHAT AUTO-FILLS: only a slot that already has an active model whose files are gone from the store -- the case of a store wiped below a configured instance. A slot that was never configured stays empty; the first-run download and the settings face&#39;s download button remain the administrator&#39;s active path, and an unconfigured slot keeps the honest no-AI degraded mode.  A corrupt settings row answers the defaults (the policy on, the shipped hosts, the pipeline&#39;s own params) with the corruption logged server-side. 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -2271,7 +2329,7 @@ class AdminApi {
   }
 
   /// Stop the in-flight derivative rebuild run.
-  /// The task panel&#39;s stop for a rebuild in flight: the run&#39;s row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild&#39;s &#x60;missing&#x60; scope skips them.  The run closes &#x60;failed&#x60; with &#x60;failed&#x60; counting nothing: the task panel renders the reason line as stopped, not as a broken run -- the admin asked for this ending.  A stop with no rebuild in flight (the run finished between the panel&#39;s listing and the click, or none ever started) answers 409 &#x60;REBUILD_NOT_RUNNING&#x60;: the flag has nothing to land on. 
+  /// The task panel&#39;s stop for a rebuild in flight: the run&#39;s row is marked as asked-to-stop, and the driver -- which checks the flag between assets -- closes the run at the asset it just finished, never mid-asset. The work already done stays on disk: a stopped rebuild has paid exactly for the assets it re-derived, and the next rebuild&#39;s &#x60;missing&#x60; scope skips them.  The run closes &#x60;cancelled&#x60; -- the task panel renders the cancelled state, not a broken run: the admin asked for this ending (E41 shared the flag-closed ending with the task panel&#39;s per-run cancel, and the two speak one state).  A stop with no rebuild in flight (the run finished between the panel&#39;s listing and the click, or none ever started) answers 409 &#x60;REBUILD_NOT_RUNNING&#x60;: the flag has nothing to land on. 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -2569,7 +2627,7 @@ class AdminApi {
   }
 
   /// Save the model download settings and download sources.
-  /// The settings save. &#x60;autoDownload&#x60;, &#x60;allowedHosts&#x60; and &#x60;mirrorBaseUrl&#x60; are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  &#x60;allowedHosts&#x60; replaces the stored list wholesale; every entry must be a hostname, optionally with a leading &#x60;*.&#x60; wildcard label and an optional port. &#x60;mirrorBaseUrl&#x60;, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins &#x60;allowedHosts&#x60; automatically, so saving a mirror never leaves it refusing its own first hop. The values take effect on the next download run; no run is started or cancelled by the save itself. 
+  /// The settings save. &#x60;autoDownload&#x60;, &#x60;allowedHosts&#x60;, &#x60;mirrorBaseUrl&#x60; and &#x60;params&#x60; are required (an omitted field would decode as its zero value, silently changing the policy): the caller saves the whole object it read.  &#x60;allowedHosts&#x60; replaces the stored list wholesale; every entry must be a hostname, optionally with a leading &#x60;*.&#x60; wildcard label and an optional port. &#x60;mirrorBaseUrl&#x60;, when non-empty, must be a host (or a full http/https URL whose host is kept); its host joins &#x60;allowedHosts&#x60; automatically, so saving a mirror never leaves it refusing its own first hop. &#x60;params&#x60; carries the two pipeline steering values, each validated against the closed 0-1 domain -- a value outside it answers 400 &#x60;VALIDATION_FAILED&#x60; naming the field, and nothing is written.  The values take effect on the next dispatch (the download&#39;s next run; the ML jobs&#39; next per-asset enqueue) -- no run is started or cancelled by the save itself, and work already in flight runs to completion on the values it read. 
   ///
   /// Parameters:
   /// * [modelSettingsUpdateRequest] 
