@@ -119,7 +119,7 @@ export type PersonEventName =
 	| 'person.face_clustered'
 	| 'person.face_detached'
 	| 'person.face_box_updated'
-;
+	| 'person.deleted';
 
 export type PersonEvent =
 	| {
@@ -184,6 +184,13 @@ export type PersonEvent =
 			id: number;
 			name: 'person.face_box_updated';
 			faceId: string;
+			userId: string;
+	  }
+	| {
+			id: number;
+			name: 'person.deleted';
+			/** The cluster the write removed (its faces died with it). */
+			clusterId: string;
 			userId: string;
 	  };
 
@@ -261,6 +268,7 @@ const PERSON_EVENT_NAMES: readonly PersonEventName[] = [
 	'person.face_clustered',
 	'person.face_detached',
 	'person.face_box_updated',
+	'person.deleted'
 ];
 
 const FACE_EVENT_NAMES: readonly FaceEventName[] = ['face.clustered'];
@@ -470,6 +478,12 @@ function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonE
 				return null;
 			}
 			return { id: base.id, name, faceId: payload.faceId, userId };
+		}
+		case 'person.deleted': {
+			if (typeof clusterId !== 'string' || clusterId === '') {
+				return null;
+			}
+			return { id: base.id, name, clusterId, userId };
 		}
 	}
 }
