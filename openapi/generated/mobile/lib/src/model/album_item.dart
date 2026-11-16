@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'album_item.g.dart';
 
-/// One live member of the album: the membership's identity and the minimal asset context the detail grid renders. 
+/// One member of the album: the membership's identity and the minimal asset context the detail grid renders. 
 ///
 /// Properties:
 /// * [assetId] - Identifier of the member asset.

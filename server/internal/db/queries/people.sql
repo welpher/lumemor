@@ -21,7 +21,7 @@
 -- Caller visibility is the album union: an asset is
 -- visible to the caller when caller_asset_visible says so -- the
 -- caller's own sync and directory albums plus every album shared to
--- them -- AND it is live (not trashed, not hidden, no Live Photo
+-- them -- AND it is live (not trashed, not archived, no Live Photo
 -- component row), the same live-asset filters the timeline applies.
 -- A cluster is visible to the caller when at least one of its faces
 -- sits on a visible asset; face counts count ONLY those faces (honest
@@ -441,7 +441,7 @@ WHERE f.id = sqlc.arg('face_id')
 -- detail endpoint (the union gate answered its own 404 before this
 -- query runs), so
 -- the faces need no visibility predicate of their own: a trashed or
--- hidden asset's detail answers 200 and its faces ride along. The
+-- archived asset's detail answers 200 and its faces ride along. The
 -- cluster_id crosses as NULL for a face the clustering has not
 -- assigned yet (label null with it -- nothing to label); the caller's
 -- unnamed clusters read as null label columns. The cluster's

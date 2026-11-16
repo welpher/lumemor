@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'timeline_item.g.dart';
 
-/// One asset of the timeline: the asset detail's fields minus the `exif` object and the two detail-panel edit attributes (`description`, `isHidden`) -- the detail endpoint renders the EXIF panel and the edit controls; the timeline renders tiles. Every item is live by construction -- hidden assets, trashed assets and the component video rows of Live Photos never enter the timeline -- so `isTrashed` is always false here and is carried only to keep the item shape identical to the detail's. `isReady` still varies: a fresh upload enters the timeline immediately with its pipeline-dependent fields null, and the client upgrades the tile when `asset.ready` fires. The shape is fixed -- every property is always present. `isFavorite` is per-user state computed for the requesting user, so the same asset is a favorite tile for one viewer and a plain tile for another. 
+/// One asset of the timeline: the asset detail's fields minus the `exif` object, the `place` join and the `description` edit attribute -- the detail endpoint renders the EXIF panel, the place card and the edit controls; the timeline renders tiles. An item is live on every family-flow wall by construction -- archived assets, trashed assets and the component video rows of Live Photos never enter those -- so `isTrashed` is always false there and is carried only to keep the item shape identical to the detail's. The album narrow is the exception: an album keeps its archived members, so its items carry `isArchived: true` for them (the container's unarchive entry reads it); the archived view's items are `true` by construction. `isReady` still varies: a fresh upload enters the timeline immediately with its pipeline-dependent fields null, and the client upgrades the tile when `asset.ready` fires. The shape is fixed -- every property is always present. `isFavorite` is per-user state computed for the requesting user, so the same asset is a favorite tile for one viewer and a plain tile for another. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -23,6 +23,7 @@ part 'timeline_item.g.dart';
 /// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; the timeline orders by it. 
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
 /// * [isTrashed] - Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's. 
+/// * [isArchived] - The row's archive state: `false` on every family-flow wall (the flows exclude archived rows), `true` on the archived view's items and on an album's archived members (the container keeps them visible and unarchivable). 
 /// * [isFavorite] - Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
 /// * [isReady] - True once the whole pipeline of the asset (metadata and serving copies) completed; until then the pipeline-dependent fields are null and the client renders placeholders. 
 /// * [width] - Pixel width in sensor order, straight from the assets column: the upload writes the 0 placeholder and the metadata job refines the real value, so 0 means \"not refined yet\" (the wall layout assumes a fallback aspect until then). Always present -- the justified photo wall reads it on every tile, never null. 
@@ -77,6 +78,10 @@ abstract class TimelineItem implements Built<TimelineItem, TimelineItemBuilder> 
   /// Always false in the timeline: trashed assets never enter it. The field exists to keep the shape identical to the asset detail's. 
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
+
+  /// The row's archive state: `false` on every family-flow wall (the flows exclude archived rows), `true` on the archived view's items and on an album's archived members (the container keeps them visible and unarchivable). 
+  @BuiltValueField(wireName: r'isArchived')
+  bool get isArchived;
 
   /// Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
   @BuiltValueField(wireName: r'isFavorite')
@@ -182,6 +187,11 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
     yield r'isTrashed';
     yield serializers.serialize(
       object.isTrashed,
+      specifiedType: const FullType(bool),
+    );
+    yield r'isArchived';
+    yield serializers.serialize(
+      object.isArchived,
       specifiedType: const FullType(bool),
     );
     yield r'isFavorite';
@@ -318,6 +328,13 @@ class _$TimelineItemSerializer implements PrimitiveSerializer<TimelineItem> {
             specifiedType: const FullType(bool),
           ) as bool;
           result.isTrashed = valueDes;
+          break;
+        case r'isArchived':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.isArchived = valueDes;
           break;
         case r'isFavorite':
           final valueDes = serializers.deserialize(

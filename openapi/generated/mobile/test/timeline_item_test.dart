@@ -73,6 +73,12 @@ void main() {
       // TODO
     });
 
+    // The row's archive state: `false` on every family-flow wall (the flows exclude archived rows), `true` on the archived view's items and on an album's archived members (the container keeps them visible and unarchivable). 
+    // bool isArchived
+    test('to test the property `isArchived`', () async {
+      // TODO
+    });
+
     // Whether the REQUESTING user favorites this asset: the caller's own row of the per-user favorites state, written by the batch endpoint's favorite action. False whenever the caller has no favorites row for the asset -- the same asset can be a favorite for one viewer of a shared timeline and not for another. 
     // bool isFavorite
     test('to test the property `isFavorite`', () async {

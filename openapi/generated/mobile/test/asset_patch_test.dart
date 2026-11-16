@@ -13,9 +13,9 @@ void main() {
       // TODO
     });
 
-    // The owner-level visibility switch: `true` keeps the asset out of every live view (the timeline, the favorites) until it is unhidden; `false` returns it. The same switch the batch `hide` / `unhide` actions flip. 
-    // bool isHidden
-    test('to test the property `isHidden`', () async {
+    // The owner-level archive switch: `true` keeps the asset out of every family flow until it is unarchived; `false` returns it. An album keeps its archived members, so the album surface is unaffected either way. The same switch the batch `hide` / `unhide` actions flip. 
+    // bool isArchived
+    test('to test the property `isArchived`', () async {
       // TODO
     });
 

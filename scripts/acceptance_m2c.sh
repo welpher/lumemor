@@ -17,7 +17,7 @@
 # the aggregated timeline newest-first, keyset pagination over the
 # same three photos (two pages, full set, no overlap), the batch
 # trash of one photo, the trash listing with its retention countdown,
-# the batch restore, the batch hide and unhide with the hidden view,
+# the batch restore, the batch archive and unarchive with the archived view,
 # and the video leg: the tiny.mp4 fixture upload, the asset.ready
 # event on the SSE activity stream once the video's pipeline jobs
 # have drained, and the transcoded play stream answering a Range
@@ -63,7 +63,7 @@ elapsed() {
 }
 
 # item_ids prints the ids of an items[] response body in document
-# order -- the timeline, the trash and the hidden view all render
+# order -- the timeline, the trash and the archived view all render
 # their rows as objects whose "id" key is the first field, and the
 # compact encoder keeps document order, so the ordered matches below
 # assert both membership and sequence. The quoted "id" pattern cannot
@@ -358,7 +358,7 @@ timeline_ids="$(item_ids "$work_dir/timeline_body" | tr '\n' ' ')"
     || fail "the timeline after the restore holds [$timeline_ids], want [$expected_ids]: $(cat "$work_dir/timeline_body")"
 echo "    the restored photo re-entered the timeline, three again"
 
-echo "==> POST /api/v1/assets/batch (hide) must move the February photo to the hidden view"
+echo "==> POST /api/v1/assets/batch (hide) must move the February photo to the archived view"
 status="$(curl -sS -o "$work_dir/batch_hide_body" -b "$work_dir/cookies" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
     -d "{\"action\":\"hide\",\"ids\":[\"$february_id\"]}" \
@@ -372,16 +372,16 @@ affected="$(printf '%s\n' "$batch_hide_body" | sed -n 's/.*"affected"[[:space:]]
     || fail "the hide batch affected $affected ids, want 1: $batch_hide_body"
 echo "    batch hide applied: $batch_hide_body"
 
-echo "==> GET /api/v1/assets/hidden must list the February photo"
+echo "==> GET /api/v1/assets/archived must list the February photo"
 status="$(curl -sS -o "$work_dir/hidden_body" -b "$work_dir/cookies" -w '%{http_code}' \
-    "$base_url/api/v1/assets/hidden")" \
-    || fail "GET /api/v1/assets/hidden request failed"
+    "$base_url/api/v1/assets/archived")" \
+    || fail "GET /api/v1/assets/archived request failed"
 [ "$status" = "200" ] \
-    || fail "GET /api/v1/assets/hidden returned status $status, want 200: $(cat "$work_dir/hidden_body")"
+    || fail "GET /api/v1/assets/archived returned status $status, want 200: $(cat "$work_dir/hidden_body")"
 hidden_ids="$(item_ids "$work_dir/hidden_body" | tr '\n' ' ')"
 [ "$hidden_ids" = "$february_id " ] \
-    || fail "the hidden view holds [$hidden_ids], want [$february_id ]: $(cat "$work_dir/hidden_body")"
-echo "    the hidden view lists the February photo"
+    || fail "the archived view holds [$hidden_ids], want [$february_id ]: $(cat "$work_dir/hidden_body")"
+echo "    the archived view lists the February photo"
 
 echo "==> GET /api/v1/assets/timeline must show the two visible photos"
 status="$(curl -sS -o "$work_dir/timeline_body" -b "$work_dir/cookies" -w '%{http_code}' \
@@ -392,7 +392,7 @@ status="$(curl -sS -o "$work_dir/timeline_body" -b "$work_dir/cookies" -w '%{htt
 timeline_ids="$(item_ids "$work_dir/timeline_body" | tr '\n' ' ')"
 [ "$timeline_ids" = "$(printf '%s ' "$march_id" "$january_id")" ] \
     || fail "the timeline after the hide holds [$timeline_ids], want [$(printf '%s ' "$march_id" "$january_id")]: $(cat "$work_dir/timeline_body")"
-echo "    the hidden photo left the timeline, two remain"
+echo "    the archived photo left the timeline, two remain"
 
 echo "==> POST /api/v1/assets/batch (unhide) must return the February photo to the timeline"
 status="$(curl -sS -o "$work_dir/batch_unhide_body" -b "$work_dir/cookies" -w '%{http_code}' \
@@ -417,7 +417,7 @@ status="$(curl -sS -o "$work_dir/timeline_body" -b "$work_dir/cookies" -w '%{htt
 timeline_ids="$(item_ids "$work_dir/timeline_body" | tr '\n' ' ')"
 [ "$timeline_ids" = "$expected_ids" ] \
     || fail "the timeline after the unhide holds [$timeline_ids], want [$expected_ids]: $(cat "$work_dir/timeline_body")"
-echo "    the unhidden photo re-entered the timeline, three again"
+echo "    the unarchived photo re-entered the timeline, three again"
 
 echo "==> POST /api/v1/assets must accept the video fixture with state created"
 [ -f "$video_fixture" ] \

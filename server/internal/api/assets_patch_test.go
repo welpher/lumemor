@@ -1,7 +1,7 @@
 // Asset attribute PATCH tests: the partial edit of the
-// description and the hidden switch -- the applied values surfacing
+// description and the archive switch -- the applied values surfacing
 // in the response and the detail read, the timeline effect of the
-// hidden switch, the one-event-per-change discipline, the set
+// archive switch, the one-event-per-change discipline, the set
 // semantics of repeated values, the validation door (neither field,
 // pure nulls, the 10,000-rune bound, malformed bodies), and the
 // owner-only anti-enumeration 404. Fixtures insert asset rows
@@ -133,8 +133,8 @@ func TestPatchAssetDescription(t *testing.T) {
 	if detail.Description != "Sunset over the lake" {
 		t.Errorf("patched detail description = %q, want %q", detail.Description, "Sunset over the lake")
 	}
-	if detail.IsHidden {
-		t.Error("patched detail isHidden = true, want untouched false")
+	if detail.IsArchived {
+		t.Error("patched detail isArchived = true, want untouched false")
 	}
 	requireAssetUpdatedEvents(t, env, 1, id, "image")
 
@@ -150,8 +150,8 @@ func TestPatchAssetDescription(t *testing.T) {
 	if served.Description != "Sunset over the lake" {
 		t.Errorf("detail description = %q, want the patched %q", served.Description, "Sunset over the lake")
 	}
-	if served.IsHidden {
-		t.Error("detail isHidden = true, want false")
+	if served.IsArchived {
+		t.Error("detail isArchived = true, want false")
 	}
 	if got := env.queryText(t, "SELECT description FROM assets WHERE id = $1", pgUUID(id)); got != "Sunset over the lake" {
 		t.Errorf("row description = %q, want the patched value", got)
@@ -180,13 +180,13 @@ func TestPatchAssetDescription(t *testing.T) {
 	requireAssetUpdatedEvents(t, env, 3, id, "image")
 }
 
-// TestPatchAssetHiddenAffectsTimeline pins the visibility half: the
-// hidden switch the patch flips removes the asset from the timeline
+// TestPatchAssetArchiveAffectsTimeline pins the archive half: the
+// archive switch the patch flips removes the asset from the timeline
 // (the live filter of the timeline query, verified through the
 // endpoint, the same integration shape as the batch's),
-// the unhide returns it, and each transition publishes one
+// the unarchive returns it, and each transition publishes one
 // asset.updated event.
-func TestPatchAssetHiddenAffectsTimeline(t *testing.T) {
+func TestPatchAssetArchiveAffectsTimeline(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	sync := env.syncAlbumIDOf(t, adminID)
@@ -205,9 +205,9 @@ func TestPatchAssetHiddenAffectsTimeline(t *testing.T) {
 
 	// The hide patch flips the owner-level switch and the asset
 	// leaves the timeline.
-	detail := env.patchAsset(t, env.cookie, hidden, map[string]any{"isHidden": true})
-	if !detail.IsHidden {
-		t.Error("patched detail isHidden = false, want true")
+	detail := env.patchAsset(t, env.cookie, hidden, map[string]any{"isArchived": true})
+	if !detail.IsArchived {
+		t.Error("patched detail isArchived = false, want true")
 	}
 	if detail.Description != "" {
 		t.Errorf("patched detail description = %q, want untouched empty", detail.Description)
@@ -219,10 +219,10 @@ func TestPatchAssetHiddenAffectsTimeline(t *testing.T) {
 	}
 	requireAssetUpdatedEvents(t, env, 1, hidden, "image")
 
-	// The unhide patch returns it.
-	detail = env.patchAsset(t, env.cookie, hidden, map[string]any{"isHidden": false})
-	if detail.IsHidden {
-		t.Error("unhidden detail isHidden = true, want false")
+	// The unarchive patch returns it.
+	detail = env.patchAsset(t, env.cookie, hidden, map[string]any{"isArchived": false})
+	if detail.IsArchived {
+		t.Error("unarchived detail isArchived = true, want false")
 	}
 	page = env.getTimeline(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, hidden, visible)
@@ -241,23 +241,23 @@ func TestPatchAssetBothFields(t *testing.T) {
 
 	// Both fields in one request: the response carries both applied
 	// values, and exactly one event covers the patch.
-	detail := env.patchAsset(t, env.cookie, id, map[string]any{"description": "Both at once", "isHidden": true})
+	detail := env.patchAsset(t, env.cookie, id, map[string]any{"description": "Both at once", "isArchived": true})
 	if detail.Description != "Both at once" {
 		t.Errorf("detail description = %q, want %q", detail.Description, "Both at once")
 	}
-	if !detail.IsHidden {
-		t.Error("detail isHidden = false, want true")
+	if !detail.IsArchived {
+		t.Error("detail isArchived = false, want true")
 	}
 	requireAssetUpdatedEvents(t, env, 1, id, "image")
 
-	// Only the description carried: it updates, the hidden switch
+	// Only the description carried: it updates, the archive switch
 	// keeps its value (partial edit, not a reset).
 	detail = env.patchAsset(t, env.cookie, id, map[string]any{"description": "Only the text"})
 	if detail.Description != "Only the text" {
 		t.Errorf("detail description = %q, want %q", detail.Description, "Only the text")
 	}
-	if !detail.IsHidden {
-		t.Error("detail isHidden = false, want the untouched true")
+	if !detail.IsArchived {
+		t.Error("detail isArchived = false, want the untouched true")
 	}
 	requireAssetUpdatedEvents(t, env, 2, id, "image")
 }
@@ -280,19 +280,19 @@ func TestPatchAssetValidation(t *testing.T) {
 	for _, body := range []string{
 		`{}`,
 		`{"description": null}`,
-		`{"isHidden": null}`,
-		`{"description": null, "isHidden": null}`,
+		`{"isArchived": null}`,
+		`{"description": null, "isArchived": null}`,
 	} {
 		rec := env.patchAssetRaw(t, env.cookie, id, []byte(body))
 		requirePatchValidation(t, rec, "body")
 	}
 
 	// Bodies that do not decode: malformed JSON, a non-string
-	// description, a non-boolean isHidden.
+	// description, a non-boolean isArchived.
 	for _, body := range []string{
 		`{`,
 		`{"description": 5}`,
-		`{"isHidden": "yes"}`,
+		`{"isArchived": "yes"}`,
 	} {
 		rec := env.patchAssetRaw(t, env.cookie, id, []byte(body))
 		requirePatchValidation(t, rec, "body")
@@ -350,9 +350,9 @@ func TestPatchAssetSetSemantics(t *testing.T) {
 	// Repeating the row's fresh values (empty description, hidden
 	// false) is the no-op twice over.
 	for run := 1; run <= 2; run++ {
-		detail := env.patchAsset(t, env.cookie, id, map[string]any{"description": "", "isHidden": false})
-		if detail.Description != "" || detail.IsHidden {
-			t.Errorf("run %d no-op detail = %q/%v, want the untouched values", run, detail.Description, detail.IsHidden)
+		detail := env.patchAsset(t, env.cookie, id, map[string]any{"description": "", "isArchived": false})
+		if detail.Description != "" || detail.IsArchived {
+			t.Errorf("run %d no-op detail = %q/%v, want the untouched values", run, detail.Description, detail.IsArchived)
 		}
 	}
 	requireAssetUpdatedEvents(t, env, 0, id, "image")
@@ -374,16 +374,16 @@ func TestPatchAssetSetSemantics(t *testing.T) {
 		t.Errorf("the repeat re-stamped updated_at to %v, want the original %v", kept.Time, mark.Time)
 	}
 
-	// The hidden switch repeats the same way: hide twice, one event.
-	env.patchAsset(t, env.cookie, id, map[string]any{"isHidden": true})
+	// The archive switch repeats the same way: archive twice, one event.
+	env.patchAsset(t, env.cookie, id, map[string]any{"isArchived": true})
 	requireAssetUpdatedEvents(t, env, 2, id, "image")
-	env.patchAsset(t, env.cookie, id, map[string]any{"isHidden": true})
+	env.patchAsset(t, env.cookie, id, map[string]any{"isArchived": true})
 	requireAssetUpdatedEvents(t, env, 2, id, "image")
 
 	// The mixed no-op: both fields already at their target values.
-	detail = env.patchAsset(t, env.cookie, id, map[string]any{"description": "kept", "isHidden": true})
-	if detail.Description != "kept" || !detail.IsHidden {
-		t.Errorf("mixed no-op detail = %q/%v, want the current state", detail.Description, detail.IsHidden)
+	detail = env.patchAsset(t, env.cookie, id, map[string]any{"description": "kept", "isArchived": true})
+	if detail.Description != "kept" || !detail.IsArchived {
+		t.Errorf("mixed no-op detail = %q/%v, want the current state", detail.Description, detail.IsArchived)
 	}
 	requireAssetUpdatedEvents(t, env, 2, id, "image")
 }
@@ -401,7 +401,7 @@ func TestPatchAssetNotFound(t *testing.T) {
 	env.insertTimelineAsset(t, foreign, graceID,
 		time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
 	unknown := uuid.MustParse("31000000-0000-0000-0000-0000000000d9")
-	body := patchAssetBody(t, map[string]any{"description": "not yours", "isHidden": true})
+	body := patchAssetBody(t, map[string]any{"description": "not yours", "isArchived": true})
 
 	// The env's cookie is the first administrator: still 404, the
 	// pin that PATCH has no administrator override.

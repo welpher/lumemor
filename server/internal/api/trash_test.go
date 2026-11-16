@@ -710,7 +710,7 @@ func TestDeleteAssetSemantics(t *testing.T) {
 
 // TestTrashListSemantics pins the listing: the deletion-order, the
 // retention countdown under the default, a custom and a corrupt
-// setting, the zero of a passed deadline, the hidden component rows
+// setting, the zero of a passed deadline, the archived component rows
 // of Live Photos, the owner scope, and the response bound.
 func TestTrashListSemantics(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)

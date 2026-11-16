@@ -18,7 +18,7 @@
 // seeded by the album alone.
 //
 // Dead cells fill silently from the caller's visible pool: a pinned
-// frame that left the album, was trashed or hidden is replaced in its
+// frame that left the album, was trashed or archived is replaced in its
 // position, and a fully dead pin falls back to the automatic group
 // (the pin itself stays stored -- a restored photo returns to its
 // cell).

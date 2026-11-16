@@ -12,7 +12,7 @@ part 'asset_patch.g.dart';
 ///
 /// Properties:
 /// * [description] - The owner's free-text description of the asset, the text the detail panel renders. The value replaces the stored text wholesale (an empty string clears it). At most 10,000 Unicode characters -- the count is over runes, so a text of multi-byte characters stays within the bound at the same length. 
-/// * [isHidden] - The owner-level visibility switch: `true` keeps the asset out of every live view (the timeline, the favorites) until it is unhidden; `false` returns it. The same switch the batch `hide` / `unhide` actions flip. 
+/// * [isArchived] - The owner-level archive switch: `true` keeps the asset out of every family flow until it is unarchived; `false` returns it. An album keeps its archived members, so the album surface is unaffected either way. The same switch the batch `hide` / `unhide` actions flip. 
 /// * [takenAt] - The owner's manual capture-time edit: the value replaces the stored instant wholesale. The timestamp MUST carry a UTC offset (RFC 3339's `Z` or `+hh:mm` designator) -- the offset is the capture zone the info panel displays beside the time, so a zone-less value is ambiguous and answers 400 `VALIDATION_FAILED`. The same value decides where the photo sits on the timeline (the instant) and which offset renders beside it (the offset). 
 /// * [latitude] - The manual location edit's latitude, in degrees (-90..90). It rides with `longitude` (the pair is the location; one half alone answers 400 `VALIDATION_FAILED`). Writing the pair replaces the asset's location: the info panel renders these coordinates and the resolved place follows the pin. The camera-recorded GPS in `exif` keeps the file's own reading and is not touched. 
 /// * [longitude] - The manual location edit's longitude, in degrees (-180..180). It rides with `latitude` (see there for the pair's semantics). 
@@ -22,9 +22,9 @@ abstract class AssetPatch implements Built<AssetPatch, AssetPatchBuilder> {
   @BuiltValueField(wireName: r'description')
   String? get description;
 
-  /// The owner-level visibility switch: `true` keeps the asset out of every live view (the timeline, the favorites) until it is unhidden; `false` returns it. The same switch the batch `hide` / `unhide` actions flip. 
-  @BuiltValueField(wireName: r'isHidden')
-  bool? get isHidden;
+  /// The owner-level archive switch: `true` keeps the asset out of every family flow until it is unarchived; `false` returns it. An album keeps its archived members, so the album surface is unaffected either way. The same switch the batch `hide` / `unhide` actions flip. 
+  @BuiltValueField(wireName: r'isArchived')
+  bool? get isArchived;
 
   /// The owner's manual capture-time edit: the value replaces the stored instant wholesale. The timestamp MUST carry a UTC offset (RFC 3339's `Z` or `+hh:mm` designator) -- the offset is the capture zone the info panel displays beside the time, so a zone-less value is ambiguous and answers 400 `VALIDATION_FAILED`. The same value decides where the photo sits on the timeline (the instant) and which offset renders beside it (the offset). 
   @BuiltValueField(wireName: r'takenAt')
@@ -68,10 +68,10 @@ class _$AssetPatchSerializer implements PrimitiveSerializer<AssetPatch> {
         specifiedType: const FullType(String),
       );
     }
-    if (object.isHidden != null) {
-      yield r'isHidden';
+    if (object.isArchived != null) {
+      yield r'isArchived';
       yield serializers.serialize(
-        object.isHidden,
+        object.isArchived,
         specifiedType: const FullType(bool),
       );
     }
@@ -127,13 +127,13 @@ class _$AssetPatchSerializer implements PrimitiveSerializer<AssetPatch> {
           if (valueDes == null) continue;
           result.description = valueDes;
           break;
-        case r'isHidden':
+        case r'isArchived':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType.nullable(bool),
           ) as bool?;
           if (valueDes == null) continue;
-          result.isHidden = valueDes;
+          result.isArchived = valueDes;
           break;
         case r'takenAt':
           final valueDes = serializers.deserialize(

@@ -405,13 +405,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/assets/timeline", wrapper.GetTimeline)
 				// The batch and curation views: the
 				// set-semantics batch write, and the favorites and
-				// hidden listings. The static segments win over the
+				// archived listings. The static segments win over the
 				// /assets/{id} parameter below, so mounting them in
 				// this group keeps every asset read a bounded row
 				// read plus a bounded JSON document.
 				r.Post("/assets/batch", wrapper.BatchAssets)
 				r.Get("/assets/favorites", wrapper.GetFavorites)
-				r.Get("/assets/hidden", wrapper.GetHidden)
+				r.Get("/assets/archived", wrapper.GetArchived)
 				r.Get("/assets/{id}", wrapper.GetAsset)
 				r.Patch("/assets/{id}", wrapper.PatchAsset)
 				r.Get("/assets/{id}/thumbnail", wrapper.GetAssetThumbnail)

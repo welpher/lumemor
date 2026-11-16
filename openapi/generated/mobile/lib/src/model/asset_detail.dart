@@ -15,7 +15,7 @@ import 'package:built_value/serializer.dart';
 
 part 'asset_detail.g.dart';
 
-/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the owner-level attributes the PATCH endpoint edits (`description`, `isHidden`, and the `takenAt` / `latitude` / `longitude` edits), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The caller-visible album memberships surface as `albums` (the info panel's where-does-this-live row) and the GPS resolution as `place` (the info panel's city row, the locale-joined display name). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
+/// One asset as the detail endpoint returns it: the upload response's identity and storage fields, the pipeline's refinements, the owner-level attributes the PATCH endpoint edits (`description`, `isArchived`, and the `takenAt` / `latitude` / `longitude` edits), the asset's faces as the calling user sees them (`faces`), and the CALLER's tags on the asset (`tags`). The caller-visible album memberships surface as `albums` (the info panel's where-does-this-live row) and the GPS resolution as `place` (the info panel's city row, the locale-joined display name). The shape is fixed -- every property is always present -- and the pipeline-dependent values (`width`, `height`, `durationMs`, `blurhash` and the fields inside `exif`) are null until the jobs produced them, turning non-null when `asset.ready` fired. A value that stays null on a ready asset means the file carries no such metadata. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -30,7 +30,7 @@ part 'asset_detail.g.dart';
 /// * [takenAtSource] - Where `takenAt` comes from: `import` is the device-reported capture time of the upload, `exif` an EXIF capture time the metadata job resolved with an offset, `file` a file timestamp (reserved for the future directory-album importer). 
 /// * [takenAtZone] - The zone the displayed capture time resolves in, EXIF offset notation (`+05:30`): the owner's choice when the capture time was last written through `PATCH /assets/{id}`, the EXIF resolution chain's offset (the OffsetTime tags, else the upload's device zone) when the metadata job refined it, and null when neither resolved a zone -- the client renders the time without a zone suffix. 
 /// * [isTrashed] - True when the asset sits in the trash.
-/// * [isHidden] - True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+/// * [isArchived] - True while the asset is archived: out of every family flow -- the timeline, the favorites, the people and places walls, the map, the memories, the search -- and listed only through the archived view, until it is unarchived. An album keeps its archived members (the album is a reference container), and the owner unarchives from there or from the archived view. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
 /// * [description] - The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
 /// * [isReady] - True once the whole pipeline of the asset completed -- the metadata and thumbnail jobs for an image, plus the transcode job for a video (for a Live Photo component, the transcode job alone); the `asset.ready` event fires at that moment. Until then the client shows placeholders and the media endpoints answer `ASSET_NOT_READY` for missing derived files. 
 /// * [width] - Pixel width in sensor order (not orientation-corrected); null until the metadata job refined the dimensions. 
@@ -97,9 +97,9 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
 
-  /// True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
-  @BuiltValueField(wireName: r'isHidden')
-  bool get isHidden;
+  /// True while the asset is archived: out of every family flow -- the timeline, the favorites, the people and places walls, the map, the memories, the search -- and listed only through the archived view, until it is unarchived. An album keeps its archived members (the album is a reference container), and the owner unarchives from there or from the archived view. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+  @BuiltValueField(wireName: r'isArchived')
+  bool get isArchived;
 
   /// The owner's free-text description of the asset, the text the detail panel renders; the empty string until the owner wrote one. Editable only by the owner through `PATCH /assets/{id}`, which replaces it wholesale. 
   @BuiltValueField(wireName: r'description')
@@ -240,9 +240,9 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
       object.isTrashed,
       specifiedType: const FullType(bool),
     );
-    yield r'isHidden';
+    yield r'isArchived';
     yield serializers.serialize(
-      object.isHidden,
+      object.isArchived,
       specifiedType: const FullType(bool),
     );
     yield r'description';
@@ -423,12 +423,12 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
           ) as bool;
           result.isTrashed = valueDes;
           break;
-        case r'isHidden':
+        case r'isArchived':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType(bool),
           ) as bool;
-          result.isHidden = valueDes;
+          result.isArchived = valueDes;
           break;
         case r'description':
           final valueDes = serializers.deserialize(

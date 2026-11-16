@@ -1,7 +1,7 @@
 // The asset attribute PATCH: PATCH /assets/{id}, the
 // owner's partial edit of the owner-level attributes -- the
-// free-text description the detail panel renders, the hidden
-// switch that keeps the asset out of every live view, the capture
+// free-text description the detail panel renders, the archive
+// switch that keeps the asset out of every family flow, the capture
 // time (instant plus display zone) and the manual location (the
 // coordinates plus the place they resolve to). The permission
 // model is owner-only, the attribute-editing row of the
@@ -38,7 +38,7 @@ import (
 const descriptionLimit = 10000
 
 // PatchAsset implements PATCH /api/v1/assets/{id}: the partial edit
-// of the owner-level attributes -- the description, the hidden
+// of the owner-level attributes -- the description, the archive
 // switch, the capture time (instant plus display zone) and the
 // manual location (coordinates plus resolved place). The response is
 // the detail after the edit -- the same read and serializer the GET
@@ -76,10 +76,10 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
 		return
 	}
-	if request.Description == nil && request.IsHidden == nil && request.TakenAt == nil &&
+	if request.Description == nil && request.IsArchived == nil && request.TakenAt == nil &&
 		request.Latitude == nil && request.Longitude == nil {
 		s.writeValidationError(w,
-			"the patch must carry description, takenAt, latitude/longitude or isHidden", []string{"body"})
+			"the patch must carry description, takenAt, latitude/longitude or isArchived", []string{"body"})
 		return
 	}
 	if request.Description != nil && utf8.RuneCountInString(*request.Description) > descriptionLimit {
@@ -118,9 +118,10 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// both fields they land together or not at all -- a partial patch
 	// never surfaces. Each write's set-semantics guard makes the
 	// idempotent repeat match zero rows, and the rows-affected count
-	// is the change signal of the event discipline below. The isHidden
-	// arm is the batch's own SetAssetHidden -- one authority for the
-	// switch -- and the description arm is its owner-guarded sibling.
+	// is the change signal of the event discipline below. The
+	// isArchived arm is the batch's own SetAssetHidden -- one
+	// authority for the switch, whatever the surfaces call it -- and
+	// the description arm is its owner-guarded sibling.
 	ctx := r.Context()
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -192,14 +193,14 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 			changed = true
 		}
 	}
-	if request.IsHidden != nil {
+	if request.IsArchived != nil {
 		rows, err := queries.SetAssetHidden(ctx, dbgen.SetAssetHiddenParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(requester.userID),
-			Hidden:  *request.IsHidden,
+			Hidden:  *request.IsArchived,
 		})
 		if err != nil {
-			s.internalError(w, r, "update asset hidden switch", err)
+			s.internalError(w, r, "update asset archive switch", err)
 			return
 		}
 		if rows > 0 {
