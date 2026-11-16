@@ -402,6 +402,38 @@ WHERE fc.id = ANY(sqlc.arg('cluster_ids')::uuid[])
       SELECT 1 FROM faces f WHERE f.cluster_id = fc.id
   );
 
+-- name: UpdateFaceBox :exec
+-- The face-box editor's member write (PATCH /faces/{faceId}): one
+-- face row's bounding box rewritten in the per-mille units the crop
+-- endpoint and the on-photo face-box layer address. updated_at rides
+-- along as the row's change signal -- the crop ETag's input -- so the
+-- rewritten box re-renders the crop without any separate cache step
+-- (the crop endpoint derives at query time; nothing stored to
+-- invalidate).
+UPDATE faces
+SET bbox_x = sqlc.arg('bbox_x'),
+    bbox_y = sqlc.arg('bbox_y'),
+    bbox_w = sqlc.arg('bbox_w'),
+    bbox_h = sqlc.arg('bbox_h'),
+    updated_at = now()
+WHERE id = sqlc.arg('face_id');
+
+-- name: ListClusterFaceIDs :many
+-- The person delete's face-id capture, read BEFORE the cluster row
+-- goes: faces.cluster_id carries ON DELETE SET NULL, so once the
+-- cluster row dies these ids are the only handle left on the rows
+-- that must die WITH it (the delete's faces are deleted, never
+-- unassigned -- the unnamed pool gains nothing).
+SELECT id FROM faces WHERE cluster_id = sqlc.arg('cluster_id');
+
+-- name: DeleteFacesByIDs :exec
+-- The person delete's face removal, AFTER the cluster row went (the
+-- cluster's representative pointer and avatar pick died with the row;
+-- no other cluster ever points at these faces -- the avatar pick's
+-- gate keeps every pick inside its own cluster). Runs inside the
+-- delete transaction, never alone.
+DELETE FROM faces WHERE id = ANY(sqlc.arg('face_ids')::uuid[]);
+
 -- name: GetFaceForCaller :one
 -- The face-move endpoint's face-side read and gate in one: the
 -- face's current cluster, over an asset the caller OWNS and that is
