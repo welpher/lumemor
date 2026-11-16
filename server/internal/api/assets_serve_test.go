@@ -111,6 +111,9 @@ func TestGetAssetDetail(t *testing.T) {
 	if fresh.LivePhotoVideoId != nil {
 		t.Error("livePhotoVideoId set, want null for a plain photo")
 	}
+	if fresh.ContentCopies != 0 {
+		t.Errorf("contentCopies = %d, want 0 (the only copy of its content)", fresh.ContentCopies)
+	}
 	if fresh.TakenAtSource != apigen.AssetDetailTakenAtSourceImport {
 		t.Errorf("takenAtSource = %q, want %q", fresh.TakenAtSource, apigen.AssetDetailTakenAtSourceImport)
 	}
@@ -231,6 +234,29 @@ func TestGetAssetDetail(t *testing.T) {
 	}
 	if exif.TzOffset == nil || *exif.TzOffset != "+05:30" {
 		t.Errorf("exif.tzOffset = %v, want +05:30", exif.TzOffset)
+	}
+
+	// The twin count: one more live row of the same content (a
+	// directory album's mirror of the same photo) makes the delete
+	// toast's note speak, and dead rows never count.
+	env.exec(t, `INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at,
+			taken_at_source, pending_jobs
+		) VALUES ($1, $2, 'external', $3, $4, 'IMG_1234.jpg', $5, 'image/jpeg',
+			'image', 0, 0, now(), 'file', 0)`,
+		pgUUID(uuid.Must(uuid.NewV7())), pgUUID(env.sessionUserID(t)),
+		"/mnt/source/IMG_1234.jpg", sha256Hex(payload), int64(len(payload)))
+	rec = env.serveGet(t, "/api/v1/assets/"+created.Id.String(), env.cookie, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("twinned detail status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var twinned apigen.AssetDetail
+	if err := json.Unmarshal(rec.Body.Bytes(), &twinned); err != nil {
+		t.Fatalf("decode twinned detail %q: %v", rec.Body.String(), err)
+	}
+	if twinned.ContentCopies != 1 {
+		t.Errorf("contentCopies = %d, want 1 (the source's live mirror)", twinned.ContentCopies)
 	}
 
 	// The trashed state stays readable, flagged.

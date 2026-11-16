@@ -7,7 +7,12 @@
 -- way: trashed rows, and the component video rows of Live Photos,
 -- never appear -- the two views differ only in which assets they
 -- select (the caller's favorites rows vs the caller's own archived
--- rows -- is_hidden is the archive switch's column).
+-- rows -- is_hidden is the archive switch's column). Both are library
+-- faces, so both show the content group's representative once
+-- (asset_library_representative): a photo the caller favorited as the
+-- uploaded copy and that a directory album also mirrors as a position
+-- row is one heart, one tile -- the favorite row stays the caller's
+-- own fact on the row they hearted.
 
 -- name: ListFavoriteAssets :many
 -- The favorites view: the caller's favorites rows joined to the live
@@ -31,6 +36,7 @@ JOIN user_favorites f ON f.asset_id = a.id AND f.user_id = sqlc.arg('user_id')
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
@@ -59,6 +65,7 @@ WHERE a.owner_id = sqlc.arg('user_id')
   AND a.is_hidden = true
   AND a.deleted_at IS NULL
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)

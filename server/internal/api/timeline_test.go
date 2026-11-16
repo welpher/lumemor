@@ -96,6 +96,26 @@ func (e *assetEnv) insertTimelineAsset(t *testing.T, id, owner uuid.UUID, taken 
 	}
 }
 
+// insertTwinAsset inserts one fixture source row directly: an
+// external asset at a real path, carrying the given content checksum.
+// The row needs no file on disk (the same cheapness the blob fixture
+// has), and its position key is the path.
+func (e *assetEnv) insertTwinAsset(t *testing.T, id, owner uuid.UUID, path, checksum, name string, taken time.Time) {
+	t.Helper()
+	if _, err := e.pool.Exec(context.Background(), `
+		INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at,
+			taken_at_source, pending_jobs
+		) VALUES (
+			$1, $2, 'external', $3, $4, $5, 1024, 'image/jpeg', 'image',
+			0, 0, $6, 'file', 0
+		)`,
+		pgUUID(id), pgUUID(owner), path, checksum, name, taken); err != nil {
+		t.Fatalf("insert fixture external asset %s: %v", id, err)
+	}
+}
+
 // insertTimelineAlbum inserts one fixture album of the given type.
 func (e *assetEnv) insertTimelineAlbum(t *testing.T, id, owner uuid.UUID, albumType string) {
 	t.Helper()
@@ -561,6 +581,98 @@ func TestTimeline(t *testing.T) {
 // the exact-taken_at tie pair spanning a page boundary (the id
 // tiebreak keeps both rows, each exactly once). The limit clamp to
 // the contract maximum rides on a bulk fixture.
+// TestTimelineLibraryRepresentative pins the position model's display
+// dedup on the aggregated timeline: one content held as an uploaded
+// copy and as a directory album's position row is ONE tile -- the blob
+// while it is live, the earliest position row when the blob is dead --
+// while the directory album's own wall lists both members (a wall
+// mirrors its source).
+func TestTimelineLibraryRepresentative(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	owner := env.sessionUserID(t)
+
+	taken := time.Date(2026, 5, 1, 12, 0, 0, 0, time.UTC)
+	blobID := fixtureAssetID("b1")
+	twinID := fixtureAssetID("b2")
+	env.insertOwnedAsset(t, blobID, owner, taken, timelineAssetOpts{})
+	// The blob row's content key is the fixture's own; the twin
+	// carries the SAME checksum at a source path (the dual-home state
+	// the fork makes representable).
+	env.exec(t, "UPDATE assets SET checksum = 'shared-content' WHERE id = $1", pgUUID(blobID))
+	env.insertTwinAsset(t, twinID, owner, "/mnt/source/twin.jpg", "shared-content", "twin.jpg", taken.Add(time.Hour))
+	dirAlbum := fixtureAlbumID("b2")
+	env.insertTimelineAlbum(t, dirAlbum, owner, "directory")
+	env.addTimelineItem(t, dirAlbum, twinID, owner)
+
+	// The aggregate: one tile, the blob (the upload wins a live pair).
+	page := env.getTimeline(t, env.cookie, "")
+	requireTimelineIDs(t, page.Items, blobID)
+
+	// The directory album's wall is the source's mirror: both rows
+	// would be its members, and here only the twin is one -- the wall
+	// lists it even though the timeline dedups it away.
+	wall := env.getTimeline(t, env.cookie, "albumId="+dirAlbum.String())
+	requireTimelineIDs(t, wall.Items, twinID)
+
+	// The blob leaves the library: the earliest live position row
+	// takes the group's representative slot with no maintenance step.
+	env.exec(t, "UPDATE assets SET deleted_at = now() WHERE id = $1", pgUUID(blobID))
+	page = env.getTimeline(t, env.cookie, "")
+	requireTimelineIDs(t, page.Items, twinID)
+
+	// The trash view is not a library face: it lists the row raw.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/trash", nil)
+	req.AddCookie(env.cookie)
+	env.router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /trash status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	var trash apigen.TrashResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &trash); err != nil {
+		t.Fatalf("decode trash body: %v", err)
+	}
+	if len(trash.Items) != 1 || trash.Items[0].Id != blobID {
+		t.Errorf("trash items = %v, want the trashed blob row alone", trash.Items)
+	}
+
+	// The last copy dies and the group leaves the timeline.
+	env.exec(t, "UPDATE assets SET deleted_at = now() WHERE id = $1", pgUUID(twinID))
+	page = env.getTimeline(t, env.cookie, "")
+	if len(page.Items) != 0 {
+		t.Errorf("timeline items = %d, want none (every copy dead)", len(page.Items))
+	}
+}
+
+// TestTimelineEarliestPositionRow pins the tie among position rows:
+// two source copies of one content rank by ingest order, so the
+// earliest row alone is the tile and a re-scan never reshuffles it.
+func TestTimelineEarliestPositionRow(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	owner := env.sessionUserID(t)
+
+	taken := time.Date(2026, 5, 2, 12, 0, 0, 0, time.UTC)
+	firstID := fixtureAssetID("c1")
+	secondID := fixtureAssetID("c2")
+	env.insertTwinAsset(t, firstID, owner, "/mnt/a/copy.jpg", "twin-content", "copy.jpg", taken)
+	env.insertTwinAsset(t, secondID, owner, "/mnt/b/copy.jpg", "twin-content", "copy.jpg", taken)
+	// The ingest order is the row's created_at (the fixture inserts
+	// stamp now(); the second row is forced later to be explicit).
+	env.exec(t, "UPDATE assets SET created_at = created_at - interval '1 hour' WHERE id = $1", pgUUID(firstID))
+	albumA, albumB := fixtureAlbumID("c1"), fixtureAlbumID("c2")
+	env.insertTimelineAlbum(t, albumA, owner, "directory")
+	env.insertTimelineAlbum(t, albumB, owner, "directory")
+	env.addTimelineItem(t, albumA, firstID, owner)
+	env.addTimelineItem(t, albumB, secondID, owner)
+
+	page := env.getTimeline(t, env.cookie, "")
+	requireTimelineIDs(t, page.Items, firstID)
+
+	// Each album's wall keeps its own copy: the source is the truth.
+	requireTimelineIDs(t, env.getTimeline(t, env.cookie, "albumId="+albumA.String()).Items, firstID)
+	requireTimelineIDs(t, env.getTimeline(t, env.cookie, "albumId="+albumB.String()).Items, secondID)
+}
+
 func TestTimelinePagination(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)

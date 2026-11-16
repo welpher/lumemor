@@ -2,9 +2,11 @@
 -- Tags are per-user state (the favorites' privacy shape): every
 -- query here scopes owner_id to the calling user, and the count
 -- subqueries join the assignment rows to CALLER-VISIBLE live assets
--- -- the album union (caller_asset_visible) plus the timeline's live
--- filters -- the honest-counts discipline of the people and places
--- surfaces. The assignment resolution deliberately drops the live
+-- -- the album union (caller_asset_visible), the timeline's live
+-- filters and the library's display representative
+-- (asset_library_representative: one photo tagged as an uploaded copy
+-- and as a directory album's position row counts once) -- the
+-- honest-counts discipline of the people and places surfaces. The assignment resolution deliberately drops the live
 -- filters (the favorites arms' discipline): the assignment row is
 -- per-user state written whatever the asset's live state, and the
 -- counts and views filter it, exactly like a favorite row.
@@ -26,6 +28,7 @@ SELECT sqlc.embed(t),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND asset_library_representative(a.id)
              AND caller_asset_visible(sqlc.arg('user_id'), a.id)
        ) AS asset_count
 FROM tags t
@@ -64,6 +67,7 @@ SELECT sqlc.embed(t),
              AND a.deleted_at IS NULL
              AND a.is_hidden = false
              AND a.is_component = false
+             AND asset_library_representative(a.id)
              AND caller_asset_visible(sqlc.arg('user_id'), a.id)
        ) AS asset_count
 FROM tags t

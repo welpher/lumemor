@@ -30,7 +30,21 @@
 -- feeding album stays in even when another of its albums is switched
 -- out -- the union semantics of the formula. Every item is live by
 -- construction: archived, trashed and Live Photo component rows are
--- filtered before the semi-join runs. The album narrow below is the
+-- filtered before the semi-join runs.
+--
+-- The library faces dedup the DISPLAY, not the storage (the position
+-- model, migration 00027): one photo can be held as an uploaded copy
+-- (the sync stream) and as a source position row (a directory
+-- album's mirror of its folder) at the same time, and the library
+-- shows it ONCE. asset_library_representative is that one predicate
+-- -- the live blob row if the group has one, else the earliest live
+-- position row, dead rows never representing -- and it sits on every
+-- library-face list below. The ALBUM walls are not library faces
+-- (a directory album's wall IS its folder, every member a tile) and
+-- neither is the trash view; the album's own timeline keeps the wall
+-- semantics for a directory album and the library semantics for the
+-- sync and memory albums, whose walls are library views of the
+-- content they hold. The album narrow below is the
 -- one exception, by design: an album is a reference container that
 -- keeps its archived members (the archive removes an asset from the
 -- family flow, never from the album that holds it), while a memory --
@@ -59,6 +73,7 @@ FROM assets a
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
       OR (a.taken_at, a.id) < (sqlc.narg('cursor_taken_at')::timestamptz, sqlc.narg('cursor_id')::uuid)
@@ -118,6 +133,13 @@ WHERE al.id = sqlc.arg('album_id')
   AND a.deleted_at IS NULL
   AND (al.type <> 'memory' OR a.is_hidden = false)
   AND a.is_component = false
+  -- The display dedup, by album face: a directory album's timeline IS
+  -- its wall -- the source's membership, every tile a member, no
+  -- library filtering -- while the sync stream and a memory are
+  -- library views of the content they hold, so they show the group's
+  -- representative once (a memory holding both copies of one photo is
+  -- still one tile).
+  AND (al.type = 'directory' OR asset_library_representative(a.id))
   -- The memory's shared-view rule rides the same arm as the detail's
   -- pages, the counts and the collages: a sharee's walk carries the
   -- live members the memory's owner CURRENTLY sees (the re-share
@@ -156,6 +178,7 @@ WHERE a.place_id = ANY(sqlc.arg('place_ids')::integer[])
   AND a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND caller_asset_visible(sqlc.arg('user_id'), a.id)
   AND (
       sqlc.narg('cursor_taken_at')::timestamptz IS NULL
@@ -183,6 +206,7 @@ FROM assets a
 WHERE a.deleted_at IS NULL
   AND a.is_hidden = false
   AND a.is_component = false
+  AND asset_library_representative(a.id)
   AND EXISTS (
       SELECT 1
       FROM faces f

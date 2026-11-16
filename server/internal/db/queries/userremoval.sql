@@ -90,16 +90,21 @@ WHERE owner_id = sqlc.arg('owner_id');
 
 -- name: DuplicateOwnedAssets :many
 -- The collision set of BOTH disposal arms: every departing row whose
--- content the destination owner already holds, in ANY state pair --
--- live/live, live/trashed, trashed/live and trashed/trashed.
--- assets_owner_checksum_uq is a TOTAL unique index on (owner_id,
--- checksum) over live rows AND trashed rows alike (00008), so the
--- ownership write collides whatever the two rows' states are; a
--- live-only predicate here misses three of the four pairs and lets
--- the write trip the index (a 500 the caller cannot read as anything).
--- The same index makes the pair 1:1 per checksum on each side: one
--- account holds at most one row of a given content, in either state,
--- so one departing row meets at most one destination row.
+-- KEY the destination owner already holds, in ANY state pair --
+-- live/live, live/trashed, trashed/live and trashed/trashed. The key
+-- is the row's own domain's (the position-row fork, migration 00027):
+-- a blob row collides by content (unique(owner, checksum) over live
+-- AND trashed blob rows alike, 00008), and an external row collides
+-- by position (unique(owner, file_path) over external rows). Both are
+-- TOTAL over their domains, so the ownership write collides whatever
+-- the two rows' states are; a live-only predicate here misses three
+-- of the four pairs and lets the write trip an index (a 500 the caller
+-- cannot read as anything). Each key is 1:1 per domain on each side,
+-- so one departing row meets at most one destination row: existence
+-- does NOT pair across domains -- two rows of one content in one
+-- account (an upload plus a source copy) are legitimate state, not a
+-- collision, and folding them would hand a directory album's mirror
+-- to an upload row.
 -- Component rows (a Live Photo's video half) stay out of the fold on
 -- both sides: a component is not content of its own -- it rides its
 -- photo's decision, and the fold purges it together with the photo it
@@ -115,7 +120,10 @@ SELECT d.id AS departing_id,
 FROM assets d
 JOIN assets k
   ON k.owner_id = sqlc.arg('to_owner')
- AND k.checksum = d.checksum
+ AND (
+     (d.storage_kind = 'blob' AND k.storage_kind = 'blob' AND k.checksum = d.checksum)
+     OR (d.storage_kind = 'external' AND k.storage_kind = 'external' AND k.file_path = d.file_path)
+ )
 WHERE d.owner_id = sqlc.arg('from_owner')
   AND NOT d.is_component
   AND NOT k.is_component

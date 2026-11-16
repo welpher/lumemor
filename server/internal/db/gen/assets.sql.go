@@ -311,7 +311,7 @@ func (q *Queries) GetAssetByDeviceId(ctx context.Context, arg GetAssetByDeviceId
 const getAssetByOwnerChecksum = `-- name: GetAssetByOwnerChecksum :one
 SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted, live_photo_cid FROM assets
 WHERE owner_id = $1 AND checksum = $2
-ORDER BY deleted_at NULLS FIRST
+ORDER BY deleted_at NULLS FIRST, (storage_kind = 'blob') DESC, created_at, id
 LIMIT 1
 `
 
@@ -323,7 +323,14 @@ type GetAssetByOwnerChecksumParams struct {
 // The three-state lookup behind the upload idempotency: the row of
 // this owner and checksum, live first. After a unique violation the
 // caller reads the row's deleted_at to answer duplicate (NULL) or
-// trashed (set).
+// trashed (set). The lookup walks the FULL content domain -- every
+// storage kind: a directory album's position row carries the same
+// content identity, and an upload of bytes the owner's folders
+// already hold is the same duplicate (the upload direction never
+// creates a second row). The ordering picks the representative the
+// answer names: the live row before any trashed one, the uploaded
+// blob before a source position row, and the earliest ingest last --
+// so a live blob answers when both kinds are live.
 func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwnerChecksumParams) (Asset, error) {
 	row := q.db.QueryRow(ctx, getAssetByOwnerChecksum, arg.OwnerID, arg.Checksum)
 	var i Asset
@@ -404,7 +411,15 @@ SELECT a.id,
        e.tz_offset,
        p.id AS place_id,
        pn.name AS locale_name,
-       p.name AS canonical_name
+       p.name AS canonical_name,
+       (
+           SELECT count(*)
+           FROM assets c
+           WHERE c.owner_id = a.owner_id
+             AND c.checksum = a.checksum
+             AND c.id <> a.id
+             AND c.deleted_at IS NULL
+       )::bigint AS content_copies
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
 LEFT JOIN places p ON p.id = a.place_id
@@ -458,6 +473,7 @@ type GetAssetDetailRow struct {
 	PlaceID          pgtype.Int4        `json:"place_id"`
 	LocaleName       pgtype.Text        `json:"locale_name"`
 	CanonicalName    pgtype.Text        `json:"canonical_name"`
+	ContentCopies    int64              `json:"content_copies"`
 }
 
 // The detail read of GET /assets/{id}: the asset row joined with the
@@ -480,6 +496,15 @@ type GetAssetDetailRow struct {
 // description and is_hidden ride along: the PATCH response reuses
 // this read after its writes, so it serves the same shape the GET
 // endpoint serves, applied values included.
+//
+// content_copies is the twin count the delete dialog's note speaks of:
+// how many OTHER live rows of the same owner carry the same content.
+// A directory album mirrors its folder, so one photo can be an
+// uploaded copy and a source copy at once; the viewer's delete toast
+// says how many copies remain. The count is owner-scoped (it names no
+// row, and every row it counts is the asset owner's own) and excludes
+// the row itself, so 0 means the only live copy. The probe rides
+// assets_owner_checksum_idx.
 func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) (GetAssetDetailRow, error) {
 	row := q.db.QueryRow(ctx, getAssetDetail, arg.Locale, arg.ID, arg.Viewer)
 	var i GetAssetDetailRow
@@ -521,6 +546,7 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 		&i.PlaceID,
 		&i.LocaleName,
 		&i.CanonicalName,
+		&i.ContentCopies,
 	)
 	return i, err
 }
@@ -576,6 +602,68 @@ func (q *Queries) GetAssetForMetadata(ctx context.Context, id pgtype.UUID) (GetA
 		&i.PendingJobs,
 		&i.IsComponent,
 		&i.Exif,
+	)
+	return i, err
+}
+
+const getBlobAssetByOwnerChecksum = `-- name: GetBlobAssetByOwnerChecksum :one
+SELECT id, owner_id, storage_kind, file_path, checksum, original_filename, file_size, mime_type, media_kind, live_photo_video_id, is_component, width, height, duration_ms, taken_at, taken_at_source, place_id, blurhash, phash, is_hidden, description, deleted_at, original_path, trash_path, created_at, updated_at, device_asset_id, pending_jobs, ready_at, file_mtime, taken_at_zone, location_lat, location_lon, motion_extracted, live_photo_cid FROM assets
+WHERE owner_id = $1 AND checksum = $2 AND storage_kind = 'blob'
+ORDER BY deleted_at NULLS FIRST, created_at, id
+LIMIT 1
+`
+
+type GetBlobAssetByOwnerChecksumParams struct {
+	OwnerID  pgtype.UUID `json:"owner_id"`
+	Checksum string      `json:"checksum"`
+}
+
+// The blob-domain content lookup: the same three-state read, narrowed
+// to the uploaded rows. The motion extraction's reuse is its caller
+// and the narrowing is the whole point -- the stored motion a still
+// reuses must be a row the library keeps as bytes of ours, never a
+// source file the family owns (marking an external row as the still's
+// component would turn the family's own file into a derivative of a
+// pair and delete it with the pair).
+func (q *Queries) GetBlobAssetByOwnerChecksum(ctx context.Context, arg GetBlobAssetByOwnerChecksumParams) (Asset, error) {
+	row := q.db.QueryRow(ctx, getBlobAssetByOwnerChecksum, arg.OwnerID, arg.Checksum)
+	var i Asset
+	err := row.Scan(
+		&i.ID,
+		&i.OwnerID,
+		&i.StorageKind,
+		&i.FilePath,
+		&i.Checksum,
+		&i.OriginalFilename,
+		&i.FileSize,
+		&i.MimeType,
+		&i.MediaKind,
+		&i.LivePhotoVideoID,
+		&i.IsComponent,
+		&i.Width,
+		&i.Height,
+		&i.DurationMs,
+		&i.TakenAt,
+		&i.TakenAtSource,
+		&i.PlaceID,
+		&i.Blurhash,
+		&i.Phash,
+		&i.IsHidden,
+		&i.Description,
+		&i.DeletedAt,
+		&i.OriginalPath,
+		&i.TrashPath,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DeviceAssetID,
+		&i.PendingJobs,
+		&i.ReadyAt,
+		&i.FileMtime,
+		&i.TakenAtZone,
+		&i.LocationLat,
+		&i.LocationLon,
+		&i.MotionExtracted,
+		&i.LivePhotoCid,
 	)
 	return i, err
 }

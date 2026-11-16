@@ -1090,6 +1090,16 @@
 		const outcome = await runAssetBatch(action, [current.id]);
 		busy = false;
 		if (outcome.ok) {
+			if (action === 'trash') {
+				// The delete's landing echo: the copy left the library,
+				// and the content may live on (a directory album's
+				// mirror, another copy). The note is appended only when
+				// it has something to say -- the richest state the
+				// design shows, the plain sentence otherwise.
+				const copies = current.contentCopies;
+				const note = copies > 0 ? ` ${$_('viewer_trashed_copies_note', { values: { n: copies } })}` : '';
+				toast(`${$_('viewer_trashed_done')}${note}`, 'success');
+			}
 			// The SSE events converge the refetch onto the same state
 			// (favorites are silent; the optimistic flag is final).
 			return true;

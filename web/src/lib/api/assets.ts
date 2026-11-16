@@ -269,6 +269,15 @@ function detailFrom(body: unknown): AssetDetail | null {
 	if (candidate.path !== null && typeof candidate.path !== 'string') {
 		return null;
 	}
+	// The twin count is part of the fixed shape: the OTHER live copies
+	// of this content the delete toast's note speaks of. A missing or
+	// non-negative-non-integer value is not a detail.
+	if (typeof candidate.contentCopies !== 'number' || !Number.isInteger(candidate.contentCopies)) {
+		return null;
+	}
+	if (candidate.contentCopies < 0) {
+		return null;
+	}
 	return body as AssetDetail;
 }
 
