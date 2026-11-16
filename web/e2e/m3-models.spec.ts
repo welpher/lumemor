@@ -226,6 +226,14 @@ test.describe('the signed-in scenes', () => {
 		for (const slot of CARD_SLOTS) {
 			await expect(page.locator(`.models__card[data-slot="${slot}"] [data-state="active"]`)).toHaveText('Active');
 		}
+
+		// The slots' running params (E41): the two face slots carry
+		// their param blocks at the pipeline's own defaults; the other
+		// two slots render none (the honest set -- no empty blocks).
+		await expect(page.getByTestId('models-param-min-score')).toHaveValue('0.6');
+		await expect(page.getByTestId('models-param-cluster-threshold')).toHaveValue('0.55');
+		await expect(page.locator('.models__card[data-slot="clip_embed"] .models__params')).toHaveCount(0);
+		await expect(page.locator('.models__card[data-slot="ocr"] .models__params')).toHaveCount(0);
 	});
 
 	test('scene 3: the task panel lists the succeeded download row', async ({ page }) => {
