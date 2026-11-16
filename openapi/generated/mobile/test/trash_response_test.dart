@@ -13,5 +13,11 @@ void main() {
       // TODO
     });
 
+    // The instance's trash retention window in whole days, the same setting the listing's `remainingDays` countdowns were computed against (`trash_retention_days`, default 30). The trash page's note renders it; adjusting the setting stays the administrator's surface, but the number itself is visible to every signed-in member. A corrupt setting row answers the default 30 -- the same degradation the countdowns follow. 
+    // int retentionDays
+    test('to test the property `retentionDays`', () async {
+      // TODO
+    });
+
   });
 }

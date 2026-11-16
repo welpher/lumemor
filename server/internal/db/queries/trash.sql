@@ -106,6 +106,50 @@ WHERE a.owner_id = $1
 ORDER BY a.deleted_at DESC
 LIMIT sqlc.arg('limit_count');
 
+-- name: ResolveTrashedAssets :many
+-- The trash batch's id resolution for both of its actions: which of
+-- the request's ids are IN THE CALLER'S TRASH at the time of the
+-- request. The trash-scoped guard is the deliberate difference from
+-- ResolveBatchAssets's state-agnostic owner guard: an already-live
+-- row, an already-purged row and a foreign or unknown id all resolve
+-- to no row and land in the response's missing list together (the
+-- anti-enumeration discipline -- the caller cannot probe an id's
+-- state apart). The view's own exclusions ride along: component
+-- video rows never surface in the trash (the pair is represented by
+-- its photo, which carries the restore and the delete), and an
+-- external row with no trash_path is the rescan's orphan mark the
+-- trash view never listed -- an id the caller could only know from
+-- outside the view. media_kind rides along for the per-row events,
+-- the same (id, kind) pair every asset event carries.
+SELECT id, media_kind
+FROM assets
+WHERE id = ANY(sqlc.arg('ids')::uuid[])
+  AND owner_id = sqlc.arg('owner_id')
+  AND deleted_at IS NOT NULL
+  AND is_component = false
+  AND NOT (storage_kind = 'external' AND trash_path IS NULL);
+
+-- name: ListTrashedForSweep :many
+-- The whole-trash sweeps' candidate listing (restore-all, empty):
+-- every row of one owner's trash right now, oldest deletion first,
+-- bounded per chunk so one request's sweep stays a bounded
+-- transaction-and-filesystem pass -- the caller loops the query until
+-- it comes back empty (a purge removes the rows, so each chunk
+-- advances the sweep). The predicate is the trash view's own: the
+-- component rows never sweep alone (their purge rides their photo's
+-- through the pair semantics), an external orphan mark (trash_path
+-- NULL) is not the trash's business, and the full row shape is what
+-- the per-row restore and delete semantics need (the external move's
+-- paths, the media kinds, the storage eras).
+SELECT a.*
+FROM assets a
+WHERE a.owner_id = $1
+  AND a.deleted_at IS NOT NULL
+  AND a.is_component = false
+  AND NOT (a.storage_kind = 'external' AND a.trash_path IS NULL)
+ORDER BY a.deleted_at
+LIMIT sqlc.arg('limit_count');
+
 -- name: RestoreAsset :execrows
 -- Clears the trash mark on the asset and, when the asset is a Live
 -- Photo, on its linked component video row -- the same pair

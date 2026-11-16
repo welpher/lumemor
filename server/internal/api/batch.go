@@ -51,10 +51,10 @@ const batchIDLimit = 1000
 // so no other session has anything to refresh -- the silence is the
 // documented choice, not an omission.
 var batchEventNames = map[apigen.BatchRequestAction]string{
-	apigen.Trash:   "asset.trashed",
-	apigen.Restore: "asset.restored",
-	apigen.Hide:    "asset.updated",
-	apigen.Unhide:  "asset.updated",
+	apigen.BatchRequestActionTrash:   "asset.trashed",
+	apigen.BatchRequestActionRestore: "asset.restored",
+	apigen.BatchRequestActionHide:    "asset.updated",
+	apigen.BatchRequestActionUnhide:  "asset.updated",
 }
 
 // The external lifecycle's move failures, the one error class the
@@ -63,8 +63,12 @@ var batchEventNames = map[apigen.BatchRequestAction]string{
 // delete fails explicitly -- never a silent skip, never a nameless
 // 500 either).
 var (
-	errBatchTrashMove   = errors.New("the external file could not be moved into the trash")
-	errBatchRestoreMove = errors.New("the external file could not be moved back to its original location")
+	errBatchTrashMove = errors.New("the external file could not be moved into the trash")
+	// The shared move-failure class of the restore's external arm,
+	// every surface that moves the file back answers with it
+	// (ASSET_RESTORE_MOVE_FAILED): the assets batch's restore arm
+	// and the trash whole/batch restores in trash.go.
+	errExternalRestoreMove = errors.New("the external file could not be moved back to its original location")
 )
 
 // batchFileMove records one external lifecycle move the batch
@@ -206,7 +210,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 					"asset_id", id, "method", r.Method, "path", r.URL.Path)
 				s.writeError(w, http.StatusInternalServerError, apigen.ASSETTRASHMOVEFAILED,
 					"the file could not be moved into the trash", nil)
-			case errors.Is(err, errBatchRestoreMove):
+			case errors.Is(err, errExternalRestoreMove):
 				s.logger.Error("the batch's external restore move failed", "error", err,
 					"asset_id", id, "method", r.Method, "path", r.URL.Path)
 				s.writeError(w, http.StatusInternalServerError, apigen.ASSETRESTOREMOVEFAILED,
@@ -252,7 +256,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	// the changed ids. The favorites and the hide/unhide arms never
 	// move the trash lifecycle's live predicate and publish nothing
 	// album-level; a refused batch never reaches this block at all.
-	if request.Action == apigen.Trash || request.Action == apigen.Restore {
+	if request.Action == apigen.BatchRequestActionTrash || request.Action == apigen.BatchRequestActionRestore {
 		s.publishAlbumMembershipEvents(r.Context(), requester.userID, changed)
 	}
 
@@ -280,7 +284,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 // resolutions answer the same row shape, so the handler's report
 // partitioning never branches on the action.
 func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, caller uuid.UUID, ids []uuid.UUID) ([]dbgen.ResolveBatchAssetsRow, error) {
-	if action == apigen.Favorite || action == apigen.Unfavorite {
+	if action == apigen.BatchRequestActionFavorite || action == apigen.BatchRequestActionUnfavorite {
 		rows, err := queries.ResolveVisibleAssets(ctx, dbgen.ResolveVisibleAssetsParams{
 			Ids:    pgUUIDs(ids),
 			Viewer: pgUUID(caller),
@@ -321,26 +325,26 @@ func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action api
 // alongside the write, so a repeat trash touches no file either).
 func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, owner, id uuid.UUID) (bool, *batchFileMove, error) {
 	switch action {
-	case apigen.Favorite:
+	case apigen.BatchRequestActionFavorite:
 		_, err := queries.FavoriteAsset(ctx, dbgen.FavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
 		return false, nil, err
-	case apigen.Unfavorite:
+	case apigen.BatchRequestActionUnfavorite:
 		_, err := queries.UnfavoriteAsset(ctx, dbgen.UnfavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
 		return false, nil, err
-	case apigen.Hide, apigen.Unhide:
+	case apigen.BatchRequestActionHide, apigen.BatchRequestActionUnhide:
 		rows, err := queries.SetAssetHidden(ctx, dbgen.SetAssetHiddenParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
-			Hidden:  action == apigen.Hide,
+			Hidden:  action == apigen.BatchRequestActionHide,
 		})
 		return rows > 0, nil, err
-	case apigen.Trash:
+	case apigen.BatchRequestActionTrash:
 		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
@@ -379,7 +383,7 @@ func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, a
 			OwnerID: pgUUID(owner),
 		})
 		return rows > 0, nil, err
-	case apigen.Restore:
+	case apigen.BatchRequestActionRestore:
 		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
@@ -396,7 +400,7 @@ func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, a
 			var move *batchFileMove
 			if row.DeletedAt.Valid && row.TrashPath.Valid {
 				if err := storage.MoveFileBack(row.TrashPath.String, row.OriginalPath.String); err != nil {
-					return false, nil, fmt.Errorf("%w: %v", errBatchRestoreMove, err)
+					return false, nil, fmt.Errorf("%w: %v", errExternalRestoreMove, err)
 				}
 				move = &batchFileMove{from: row.TrashPath.String, to: row.OriginalPath.String}
 				rows, err := queries.RestoreExternalAsset(ctx, dbgen.RestoreExternalAssetParams{

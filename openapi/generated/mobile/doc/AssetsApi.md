@@ -10,7 +10,9 @@ All URIs are relative to */api/v1*
 Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**batchAssets**](AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
+[**batchTrash**](AssetsApi.md#batchtrash) | **POST** /trash/batch | Apply one restore or delete action over a list of ids in the caller&#39;s trash.
 [**deleteAsset**](AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
+[**emptyTrash**](AssetsApi.md#emptytrash) | **POST** /trash/empty | Permanently delete everything in the caller&#39;s trash.
 [**getArchived**](AssetsApi.md#getarchived) | **GET** /assets/archived | The caller&#39;s archived assets, one keyset page at a time.
 [**getAsset**](AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [**getAssetByDeviceId**](AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
@@ -21,6 +23,7 @@ Method | HTTP request | Description
 [**getTrash**](AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
 [**patchAsset**](AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the owner-level attributes of one asset.
 [**playAsset**](AssetsApi.md#playasset) | **GET** /assets/{id}/play | Stream the transcoded playable copy of one owned video.
+[**restoreAllTrash**](AssetsApi.md#restorealltrash) | **POST** /trash/restore-all | Restore every trashed asset of the caller.
 [**restoreAsset**](AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [**uploadAsset**](AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 
@@ -72,6 +75,53 @@ Name | Type | Description  | Notes
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
+# **batchTrash**
+> TrashBatchResponse batchTrash(trashBatchRequest)
+
+Apply one restore or delete action over a list of ids in the caller's trash.
+
+The trash view's multi-select surface: one request applies one action (`restore` or `delete`) to a list of ids. The id resolution mirrors the assets batch's set semantics with a TRASH-SCOPED guard: only an id that is in the caller's trash at the time of the request resolves -- unknown ids, other accounts' assets (indistinguishable, so ids cannot be enumerated), rows already restored to the live views and rows the expiry job already purged land in the response's `missing` list instead, and the batch never fails over an individual id. The resolved ids' actions run under the same semantics the single-row endpoints pin: the restore moves a Live Photo pair and an external row's file as the single-row restore does, the delete runs the permanent-delete rules (the shared-blob rule included) row by row, and the rows whose state actually changed announce the same events per row (`asset.restored` / `asset.deleted`).  `delete` is the destructive arm: the caller's client confirms first (the count in the sentence), exactly like the whole-trash empty. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+final TrashBatchRequest trashBatchRequest = {"action":"restore","ids":["0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f70","0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71"]}; // TrashBatchRequest | 
+
+try {
+    final response = api.batchTrash(trashBatchRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->batchTrash: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **trashBatchRequest** | [**TrashBatchRequest**](TrashBatchRequest.md)|  | 
+
+### Return type
+
+[**TrashBatchResponse**](TrashBatchResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
 # **deleteAsset**
 > deleteAsset(id)
 
@@ -106,6 +156,49 @@ Name | Type | Description  | Notes
 ### Return type
 
 void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **emptyTrash**
+> TrashSweepResponse emptyTrash()
+
+Permanently delete everything in the caller's trash.
+
+The whole-trash delete: every row of the caller's trash right now goes for good, under the same rules the single-row permanent delete pins (the shared-blob reference rule keeps a file another row still uses; the derived trees go with the rows; the Live Photo pair goes together). Each purged row announces one `asset.deleted` on the activity stream, so the connected surfaces converge the way they follow the expiry job's purges.  The endpoint is idempotent: an empty trash answers 200 with `affected` 0 -- the sweep scans what is in the caller's trash at the time of the request, so the 404 of the single-row delete never appears. The sweep never touches another account's rows: the trash is owner-scoped, an empty answers only ever concern the caller's own deletes.  The caller confirms FIRST: the permanent deletion of every trashed asset is irreversible, so the client opens its confirmation dialog (naming the count it is about to destroy) before the request may fire. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+
+try {
+    final response = api.emptyTrash();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->emptyTrash: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TrashSweepResponse**](TrashSweepResponse.md)
 
 ### Authorization
 
@@ -468,7 +561,7 @@ Name | Type | Description  | Notes
 
 List the caller's trashed assets with their retention countdown.
 
-The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting `trash_retention_days` (default 30): the expiry job runs hourly and permanently deletes rows whose `deletedAt` fell past the retention window, so an item shows `remainingDays` 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  `remainingDays` counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. 
+The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting `trash_retention_days` (default 30): the expiry job runs hourly and permanently deletes rows whose `deletedAt` fell past the retention window, so an item shows `remainingDays` 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  `remainingDays` counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. `retentionDays` carries the instance setting the countdowns were computed against -- the note the trash page renders its number from. 
 
 ### Example
 ```dart
@@ -601,6 +694,49 @@ Name | Type | Description  | Notes
 
  - **Content-Type**: Not defined
  - **Accept**: video/mp4, application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **restoreAllTrash**
+> TrashSweepResponse restoreAllTrash()
+
+Restore every trashed asset of the caller.
+
+The whole-trash restore: every row of the caller's trash right now returns to the live views, the newest deletion last. The Live Photo pair restores as one asset (its component video row rides the photo's restore), an external row's file moves back to its recorded original location, and the rows that actually left the trash announce one `asset.restored` each on the activity stream.  The endpoint is idempotent: an empty trash answers 200 with `affected` 0 -- there is no not-found surface, the sweep scans what is in the caller's trash at the time of the request, so the 404 of the single-row restore never appears. The sweep never touches another account's rows (the trash is owner-scoped) and never reaches rows that are already live.  The caller confirms nothing: a whole restore is reversible through the timeline's own trash flow, so unlike the empty arm no confirmation gate is specified -- the client runs it directly. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAssetsApi();
+
+try {
+    final response = api.restoreAllTrash();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AssetsApi->restoreAllTrash: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**TrashSweepResponse**](TrashSweepResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 

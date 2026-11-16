@@ -149,10 +149,13 @@ import 'package:lumemor_api/src/model/timeline_response.dart';
 import 'package:lumemor_api/src/model/transcode_preset.dart';
 import 'package:lumemor_api/src/model/transcoding_settings_response.dart';
 import 'package:lumemor_api/src/model/transcoding_settings_update_request.dart';
+import 'package:lumemor_api/src/model/trash_batch_request.dart';
+import 'package:lumemor_api/src/model/trash_batch_response.dart';
 import 'package:lumemor_api/src/model/trash_item.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
 import 'package:lumemor_api/src/model/trash_settings_response.dart';
 import 'package:lumemor_api/src/model/trash_settings_update_request.dart';
+import 'package:lumemor_api/src/model/trash_sweep_response.dart';
 import 'package:lumemor_api/src/model/unnamed_cluster_summary.dart';
 import 'package:lumemor_api/src/model/unnamed_clusters_response.dart';
 import 'package:lumemor_api/src/model/update_check_response.dart';
@@ -307,10 +310,13 @@ part 'serializers.g.dart';
   TranscodePreset,
   TranscodingSettingsResponse,
   TranscodingSettingsUpdateRequest,
+  TrashBatchRequest,
+  TrashBatchResponse,
   TrashItem,
   TrashResponse,
   TrashSettingsResponse,
   TrashSettingsUpdateRequest,
+  TrashSweepResponse,
   UnnamedClusterSummary,
   UnnamedClustersResponse,
   UpdateCheckResponse,
