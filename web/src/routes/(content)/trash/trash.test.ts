@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
 import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
+import { toasts, clearToasts } from '$lib/components/toast.svelte';
 
 // The trash page: the bounded listing renders with each row's
 // retention countdown and actions, the restore walks the pinned
@@ -65,7 +66,7 @@ type FetchRoute = Record<string, () => Response>;
 
 function trashRoutes(items: unknown[], overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/trash': () => jsonResponse(200, { items }),
+		'/api/v1/trash': () => jsonResponse(200, { items, retentionDays: 30 }),
 		...overrides
 	};
 }
@@ -95,8 +96,8 @@ function mountPage(): ReturnType<typeof mount> {
 	return page;
 }
 
-function buttonByText(text: string): HTMLButtonElement {
-	const buttons = Array.from(document.body.querySelectorAll<HTMLButtonElement>('button'));
+function buttonByText(text: string, scope: ParentNode = document.body): HTMLButtonElement {
+	const buttons = Array.from(scope.querySelectorAll<HTMLButtonElement>('button'));
 	const found = buttons.find((button) => button.textContent?.trim() === text);
 	if (found === undefined) {
 		throw new Error(`missing button ${text}`);
@@ -140,6 +141,7 @@ function clickRestore(index: number): void {
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
+	clearToasts();
 	vi.clearAllMocks();
 	// Boot the session store unauthenticated (the interceptor stays
 	// inert; these routes answer 200s).
@@ -193,12 +195,13 @@ test('the listing renders each row with its countdown and actions', async () => 
 		'IMG_0001.jpg, 2 days left',
 		'IMG_0001.jpg, expiring soon'
 	]);
-	expect(() => buttonByLabel('Restore')).not.toThrow();
-	expect(() => buttonByLabel('Delete permanently')).not.toThrow();
-	// No selection machinery at all -- the wall-selection entry
-	// included: a trashed photo is not in the caller's current
-	// sight, so nothing here joins a memory.
-	expect(document.body.querySelector('.tile__check')).toBeNull();
+	// The note carries the listing's retentionDays: the note's number
+	// and the countdowns share one source.
+	expect(note?.textContent).toContain('for 30 days');
+	// The selection machinery is wired (the wall's transposition):
+	// every tile carries its check affordance (revealed on hover or
+	// mid-selection), and no batch bar rides an empty selection.
+	expect(document.body.querySelectorAll('.tile__check')).toHaveLength(3);
 	expect(document.body.querySelector('.batchbar')).toBeNull();
 
 	unmount(page);
@@ -223,7 +226,7 @@ test('a failed listing renders the mapped error with a retry', async () => {
 		if (String(input) === '/api/v1/trash' && failed) {
 			return jsonResponse(500, { code: 'INTERNAL' });
 		}
-		return jsonResponse(200, { items: [trashItem('a1')] });
+		return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 	});
 	vi.stubGlobal('fetch', fetchMock);
 	const page = mountPage();
@@ -246,7 +249,7 @@ test('restore walks the single-asset endpoint and drops the row', async () => {
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1'), trashItem('a2')] });
+			return jsonResponse(200, { items: [trashItem('a1'), trashItem('a2')], retentionDays: 30 });
 		}
 		if (init?.method === 'POST' && url === '/api/v1/trash/a1/restore') {
 			restored.push(url);
@@ -272,7 +275,7 @@ test("restore's 404 counts as success: the row left the trash already", async ()
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1')] });
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 		}
 		if (init?.method === 'POST') {
 			return jsonResponse(404, { code: 'ASSET_NOT_FOUND' });
@@ -297,7 +300,7 @@ test('a failed restore surfaces the mapped message and keeps the row', async () 
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1')] });
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 		}
 		if (init?.method === 'POST') {
 			return jsonResponse(500, { code: 'INTERNAL' });
@@ -322,7 +325,10 @@ test('the permanent delete confirms first, then drops the row', async () => {
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1', { originalFilename: 'IMG_0001.jpg' })] });
+			return jsonResponse(200, {
+				items: [trashItem('a1', { originalFilename: 'IMG_0001.jpg' })],
+				retentionDays: 30
+			});
 		}
 		if (init?.method === 'DELETE' && url === '/api/v1/assets/a1') {
 			deleted.push(url);
@@ -364,7 +370,7 @@ test("the permanent delete's 404 drops the row too (already gone)", async () => 
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1')] });
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 		}
 		if (init?.method === 'DELETE') {
 			return jsonResponse(404, { code: 'ASSET_NOT_FOUND' });
@@ -389,7 +395,7 @@ test('a failed permanent delete keeps the row and the modal message', async () =
 	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 		const url = String(input);
 		if (url === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1')] });
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 		}
 		if (init?.method === 'DELETE') {
 			return jsonResponse(500, { code: 'INTERNAL' });
@@ -420,7 +426,7 @@ test('SSE restored and deleted events converge through the refetched listing', a
 	let current = [trashItem('a1'), trashItem('a2')];
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/trash') {
-			return jsonResponse(200, { items: current });
+			return jsonResponse(200, { items: current, retentionDays: 30 });
 		}
 		throw new Error(`unexpected fetch ${String(input)}`);
 	});
@@ -464,7 +470,7 @@ test('a replayed stale restored event keeps the row that is still trashed', asyn
 	// the event is a claim, never state.
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
 		if (String(input) === '/api/v1/trash') {
-			return jsonResponse(200, { items: [trashItem('a1')] });
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
 		}
 		throw new Error(`unexpected fetch ${String(input)}`);
 	});
@@ -496,6 +502,305 @@ test('other asset events leave the rows alone', async () => {
 	}
 	flushSync();
 	expect(cells()).toHaveLength(1);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the whole-trash pair sits in the toolbar, disabled on an empty trash', async () => {
+	// The empty listing: the pair is present and disabled (never
+	// hidden -- the actions' place does not move when the content
+	// does).
+	vi.stubGlobal('fetch', stubFetch(trashRoutes([])));
+	const page = mountPage();
+	await settle();
+
+	const restoreAll = buttonByText('Restore all');
+	const empty = buttonByText('Empty trash');
+	expect(restoreAll.disabled).toBe(true);
+	expect(empty.disabled).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
+test('restore-all walks the sweep endpoint, echoes the toast and re-fetches', async () => {
+	let swept = false;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, {
+				items: swept ? [] : [trashItem('a1'), trashItem('a2')],
+				retentionDays: 30
+			});
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/restore-all') {
+			swept = true;
+			return jsonResponse(200, { affected: 2 });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(cells()).toHaveLength(2);
+
+	buttonByText('Restore all').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	// The sweep fired once; the explicit bottom-out re-fetch followed
+	// it; the rows left through the listing's answer.
+	const sweep = fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/trash/restore-all');
+	expect(sweep).toHaveLength(1);
+	expect(fetchMock.mock.calls.filter(([input]) => String(input) === '/api/v1/trash')).toHaveLength(2);
+	expect(cells()).toHaveLength(0);
+	// The completion toast names the whole landing.
+	expect(toasts().some((entry) => entry.text === 'All restored.')).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the empty trash confirms first with the count, then lands the empty card', async () => {
+	let emptied = false;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, {
+				items: emptied ? [] : [trashItem('a1')],
+				retentionDays: 30
+			});
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/empty') {
+			emptied = true;
+			return jsonResponse(200, { affected: 1 });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+	expect(cells()).toHaveLength(1);
+
+	// The confirm-first gate: the toolbar button opens the modal, the
+	// count rides the sentence, nothing fires yet.
+	buttonByText('Empty trash').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(document.body.textContent).toContain('Empty the trash?');
+	expect(document.body.textContent).toContain('all 1 photos');
+	expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/trash/empty', expect.objectContaining({ method: 'POST' }));
+
+	// Cancel keeps the rows.
+	buttonByText('Cancel').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(cells()).toHaveLength(1);
+
+	// The confirm runs the empty; the empty state card lands.
+	buttonByText('Empty trash').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	buttonByText('Empty trash', document.body.querySelectorAll('[role="dialog"]')[0] ?? document.body).dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	await settle();
+
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/trash/empty')).toBe(true);
+	expect(cells()).toHaveLength(0);
+	expect(document.body.textContent).toContain('The trash is empty');
+	expect(toasts().some((entry) => entry.text === 'Trash emptied.')).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
+function tileCheck(index: number): HTMLButtonElement {
+	const check = cells()[index]?.querySelector<HTMLButtonElement>('.tile__check');
+	if (check === null || check === undefined) {
+		throw new Error(`missing the check affordance of cell ${index}`);
+	}
+	return check;
+}
+
+test('the selection rises the batch bar; batch restore clears it and echoes the count', async () => {
+	let applied = false;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, {
+				items: applied ? [trashItem('a3')] : [trashItem('a1'), trashItem('a2'), trashItem('a3')],
+				retentionDays: 30
+			});
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/batch') {
+			expect(JSON.parse(String(init.body))).toEqual({ action: 'restore', ids: ['a1', 'a2'] });
+			applied = true;
+			return jsonResponse(200, { affected: 2, missing: [] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The first checked tile arms the reveal for every tile (the
+	// mid-selection reveal).
+	tileCheck(0).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	const bar = document.body.querySelector('.batchbar');
+	expect(bar).not.toBeNull();
+	expect(bar?.getAttribute('aria-label')).toBe('1 selected');
+
+	tileCheck(1).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(document.body.querySelector('.batchbar')?.getAttribute('aria-label')).toBe('2 selected');
+
+	// The batch restore runs through the trash batch, clears the
+	// selection (the bar leaves) and re-fetches (the rows leave).
+	const barAfter = document.body.querySelector('.batchbar') as HTMLElement;
+	barAfter
+		.querySelector<HTMLButtonElement>('button[aria-label="Restore"]')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(
+		fetchMock.mock.calls.some(([input, init]) => String(input) === '/api/v1/trash/batch' && init?.method === 'POST')
+	).toBe(true);
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(cells()).toHaveLength(1);
+	expect(toasts().some((entry) => entry.text === 'Restored 2.')).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
+test('the batch delete confirms first with the count, then drops the selected rows', async () => {
+	let applied = false;
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, {
+				items: applied ? [trashItem('a2')] : [trashItem('a1'), trashItem('a2'), trashItem('a3')],
+				retentionDays: 30
+			});
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/batch') {
+			expect(JSON.parse(String(init.body))).toEqual({ action: 'delete', ids: ['a1', 'a3'] });
+			applied = true;
+			return jsonResponse(200, { affected: 2, missing: [] });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	tileCheck(0).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	tileCheck(2).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+
+	// The dangerous arm opens its confirm instead of running.
+	const bar = document.body.querySelector('.batchbar') as HTMLElement;
+	bar.querySelector<HTMLButtonElement>('button[aria-label="Delete permanently"]')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	flushSync();
+	expect(document.body.textContent).toContain('Delete permanently?');
+	expect(document.body.textContent).toContain('the 2 selected');
+	expect(fetchMock.mock.calls.some(([input]) => String(input) === '/api/v1/trash/batch')).toBe(false);
+
+	// Cancel keeps the rows and the selection.
+	buttonByText('Cancel').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(cells()).toHaveLength(3);
+	expect(document.body.querySelector('.batchbar')).not.toBeNull();
+
+	// The confirm runs the delete; the rows leave, the selection
+	// clears, the toast echoes the count. (Re-open first: the cancel
+	// above closed the dialog.)
+	bar.querySelector<HTMLButtonElement>('button[aria-label="Delete permanently"]')?.dispatchEvent(
+		new MouseEvent('click', { bubbles: true })
+	);
+	flushSync();
+	const dialog = document.body.querySelectorAll('[role="dialog"]')[0] ?? document.body;
+	buttonByText('Delete forever', dialog).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(cells()).toHaveLength(1);
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+	expect(toasts().some((entry) => entry.text === 'Deleted 2 permanently.')).toBe(true);
+
+	unmount(page);
+	flushSync();
+});
+
+test('Escape clears the selection', async () => {
+	vi.stubGlobal('fetch', stubFetch(trashRoutes([trashItem('a1'), trashItem('a2')])));
+	const page = mountPage();
+	await settle();
+
+	tileCheck(0).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(document.body.querySelector('.batchbar')).not.toBeNull();
+
+	window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+	flushSync();
+	expect(document.body.querySelector('.batchbar')).toBeNull();
+
+	unmount(page);
+	flushSync();
+});
+
+test('a failed batch keeps the selection and surfaces the mapped error', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/batch') {
+			return jsonResponse(500, { code: 'INTERNAL' });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	tileCheck(0).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	document.body
+		.querySelector('.batchbar')
+		?.querySelector<HTMLButtonElement>('button[aria-label="Restore"]')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(cells()).toHaveLength(1);
+	expect(document.body.querySelector('.batchbar')).not.toBeNull();
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('Something went wrong');
+
+	unmount(page);
+	flushSync();
+});
+
+test('a failed whole-trash restore surfaces the mapped error and keeps the rows', async () => {
+	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(input);
+		if (url === '/api/v1/trash') {
+			return jsonResponse(200, { items: [trashItem('a1')], retentionDays: 30 });
+		}
+		if (init?.method === 'POST' && url === '/api/v1/trash/restore-all') {
+			return jsonResponse(500, { code: 'INTERNAL' });
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	buttonByText('Restore all').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+
+	expect(cells()).toHaveLength(1);
+	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain('Something went wrong');
 
 	unmount(page);
 	flushSync();
