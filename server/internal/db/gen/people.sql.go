@@ -114,6 +114,20 @@ func (q *Queries) CountVisibleClusters(ctx context.Context, arg CountVisibleClus
 	return count, err
 }
 
+const deleteFacesByIDs = `-- name: DeleteFacesByIDs :exec
+DELETE FROM faces WHERE id = ANY($1::uuid[])
+`
+
+// The person delete's face removal, AFTER the cluster row went (the
+// cluster's representative pointer and avatar pick died with the row;
+// no other cluster ever points at these faces -- the avatar pick's
+// gate keeps every pick inside its own cluster). Runs inside the
+// delete transaction, never alone.
+func (q *Queries) DeleteFacesByIDs(ctx context.Context, faceIds []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteFacesByIDs, faceIds)
+	return err
+}
+
 const deleteUserFaceLabel = `-- name: DeleteUserFaceLabel :exec
 DELETE FROM user_face_labels
 WHERE user_id = $1 AND cluster_id = $2
@@ -406,6 +420,35 @@ func (q *Queries) ListAssetFacesForCaller(ctx context.Context, arg ListAssetFace
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listClusterFaceIDs = `-- name: ListClusterFaceIDs :many
+SELECT id FROM faces WHERE cluster_id = $1
+`
+
+// The person delete's face-id capture, read BEFORE the cluster row
+// goes: faces.cluster_id carries ON DELETE SET NULL, so once the
+// cluster row dies these ids are the only handle left on the rows
+// that must die WITH it (the delete's faces are deleted, never
+// unassigned -- the unnamed pool gains nothing).
+func (q *Queries) ListClusterFaceIDs(ctx context.Context, clusterID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listClusterFaceIDs, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -841,6 +884,42 @@ type SetClusterBirthDateParams struct {
 // response shape.
 func (q *Queries) SetClusterBirthDate(ctx context.Context, arg SetClusterBirthDateParams) error {
 	_, err := q.db.Exec(ctx, setClusterBirthDate, arg.BirthDate, arg.ClusterID)
+	return err
+}
+
+const updateFaceBox = `-- name: UpdateFaceBox :exec
+UPDATE faces
+SET bbox_x = $1,
+    bbox_y = $2,
+    bbox_w = $3,
+    bbox_h = $4,
+    updated_at = now()
+WHERE id = $5
+`
+
+type UpdateFaceBoxParams struct {
+	BboxX  int32       `json:"bbox_x"`
+	BboxY  int32       `json:"bbox_y"`
+	BboxW  int32       `json:"bbox_w"`
+	BboxH  int32       `json:"bbox_h"`
+	FaceID pgtype.UUID `json:"face_id"`
+}
+
+// The face-box editor's member write (PATCH /faces/{faceId}): one
+// face row's bounding box rewritten in the per-mille units the crop
+// endpoint and the on-photo face-box layer address. updated_at rides
+// along as the row's change signal -- the crop ETag's input -- so the
+// rewritten box re-renders the crop without any separate cache step
+// (the crop endpoint derives at query time; nothing stored to
+// invalidate).
+func (q *Queries) UpdateFaceBox(ctx context.Context, arg UpdateFaceBoxParams) error {
+	_, err := q.db.Exec(ctx, updateFaceBox,
+		arg.BboxX,
+		arg.BboxY,
+		arg.BboxW,
+		arg.BboxH,
+		arg.FaceID,
+	)
 	return err
 }
 

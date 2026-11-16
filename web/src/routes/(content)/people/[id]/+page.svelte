@@ -52,6 +52,7 @@
 	import { untrack } from 'svelte';
 	import {
 		fetchPersonCluster,
+		deletePerson,
 		labelPerson,
 		listPeople,
 		mergePeople,
@@ -64,6 +65,7 @@
 	import { subscribeAssetEvents, subscribePersonEvents, type PersonEvent } from '$lib/events';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import { toast } from '$lib/components/toast.svelte';
+	import { sessionRole } from '$lib/auth/session.svelte';
 	import StateCard from '$lib/components/StateCard.svelte';
 	import UnreachableCard from '$lib/components/UnreachableCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
@@ -73,11 +75,13 @@
 	import PersonAvatarDialog from '$lib/people/PersonAvatarDialog.svelte';
 	import PersonBirthdateDialog from '$lib/people/PersonBirthdateDialog.svelte';
 	import PersonPickerDialog from '$lib/people/PersonPickerDialog.svelte';
+	import DeletePersonDialog from '$lib/people/DeletePersonDialog.svelte';
 	import PersonWall from '$lib/people/PersonWall.svelte';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
 	import GitMerge from '@lucide/svelte/icons/git-merge';
 	import UserX from '@lucide/svelte/icons/user-x';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import ImageIcon from '@lucide/svelte/icons/image';
 
 	const clusterId = $derived(page.params.id ?? '');
@@ -123,6 +127,17 @@
 	// The unname write's honest failure (a dead session, a vanished
 	// cluster) -- the bar owns the line.
 	let unnameErrorKey = $state('');
+
+	// The delete-person flow (the danger zone): the confirm dialog
+	// and the write. The domain is the instance administrator's --
+	// the affordance renders for the admin session alone, and the
+	// server's own guard is the law behind it (a member's attempt
+	// answers the 403 whose code the failure line maps).
+	let deleteDialogOpen = $state(false);
+	let deleteErrorKey = $state('');
+
+	// The session's role against the affordance's domain.
+	const adminSession = $derived(sessionRole() === 'admin');
 
 	const firstLoad = $derived(detail === null && status === 'loading');
 	const unnamed = $derived(detail?.label === null);
@@ -180,6 +195,14 @@
 			case 'person.face_clustered':
 			case 'person.face_detached':
 				return event.clusterId === id || (detail?.faces.some((face) => face.id === event.faceId) ?? false);
+			// The box rewrite names one face of this person: the
+			// profile row's crop (the avatar, often) follows.
+			case 'person.face_box_updated':
+				return detail?.faces.some((face) => face.id === event.faceId) ?? false;
+			// The real delete removes the cluster: the page converges
+			// onto the dead-end 404 (or the caller has already left).
+			case 'person.deleted':
+				return event.clusterId === id;
 		}
 	}
 
@@ -323,6 +346,29 @@
 		void goto(`/people/${encodeURIComponent(outcome.merge.survivingClusterId)}`);
 	}
 
+	// The person's real delete (the danger zone's write): the
+	// cluster AND every face's detection record go, the photos
+	// themselves untouched. The landing is the feedback: the people
+	// list, where the person no longer sits. A failure keeps the
+	// dialog open beside its honest line (the admin-domain 403 a
+	// stale session could still meet).
+	async function runDeletePerson(): Promise<void> {
+		if (writeBusy || detail === null) {
+			return;
+		}
+		writeBusy = true;
+		deleteErrorKey = '';
+		const outcome = await deletePerson(clusterId);
+		writeBusy = false;
+		if (!outcome.ok) {
+			deleteErrorKey = outcome.errorKey;
+			return;
+		}
+		deleteDialogOpen = false;
+		toast($_('person_deleted'), 'success');
+		void goto('/people');
+	}
+
 	// Fetch the merge-into target list on open: the caller's named
 	// people, this cluster excluded (a target among the sources is
 	// no such merge).
@@ -463,6 +509,26 @@
 				>
 					<GitMerge size={20} aria-hidden="true" />
 				</IconButton>
+				{#if adminSession}
+					<!-- The danger zone's one button (the three-tier
+					     vocabulary's real delete): admin domain, so the
+					     affordance renders for the admin session alone --
+					     a member's removal action is the unname beside it.
+					     The confirm (the name and the count in the
+					     sentence) fronts the delete write. -->
+					<IconButton
+						variant="danger"
+						disabled={writeBusy}
+						aria-label={$_('person_delete')}
+						title={$_('person_delete')}
+						onclick={() => {
+							deleteErrorKey = '';
+							deleteDialogOpen = true;
+						}}
+					>
+						<Trash2 size={20} aria-hidden="true" />
+					</IconButton>
+				{/if}
 			{/if}
 		</div>
 	</header>
@@ -620,4 +686,16 @@
 	loading={mergeIntoLoading}
 	errorKey={mergeIntoErrorKey}
 	onsubmit={(targetId) => void runMergeInto(targetId)}
+/>
+
+<!-- The delete-person confirm (the danger zone): the name and the
+     caller's face count in the sentence, the honest cost and the
+     no-undo warning -- the write lands the people list in place. -->
+<DeletePersonDialog
+	bind:open={deleteDialogOpen}
+	name={titleText}
+	faceCount={detail?.faces.length ?? 0}
+	busy={writeBusy}
+	errorKey={deleteErrorKey}
+	onsubmit={() => void runDeletePerson()}
 />

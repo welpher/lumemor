@@ -11,6 +11,7 @@ Method | HTTP request | Description
 ------------- | ------------- | -------------
 [**clusterFace**](PeopleApi.md#clusterface) | **POST** /faces/{faceId}/cluster | Seed a new person from one face.
 [**createFace**](PeopleApi.md#createface) | **POST** /faces | Add one hand-drawn face to an asset.
+[**deletePerson**](PeopleApi.md#deleteperson) | **DELETE** /people/{clusterId} | Delete this person outright.
 [**detachFace**](PeopleApi.md#detachface) | **DELETE** /faces/{faceId} | Release one face from its person.
 [**getFaceThumbnail**](PeopleApi.md#getfacethumbnail) | **GET** /faces/{faceId}/thumbnail | Serve one face&#39;s 256x256 crop thumbnail.
 [**getPersonCluster**](PeopleApi.md#getpersoncluster) | **GET** /people/{clusterId} | One face cluster&#39;s detail as the caller sees it.
@@ -19,6 +20,7 @@ Method | HTTP request | Description
 [**listUnnamedPeople**](PeopleApi.md#listunnamedpeople) | **GET** /people/unnamed | The caller&#39;s unnamed face clusters, one keyset page at a time.
 [**mergePeople**](PeopleApi.md#mergepeople) | **POST** /people/merge | Fold 1-50 face clusters into one surviving cluster.
 [**moveFace**](PeopleApi.md#moveface) | **POST** /faces/{faceId}/move | Move one face onto an existing face cluster.
+[**patchFaceBox**](PeopleApi.md#patchfacebox) | **PATCH** /faces/{faceId} | Rewrite one face&#39;s bounding box.
 [**setPersonAvatar**](PeopleApi.md#setpersonavatar) | **PUT** /people/{clusterId}/avatar | Pick the face one person&#39;s avatar renders.
 [**setPersonBirthdate**](PeopleApi.md#setpersonbirthdate) | **PUT** /people/{clusterId}/birthdate | Set or clear one person&#39;s birth date.
 [**unlabelPerson**](PeopleApi.md#unlabelperson) | **DELETE** /people/{clusterId}/label | Remove the caller&#39;s label of one face cluster.
@@ -114,6 +116,52 @@ Name | Type | Description  | Notes
 ### HTTP request headers
 
  - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **deletePerson**
+> deletePerson(clusterId)
+
+Delete this person outright.
+
+The person's real delete, distinct from the two softer actions that also remove things today: removing the caller's own label (DELETE /people/{clusterId}/label -- the person returns to that caller's unnamed region) and releasing one face (DELETE /faces/{faceId} -- the face row survives, its membership does not). This write deletes the PERSON: the cluster row AND every one of its face rows go away in one transaction -- the photos lose the person's chips, the people lists lose the person, and the unnamed pool gains NOTHING (the faces are deleted, never unassigned). The asset rows themselves are untouched.  The domain is the instance administrator's: the ML records are shared instance state (clusters are global; a delete reshapes every account's view), so a caller whose role is not admin answers `403 AUTH_FORBIDDEN` with the domain in the message. A member's honest removal action is their own label delete.  The visibility gate is the people surface's own count (the same gate every people write fronts): a cluster the caller cannot see answers the same `PERSON_NOT_FOUND` as an unknown id -- anti-enumeration, byte for byte.  The write publishes `person.deleted` with the cluster id and the acting user's id, so every open list converges. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final String clusterId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the face cluster to delete.
+
+try {
+    api.deletePerson(clusterId);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->deletePerson: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **clusterId** | **String**| Identifier of the face cluster to delete. | 
+
+### Return type
+
+void (empty response body)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
@@ -483,6 +531,55 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**MoveFaceResponse**](MoveFaceResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: application/json
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **patchFaceBox**
+> FaceBoxPatchResponse patchFaceBox(faceId, faceBoxPatchRequest)
+
+Rewrite one face's bounding box.
+
+The face-box editor's write: the caller adjusts a face's bounding box on the photo (drag to move, drag a corner to resize) and the PATCH stores the adjusted box. The body carries the box NORMALIZED to the image (0-1, four values required -- x/y the top-left corner, width/height the extents); the server stores it in the faces table's own per-mille units (the same numbers the crop endpoint and the on-photo face-box layer address).  The box must stay in frame: every coordinate and extent within 0-1 with x + width <= 1 and y + height <= 1, and neither extent below 0.01 (a box smaller than a hundredth of the image is nothing worth storing). Any other body answers `400 VALIDATION_FAILED`.  The guard is the face writes' own: the face must sit on an asset the caller OWNS and that is live -- an unknown face, another account's asset, or a trashed, archived or Live Photo component asset answers the same byte-identical 404 `PERSON_NOT_FOUND` (anti-enumeration).  On success the face's crop is recomputed from the new box -- the crop endpoint derives it at query time, so the change converges through the face row's own `updated_at` (the crop ETag's change signal). The write publishes `person.face_box_updated` with the face id and the acting user's id. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getPeopleApi();
+final String faceId = 38400000-8cf0-11bd-b23e-10b96e4ef00d; // String | Identifier of the face whose box is rewritten.
+final FaceBoxPatchRequest faceBoxPatchRequest = {"x":0.56,"y":0.38,"width":0.14,"height":0.14}; // FaceBoxPatchRequest | 
+
+try {
+    final response = api.patchFaceBox(faceId, faceBoxPatchRequest);
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling PeopleApi->patchFaceBox: $e\n');
+}
+```
+
+### Parameters
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **faceId** | **String**| Identifier of the face whose box is rewritten. | 
+ **faceBoxPatchRequest** | [**FaceBoxPatchRequest**](FaceBoxPatchRequest.md)|  | 
+
+### Return type
+
+[**FaceBoxPatchResponse**](FaceBoxPatchResponse.md)
 
 ### Authorization
 

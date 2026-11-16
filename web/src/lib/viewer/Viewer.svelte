@@ -116,6 +116,7 @@
 		type AssetFaceBbox,
 		type AssetFaceSummary
 	} from '$lib/api/assets';
+	import type { FaceBoxPatchRequest } from '$lib/api/people';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
@@ -206,6 +207,8 @@
 		onreassignface: (face: AssetFaceSummary) => void;
 		/** Open the detach confirm for one face of the panel. */
 		ondetachface: (face: AssetFaceSummary) => void;
+		/** Whether a staged BOX edit is pending on one face (the panel rows' marker). */
+		stagedBoxOf: (face: AssetFaceSummary) => boolean;
 		/** Commit every staged edit of the panel. */
 		onapplyfaces: () => void;
 		/**
@@ -220,6 +223,27 @@
 		oneditlocation: () => void;
 		/** Open a named face's person page (the box click's arm). */
 		onopenperson: (clusterId: string) => void;
+		/**
+		 * The edit-mode box layer (the faces panel's upgrade): the
+		 * PAGE owns the selection and the staged boxes; THIS
+		 * component owns the drag geometry. `boxEditFaceId` is the
+		 * selected face (null while none); the drag's landing
+		 * reports the adjusted box normalized to the image, staged
+		 * never written (the panel's check is the one writer).
+		 */
+		boxEditFaceId: string | null;
+		/** Select one face's box for editing (the panel row's button). */
+		onboxedit: (face: AssetFaceSummary) => void;
+		/** Clear the box-edit selection (Esc clears it before the panel closes). */
+		onboxeditclear: () => void;
+		/** Stage one face's adjusted box (the drag's landing). */
+		onboxstage: (faceId: string, box: FaceBoxPatchRequest) => void;
+		/**
+		 * The panel's face-crop bust: bumped when a box commit lands,
+		 * so the rows' crop URLs re-request the pixels the new box
+		 * crops (the crop ETag changed under the same URL).
+		 */
+		cropBust: number;
 	};
 
 	let {
@@ -251,11 +275,17 @@
 		oneditfacesclose,
 		onreassignface,
 		ondetachface,
+		stagedBoxOf,
 		onapplyfaces,
 		oncreateface,
 		onedittime,
 		oneditlocation,
-		onopenperson
+		onopenperson,
+		boxEditFaceId,
+		onboxedit,
+		onboxeditclear,
+		onboxstage,
+		cropBust
 	}: Props = $props();
 
 	// The panel's open-preference persistence: the pinned key, one
@@ -562,6 +592,18 @@
 
 	/** A box click mirrors its chip: named opens the person, unnamed the assign flow. */
 	function boxClick(face: AssetFaceSummary): void {
+		// The edit mode's boxes are the editor's objects: a click
+		// selects the box instead of leaving the photo (the row's
+		// button and the box itself arm the same selection). A drag's
+		// trailing click re-arms the already-selected box harmlessly
+		// -- the selection is the row button's toggle, never the
+		// box's (a drag must not clear what it just moved).
+		if (editFacesOpen) {
+			if (boxEditFaceId !== face.id) {
+				onboxedit(face);
+			}
+			return;
+		}
 		if (face.clusterId !== null && face.label !== null) {
 			onopenperson(face.clusterId);
 			return;
@@ -587,6 +629,12 @@
 			}
 			if (drawOpen) {
 				disarmDraw();
+				return;
+			}
+			if (boxEditFaceId !== null) {
+				// The selected box's Esc: the selection clears (the
+				// panel stays open -- the row's button re-arms).
+				onboxeditclear();
 				return;
 			}
 			if (editFacesOpen) {
@@ -739,6 +787,204 @@
 	function errorText(key: string): string {
 		return resolveErrorText($_, key);
 	}
+
+	// THE EDIT-MODE BOX LAYER (the faces panel's upgrade): while the
+	// panel stands in the drawer's place every box stands visible on
+	// the photo, the selected row's box carries the four corner
+	// handles, and a drag moves it while a corner drag resizes it.
+	// The pointer math reads the box layer's REAL rendered rect (the
+	// media box's own on-screen area -- the layer is its inset-0
+	// child) and speaks the image's normalized space (0-1), the
+	// PATCH body's own units; the draft lives only here (the page
+	// stages it on the release, the commit is the panel's one
+	// writer). Pointer events keep the touch path the same path.
+	type BoxCorner = 'nw' | 'ne' | 'sw' | 'se';
+	type BoxDraft = { x: number; y: number; width: number; height: number };
+	type BoxDrag =
+		| { kind: 'move'; pointerId: number; start: { x: number; y: number }; origin: BoxDraft }
+		| { kind: 'resize'; corner: BoxCorner; pointerId: number; anchor: { x: number; y: number } };
+
+	/** The selected face's in-flight box; null while no drag or landed draft. */
+	let boxDraft = $state<BoxDraft | null>(null);
+	/** The live drag, if any. */
+	let boxDrag = $state<BoxDrag | null>(null);
+	let boxLayer: HTMLDivElement | undefined = $state();
+
+	/** The box-layer's rendered rect as the normalized space's scale. */
+	function boxLayerRect(): DOMRect | null {
+		const rect = boxLayer?.getBoundingClientRect();
+		return rect !== undefined && rect.width > 0 && rect.height > 0 ? rect : null;
+	}
+
+	/** One pointer position in the normalized space, from the layer's real rect. */
+	function boxPoint(event: PointerEvent): { x: number; y: number } | null {
+		const rect = boxLayerRect();
+		if (rect === null) {
+			return null;
+		}
+		return { x: (event.clientX - rect.left) / rect.width, y: (event.clientY - rect.top) / rect.height };
+	}
+
+	/** Keep one box in frame: the corner pinned, the extent floored at the contract's 0.01. */
+	function clampBox(box: BoxDraft): BoxDraft {
+		const min = 0.01;
+		const width = Math.min(Math.max(box.width, min), 1);
+		const height = Math.min(Math.max(box.height, min), 1);
+		return {
+			width,
+			height,
+			x: Math.min(Math.max(box.x, 0), 1 - width),
+			y: Math.min(Math.max(box.y, 0), 1 - height)
+		};
+	}
+
+	/** Round one normalized half to four decimals (the wire's honest precision). */
+	function boxRound(value: number): number {
+		return Math.round(value * 10000) / 10000;
+	}
+
+	/** The face's stored box, in the normalized space. */
+	function faceBoxOf(face: AssetFaceSummary): BoxDraft {
+		return { x: face.bbox.x / 1000, y: face.bbox.y / 1000, width: face.bbox.w / 1000, height: face.bbox.h / 1000 };
+	}
+
+	/** The box the layer renders for one face: the drag's draft when it holds one. */
+	function renderedBoxOf(face: AssetFaceSummary): BoxDraft {
+		if (boxEditFaceId === face.id && boxDraft !== null) {
+			return boxDraft;
+		}
+		return faceBoxOf(face);
+	}
+
+	/** Begin a move: the box follows the pointer's delta from the press. */
+	function startBoxMove(event: PointerEvent, face: AssetFaceSummary): void {
+		if (event.button !== 0 || boxEditFaceId !== face.id) {
+			return;
+		}
+		const at = boxPoint(event);
+		if (at === null) {
+			return;
+		}
+		boxDraft = boxDraft ?? faceBoxOf(face);
+		boxDrag = { kind: 'move', pointerId: event.pointerId, start: at, origin: { ...boxDraft } };
+		(event.currentTarget as Element | null)?.setPointerCapture(event.pointerId);
+	}
+
+	/** Begin a corner resize: the opposite corner is the anchor. */
+	function startBoxResize(event: PointerEvent, face: AssetFaceSummary, corner: BoxCorner): void {
+		if (event.button !== 0 || boxEditFaceId !== face.id) {
+			return;
+		}
+		const at = boxPoint(event);
+		if (at === null) {
+			return;
+		}
+		boxDraft = boxDraft ?? faceBoxOf(face);
+		const current = boxDraft;
+		const anchor =
+			corner === 'se'
+				? { x: current.x, y: current.y }
+				: corner === 'nw'
+					? { x: current.x + current.width, y: current.y + current.height }
+					: corner === 'ne'
+						? { x: current.x, y: current.y + current.height }
+						: { x: current.x + current.width, y: current.y };
+		boxDrag = { kind: 'resize', corner, pointerId: event.pointerId, anchor };
+		(event.currentTarget as Element | null)?.setPointerCapture(event.pointerId);
+	}
+
+	/** The drag's per-frame write: the draft moves, the photo is never touched. */
+	function handleBoxDragMove(event: PointerEvent): void {
+		const drag = boxDrag;
+		if (drag === null || drag.pointerId !== event.pointerId) {
+			return;
+		}
+		const at = boxPoint(event);
+		if (at === null) {
+			return;
+		}
+		if (drag.kind === 'move') {
+			const origin = drag.origin;
+			boxDraft = clampBox({
+				x: origin.x + (at.x - drag.start.x),
+				y: origin.y + (at.y - drag.start.y),
+				width: origin.width,
+				height: origin.height
+			});
+			return;
+		}
+		const min = 0.01;
+		const anchor = drag.anchor;
+		if (drag.corner === 'se' || drag.corner === 'nw') {
+			const x = drag.corner === 'se' ? anchor.x : Math.min(Math.max(at.x, 0), anchor.x);
+			const y = drag.corner === 'se' ? anchor.y : Math.min(Math.max(at.y, 0), anchor.y);
+			boxDraft = clampBox({
+				x,
+				y,
+				width: Math.max(at.x - x, min),
+				height: Math.max(at.y - y, min)
+			});
+			return;
+		}
+		// The ne/sw pair: the horizontal arm resizes from the west
+		// edge pinned to the anchor's x, the vertical from the north.
+		const x = drag.corner === 'sw' ? Math.min(Math.max(at.x, 0), anchor.x) : anchor.x;
+		const y = drag.corner === 'ne' ? Math.min(Math.max(at.y, 0), anchor.y) : anchor.y;
+		boxDraft = clampBox({
+			x,
+			y,
+			width: Math.max(at.x - x, min),
+			height: Math.max(at.y - y, min)
+		});
+	}
+
+	/** The drag's landing: the adjusted box stages (a no-op change stages nothing). */
+	function handleBoxDragEnd(event: PointerEvent): void {
+		const drag = boxDrag;
+		if (drag === null || drag.pointerId !== event.pointerId) {
+			return;
+		}
+		boxDrag = null;
+		const face = detail?.faces.find((entry) => entry.id === boxEditFaceId);
+		const draft = boxDraft;
+		if (face === undefined || draft === undefined || draft === null) {
+			return;
+		}
+		const landed = {
+			x: boxRound(draft.x),
+			y: boxRound(draft.y),
+			width: boxRound(draft.width),
+			height: boxRound(draft.height)
+		};
+		if (
+			Math.round(landed.x * 1000) === face.bbox.x &&
+			Math.round(landed.y * 1000) === face.bbox.y &&
+			Math.round(landed.width * 1000) === face.bbox.w &&
+			Math.round(landed.height * 1000) === face.bbox.h
+		) {
+			// The drag landed where the row started: no stage, no
+			// pending marker, the draft drops.
+			boxDraft = null;
+			return;
+		}
+		onboxstage(face.id, landed);
+	}
+
+	/** A drag cancelled mid-flight (the pointer lost): the draft drops. */
+	function handleBoxDragCancel(event: PointerEvent): void {
+		if (boxDrag?.pointerId === event.pointerId) {
+			boxDrag = null;
+			boxDraft = null;
+		}
+	}
+
+	// The selection's cleanup: a cleared selection drops its draft,
+	// and a re-selected face starts from its stored box again.
+	$effect(() => {
+		void boxEditFaceId;
+		boxDraft = null;
+		boxDrag = null;
+	});
 
 	/**
 	 * The stage's retry: when the RECORD never arrived the page's
@@ -1153,36 +1399,95 @@
 							     the chip could light a box the pointer could never
 							     touch. The pointer leaving the region unlinks through
 							     the same ~220ms grace, so the plate does not blink
-							     off on a one-pixel overshoot. -->
-							<div class="absolute inset-0 z-(--z-stage-chrome)" data-face-layer>
+							     off on a one-pixel overshoot.
+							     THE EDIT MODE: while the faces panel stands in the
+							     drawer's place every box stands VISIBLE with its
+							     plain border (the panel-open state), the selected
+							     row's box carries the accent border and the four
+							     corner handles, and the pointer drags move it /
+							     corner-drags resize it -- the draft lives in the
+							     component, the page stages it on the release, and
+							     the panel's check is the one writer. -->
+							<div class="absolute inset-0 z-(--z-stage-chrome)" data-face-layer bind:this={boxLayer}>
 								{#each detail.faces as face (face.id)}
 									{@const linked = isLinked(face.id)}
-									{@const plateFlips =
-										mediaBox !== null && (face.bbox.y / 1000) * mediaBox.height < 30}
+									{@const selected = editFacesOpen && boxEditFaceId === face.id}
+									{@const box = renderedBoxOf(face)}
+									{@const plateFlips = mediaBox !== null && box.y * mediaBox.height < 30}
 									<button
-										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent cursor-pointer transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard [@media(hover:none)]:pointer-events-none {linked
-											? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
-											: 'opacity-0 border-transparent'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
-										style:left={`${face.bbox.x / 10}%`}
-										style:top={`${face.bbox.y / 10}%`}
-										style:width={`${face.bbox.w / 10}%`}
+										class="face-box absolute aspect-square rounded-[4px] border-2 bg-transparent transition-[opacity,border-color,box-shadow] duration-(--motion-fast) ease-standard {selected
+											? 'opacity-100 border-accent bg-[color-mix(in_srgb,var(--color-accent)_12%,transparent)] cursor-move touch-none'
+											: editFacesOpen
+												? 'opacity-100 border-cream-text/45'
+												: linked
+													? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
+													: 'opacity-0 border-transparent [@media(hover:none)]:pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+										style:left={`${box.x * 100}%`}
+										style:top={`${box.y * 100}%`}
+										style:width={`${box.width * 100}%`}
 										type="button"
 										data-face-box={face.id}
+										data-box-selected={selected ? 'true' : undefined}
 										aria-label={faceLabelOf(face)}
+										aria-pressed={selected ? 'true' : undefined}
 										onmouseenter={() => linkFace(face.id)}
 										onmouseleave={() => unlinkFace(face.id)}
 										onfocus={() => linkFace(face.id)}
 										onblur={() => unlinkFace(face.id)}
 										onclick={() => boxClick(face)}
+										onpointerdown={(event) => selected && startBoxMove(event, face)}
+										onpointermove={handleBoxDragMove}
+										onpointerup={handleBoxDragEnd}
+										onpointercancel={handleBoxDragCancel}
 									>
 										<span
-											class="face-label absolute {linked ? '' : 'opacity-0'} left-0 {plateFlips
+											class="face-label absolute {linked || selected
+												? ''
+												: 'opacity-0'} left-0 {plateFlips
 												? '-bottom-7'
 												: '-top-7'} px-2 py-0.5 rounded-control bg-card/95 font-body font-semibold text-[12px] leading-[1.4] text-text shadow-card whitespace-nowrap"
 											data-face-label
 										>
 											{faceLabelOf(face)}
 										</span>
+										{#if selected}
+											<!-- The four corner handles: the resize arms.
+											     Each captures its own pointer stream; the
+											     opposite corner is the anchor, the floor
+											     and the frame are the clamp. -->
+											<span
+												class="face-box__handle absolute -left-1.5 -top-1.5 w-3 h-3 rounded-[2px] border border-cream-text bg-accent cursor-[nwse-resize]"
+												data-handle="nw"
+												onpointerdown={(event) => {
+													event.stopPropagation();
+													startBoxResize(event, face, 'nw');
+												}}
+											></span>
+											<span
+												class="face-box__handle absolute -right-1.5 -top-1.5 w-3 h-3 rounded-[2px] border border-cream-text bg-accent cursor-[nesw-resize]"
+												data-handle="ne"
+												onpointerdown={(event) => {
+													event.stopPropagation();
+													startBoxResize(event, face, 'ne');
+												}}
+											></span>
+											<span
+												class="face-box__handle absolute -left-1.5 -bottom-1.5 w-3 h-3 rounded-[2px] border border-cream-text bg-accent cursor-[nesw-resize]"
+												data-handle="sw"
+												onpointerdown={(event) => {
+													event.stopPropagation();
+													startBoxResize(event, face, 'sw');
+												}}
+											></span>
+											<span
+												class="face-box__handle absolute -right-1.5 -bottom-1.5 w-3 h-3 rounded-[2px] border border-cream-text bg-accent cursor-[nwse-resize]"
+												data-handle="se"
+												onpointerdown={(event) => {
+													event.stopPropagation();
+													startBoxResize(event, face, 'se');
+												}}
+											></span>
+										{/if}
 									</button>
 								{/each}
 							</div>
@@ -1358,12 +1663,16 @@
 			<EditFacesPanel
 				{detail}
 				{stageLabelOf}
+				{stagedBoxOf}
 				stagedCount={editStagedCount}
 				busy={editBusy}
 				errorKey={editErrorKey}
+				{boxEditFaceId}
+				{cropBust}
 				onclose={oneditfacesclose}
 				onreassign={onreassignface}
 				ondetach={ondetachface}
+				{onboxedit}
 				onapply={onapplyfaces}
 			/>
 		{:else}

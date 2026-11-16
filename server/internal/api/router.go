@@ -580,6 +580,12 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Put("/people/{clusterId}/birthdate", wrapper.SetPersonBirthdate)
 				r.Put("/people/{clusterId}/avatar", wrapper.SetPersonAvatar)
 				r.Post("/people/merge", wrapper.MergePeople)
+				// The person's real delete: the cluster AND its
+				// faces go in one transaction, the photos
+				// untouched -- the administrator's domain, gated
+				// in the handler (a member answers 403 with the
+				// domain in the message).
+				r.Delete("/people/{clusterId}", wrapper.DeletePerson)
 				// The manual face: one drawn box becomes one face
 				// row -- the same owner-gated curation discipline as
 				// the move below, one insert, no cluster to maintain.
@@ -593,6 +599,11 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// the not-yet-grouped pool.
 				r.Post("/faces/{faceId}/cluster", wrapper.ClusterFace)
 				r.Delete("/faces/{faceId}", wrapper.DetachFace)
+				// The face-box editor's write: the adjusted
+				// box lands on the face row, the crop
+				// re-deriving from it at query time -- the
+				// same owner-gated discipline, one row.
+				r.Patch("/faces/{faceId}", wrapper.PatchFaceBox)
 				// The face crop pixels: the 256x256 AVIF
 				// crop of one face, derived at query time from its
 				// asset's view derivative -- one bounded decode of a

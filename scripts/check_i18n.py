@@ -292,6 +292,17 @@ NON_ERROR_KEYS = {
     "person_age_months",
     "person_age_year_months",
     "person_unname_done",
+    # E39's people-editing upgrade: the person page's danger zone
+    # (the real-delete confirm and its echo) and the faces panel's
+    # box-edit arm (the row's button, the hint sentence appended to
+    # the panel hint, and the box-only commit's echo).
+    "person_delete",
+    "person_delete_title",
+    "person_delete_body",
+    "person_deleted",
+    "face_box_edit",
+    "faces_box_hint",
+    "face_box_updated",
     "batch_selected_count",
     "action_favorite",
     "action_unfavorite",

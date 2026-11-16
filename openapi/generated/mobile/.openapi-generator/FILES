@@ -58,6 +58,8 @@ doc/Error.md
 doc/EventsApi.md
 doc/ExifSummary.md
 doc/FaceBbox.md
+doc/FaceBoxPatchRequest.md
+doc/FaceBoxPatchResponse.md
 doc/FaceCreateRequest.md
 doc/FaceCreated.md
 doc/FaceDetail.md
@@ -242,6 +244,8 @@ lib/src/model/download_format.dart
 lib/src/model/error.dart
 lib/src/model/exif_summary.dart
 lib/src/model/face_bbox.dart
+lib/src/model/face_box_patch_request.dart
+lib/src/model/face_box_patch_response.dart
 lib/src/model/face_create_request.dart
 lib/src/model/face_created.dart
 lib/src/model/face_detail.dart
@@ -406,6 +410,8 @@ test/error_test.dart
 test/events_api_test.dart
 test/exif_summary_test.dart
 test/face_bbox_test.dart
+test/face_box_patch_request_test.dart
+test/face_box_patch_response_test.dart
 test/face_create_request_test.dart
 test/face_created_test.dart
 test/face_detail_asset_test.dart

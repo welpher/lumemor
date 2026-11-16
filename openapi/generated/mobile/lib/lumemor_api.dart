@@ -73,6 +73,8 @@ export 'package:lumemor_api/src/model/download_format.dart';
 export 'package:lumemor_api/src/model/error.dart';
 export 'package:lumemor_api/src/model/exif_summary.dart';
 export 'package:lumemor_api/src/model/face_bbox.dart';
+export 'package:lumemor_api/src/model/face_box_patch_request.dart';
+export 'package:lumemor_api/src/model/face_box_patch_response.dart';
 export 'package:lumemor_api/src/model/face_create_request.dart';
 export 'package:lumemor_api/src/model/face_created.dart';
 export 'package:lumemor_api/src/model/face_detail.dart';

@@ -28,6 +28,7 @@
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import ChevronLeft from '@lucide/svelte/icons/chevron-left';
 	import PenLine from '@lucide/svelte/icons/pen-line';
+	import Scan from '@lucide/svelte/icons/scan';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Check from '@lucide/svelte/icons/check';
 
@@ -40,23 +41,61 @@
 		 * undefined when the face carries no staged edit.
 		 */
 		stageLabelOf: (face: AssetFaceSummary) => string | undefined;
+		/**
+		 * Whether a staged BOX edit is pending on one face (the drag's
+		 * landing staged it; the row carries the pending marker the
+		 * label stages carry, its own label unchanged).
+		 */
+		stagedBoxOf: (face: AssetFaceSummary) => boolean;
 		/** How many faces carry a staged edit (the apply button's gate). */
 		stagedCount: number;
 		/** A commit is in flight: the rows and the apply button disable. */
 		busy: boolean;
 		/** The error-code i18n key of the last failed commit ('' when none). */
 		errorKey: string;
+		/** The box-edit selection: the selected row's box carries the handles on the photo. */
+		boxEditFaceId: string | null;
+		/**
+		 * The face crops' bust: bumped when a box commit lands, so the
+		 * rows re-request the crop the new box cuts (the crop ETag
+		 * changed under the same URL).
+		 */
+		cropBust: number;
 		/** Return to the information panel. */
 		onclose: () => void;
 		/** Open the choose-person dialog for one face (reassign or create). */
 		onreassign: (face: AssetFaceSummary) => void;
 		/** Open the detach confirm for one face (named rows only). */
 		ondetach: (face: AssetFaceSummary) => void;
+		/** Select one face's box on the photo (the edit mode's arm). */
+		onboxedit: (face: AssetFaceSummary) => void;
 		/** Commit every staged edit (the one-shot apply). */
 		onapply: () => void;
 	};
 
-	let { detail, stageLabelOf, stagedCount, busy, errorKey, onclose, onreassign, ondetach, onapply }: Props = $props();
+	let {
+		detail,
+		stageLabelOf,
+		stagedBoxOf,
+		stagedCount,
+		busy,
+		errorKey,
+		boxEditFaceId,
+		cropBust,
+		onclose,
+		onreassign,
+		ondetach,
+		onboxedit,
+		onapply
+	}: Props = $props();
+
+	/** The row's crop URL, bust when a commit bumped the tick (the crop re-derived under the same URL). */
+	function cropUrl(face: AssetFaceSummary): string {
+		if (cropBust === 0) {
+			return face.thumbnail;
+		}
+		return `${face.thumbnail}?v=${cropBust}`;
+	}
 
 	/**
 	 * The row's person label, the chips' own vocabulary: the caller's
@@ -145,30 +184,32 @@
 		{/if}
 		<p class="faces-panel__hint m-0 px-4 pt-3 pb-2 font-body font-normal text-[13px] leading-[1.5] text-text-soft">
 			{$_('people_edit_faces_hint')}
+			{$_('faces_box_hint')}
 		</p>
 
 		<ul class="faces-panel__rows m-0 p-0 list-none divide-y divide-border">
 			{#each detail.faces as face (face.id)}
 				{@const stage = stageLabelOf(face)}
+				{@const stagedBox = stagedBoxOf(face)}
 				{@const detachable = isDetachable(face)}
 				<li
 					class="faces-panel__row flex items-center gap-2.5 px-4 py-2.5"
 					data-face-id={face.id}
-					data-staged={stage !== undefined}
+					data-staged={stage !== undefined || stagedBox}
 				>
 					<img
 						class="faces-panel__crop w-10 h-10 shrink-0 rounded-control object-cover bg-accent-soft"
-						src={face.thumbnail}
+						src={cropUrl(face)}
 						alt=""
 						loading="lazy"
 						decoding="async"
 						draggable="false"
 					/>
 					<span class="min-w-0 flex-1 flex items-center gap-1.5">
-						<!-- The pending marker: a staged edit swaps the row's
-						     label for its staged one and carries the accent
-						     dot until the commit lands. -->
-						{#if stage !== undefined}
+						<!-- The pending marker: a staged edit (a label or a
+						     box) carries the accent dot until the commit
+						     lands. -->
+						{#if stage !== undefined || stagedBox}
 							<span
 								class="faces-panel__pending w-1.5 h-1.5 rounded-full bg-accent shrink-0"
 								aria-hidden="true"
@@ -198,6 +239,25 @@
 						onclick={() => onreassign(face)}
 					>
 						<PenLine size={18} />
+					</button>
+					<!-- The box-edit arm: the row's frame button selects
+					     this face's box on the photo -- the selected box
+					     carries the accent border, the four corner handles
+					     and the move cursor, and a drag / corner drag
+					     adjusts it into the staged set. -->
+					<button
+						class="faces-panel__boxedit inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-control cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text {boxEditFaceId ===
+						face.id
+							? 'bg-accent-soft text-accent'
+							: 'bg-transparent text-text-soft'}"
+						type="button"
+						aria-label={$_('face_box_edit')}
+						aria-pressed={boxEditFaceId === face.id ? 'true' : 'false'}
+						title={$_('face_box_edit')}
+						disabled={busy}
+						onclick={() => onboxedit(face)}
+					>
+						<Scan size={18} />
 					</button>
 					{#if detachable}
 						<!-- The destructive hover tint carries the danger tone
