@@ -117,12 +117,12 @@ function submitCreate(): void {
 }
 
 function rows(): HTMLElement[] {
-	return Array.from(document.body.querySelectorAll<HTMLElement>('.users__table tbody tr'));
+	return Array.from(document.body.querySelectorAll<HTMLElement>('.users__row'));
 }
 
 /** The single action button of the row naming one account's email. */
 function rowAction(email: string): HTMLButtonElement {
-	const row = rows().find((tr) => (tr.textContent ?? '').includes(email));
+	const row = rows().find((li) => (li.textContent ?? '').includes(email));
 	const button = row?.querySelector<HTMLButtonElement>('button');
 	if (button === null || button === undefined) {
 		throw new Error(`missing action button of the row of ${email}`);
@@ -132,7 +132,7 @@ function rowAction(email: string): HTMLButtonElement {
 
 /** The disposal entry of the row naming one account's email. */
 function deleteButton(email: string): HTMLButtonElement {
-	const row = rows().find((tr) => (tr.textContent ?? '').includes(email));
+	const row = rows().find((li) => (li.textContent ?? '').includes(email));
 	const buttons = Array.from(row?.querySelectorAll<HTMLButtonElement>('button') ?? []);
 	const found = buttons.find((button) => button.textContent?.trim() === 'Delete');
 	if (found === undefined) {
@@ -526,7 +526,7 @@ test('a stale row (404) reconciles through a refetch', async () => {
 	flushSync();
 });
 
-test('the column is the 760 one and the table scrolls inside its own card', async () => {
+test('the column is the 760 one and the rows breathe inside their own card', async () => {
 	vi.stubGlobal('fetch', stubFetch(usersRoutes()));
 	const page = mountPage();
 	await settle();
@@ -538,19 +538,43 @@ test('the column is the 760 one and the table scrolls inside its own card', asyn
 	expect(column?.className).toContain('mx-auto');
 	expect(column?.className).toContain('gap-6');
 
-	// The card moved off the table and onto the scroll shell: a narrow
-	// viewport scrolls the table inside the card instead of pushing
-	// the page sideways.
-	const shell = document.body.querySelector<HTMLElement>('.users__table-shell');
-	expect(shell?.className).toContain('relative');
-	expect(shell?.className).toContain('overflow-x-auto');
+	// The list rides its own card shell: the card's border, radius and
+	// shadow belong to the shell, and the rows inside breathe (E41) --
+	// the identity stacked, the email under the name, the chips
+	// inline, the actions right.
+	const shell = document.body.querySelector<HTMLElement>('.users__list-shell');
 	expect(shell?.className).toContain('rounded-card');
 	expect(shell?.className).toContain('border');
 	expect(shell?.className).toContain('shadow-card');
-	const table = shell?.querySelector<HTMLElement>('table.users__table');
-	expect(table).not.toBeNull();
-	expect(table?.className).not.toContain('shadow-card');
-	expect(table?.className).not.toContain('rounded-card');
+	const list = shell?.querySelector<HTMLElement>('ul.users__list');
+	expect(list).not.toBeNull();
+
+	// The breathing row's shape, pinned on the first account: the
+	// email sits UNDER the name (the stacked identity -- one identity
+	// block, the name's line first, the email's own line under it),
+	// the role and status chips ride the name's own line, the joined
+	// date's WRAPPER span carries the narrow hiding, and the actions
+	// are the row's last block (right of the identity).
+	const row = rows()[0];
+	expect(row).not.toBeUndefined();
+	const identity = row?.querySelector<HTMLElement>('.users__identity');
+	const name = identity?.querySelector<HTMLElement>('.users__name');
+	const email = identity?.querySelector<HTMLElement>('.users__email');
+	expect(name?.textContent).toContain('Ada Lovelace');
+	expect(email?.textContent).toContain('ada@example.com');
+	// Stacked: the email is a SIBLING LINE of the name's line, inside
+	// the identity block -- never a third column.
+	expect(identity?.contains(name ?? null)).toBe(true);
+	expect(identity?.contains(email ?? null)).toBe(true);
+	const top = identity?.querySelector<HTMLElement>('.users__identity-top');
+	expect(top?.querySelector('.users__badge--role')).not.toBeNull();
+	expect(top?.querySelector('.users__badge--status')).not.toBeNull();
+	const joined = row?.querySelector<HTMLElement>('.users__joined');
+	expect(joined?.className).toContain('hidden');
+	expect(joined?.className).toContain('sm:inline');
+	expect(joined?.textContent).toContain('Joined');
+	// The actions come last in the row (right of everything else).
+	expect(row?.lastElementChild?.classList.contains('users__actions')).toBe(true);
 
 	unmount(page);
 	flushSync();

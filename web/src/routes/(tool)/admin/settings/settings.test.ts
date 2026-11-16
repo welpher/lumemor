@@ -57,7 +57,12 @@ function tilesSettingsBody(tilejsonUrl = ''): Record<string, unknown> {
 }
 
 function modelSettingsBody(autoDownload = true): Record<string, unknown> {
-	return { autoDownload, allowedHosts: ['huggingface.co'], mirrorBaseUrl: '' };
+	return {
+		autoDownload,
+		allowedHosts: ['huggingface.co'],
+		mirrorBaseUrl: '',
+		params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
+	};
 }
 
 function imageSettingsBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -678,7 +683,8 @@ test('the tile source and the model policy save their own bodies', async () => {
 	expect(JSON.parse(String((modelsPut?.[1] as RequestInit).body))).toEqual({
 		autoDownload: false,
 		allowedHosts: ['huggingface.co'],
-		mirrorBaseUrl: ''
+		mirrorBaseUrl: '',
+		params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
 	});
 });
 

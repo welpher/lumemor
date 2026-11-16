@@ -192,7 +192,7 @@
 	// limit noted above.
 	type RescanRun = {
 		id: string;
-		state: 'queued' | 'running' | 'succeeded' | 'failed';
+		state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 		total: number;
 		done: number;
 		failed: number;
