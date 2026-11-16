@@ -9990,6 +9990,7 @@ paths:
                       id: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
                       kind: model_download
                       state: succeeded
+                      subject: null
                       total: 400371536
                       done: 400371536
                       failed: 0
@@ -11521,6 +11522,7 @@ paths:
                       - id: 0192f8b2-6c7d-8e9f-a0b1-2c3d4e5f6070
                         kind: clip_embed_rerun
                         state: running
+                        subject: null
                         total: 12034
                         done: 4021
                         failed: 0
@@ -11529,6 +11531,7 @@ paths:
                       - id: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
                         kind: model_download
                         state: succeeded
+                        subject: null
                         total: 400371536
                         done: 400371536
                         failed: 0
