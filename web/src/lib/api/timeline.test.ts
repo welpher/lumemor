@@ -21,6 +21,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: false,
 	isReady: true,
 	width: 4000,
@@ -49,7 +50,6 @@ function detailOf(timelineItem: TimelineItem, overrides: Record<string, unknown>
 	return jsonResponse(200, {
 		description: '',
 		exif: {},
-		isHidden: false,
 		// The detail's albums face at its upload default: the sync
 		// stream's entry (the upload's home, never excludable) -- the
 		// aggregate's insert gate reads this face.
@@ -606,11 +606,11 @@ describe('SSE convergence', () => {
 		expect(get(timeline).items.find((i) => i.id === 'a2')?.isReady).toBe(true);
 	});
 
-	test('asset.updated with a hidden detail removes the tile; unhide returns it in place', async () => {
+	test('asset.updated with an archived detail removes the tile; unarchive returns it in place', async () => {
 		let hidden = true;
 		const timeline = clientWith((url) => {
 			if (url.includes('a2')) {
-				return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: hidden });
+				return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isArchived: hidden });
 			}
 			return page(pageOneItems);
 		});
@@ -861,13 +861,13 @@ describe('SSE convergence', () => {
 			]);
 			expect(pending).toHaveLength(1);
 
-			pending[0]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: true }));
+			pending[0]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isArchived: true }));
 			await drain();
 			// Event 6 never fetches: 7 superseded it while queued.
 			expect(detailCalls).toBe(2);
 			expect(pending).toHaveLength(2);
 
-			pending[1]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: false }));
+			pending[1]?.(detailOf(item('a2', '2026-11-01T09:00:00Z'), { isArchived: false }));
 			await all;
 
 			// The newest event's live detail decided: a2 stays.
@@ -956,7 +956,7 @@ describe('batch runner', () => {
 		expect(get(timeline).items.find((i) => i.id === 'a1')?.isFavorite).toBe(true);
 	});
 
-	test('unhide and restore leave the loaded state untouched', async () => {
+	test('the unarchive and restore batches leave the loaded state untouched', async () => {
 		const timeline = clientWith((url) => {
 			if (url === '/api/v1/assets/batch') {
 				return jsonResponse(200, { affected: 0, missing: [] });
@@ -996,7 +996,7 @@ describe('batch runner', () => {
 	});
 
 	test('rollback re-inserts older items at their sorted place after interleaved inserts', async () => {
-		// a1 (newest) and a3 hidden; the rollback must re-place a3
+		// a1 (newest) and a3 archived; the rollback must re-place a3
 		// after a2 even though the array now also carries r1.
 		const timeline = clientWith((url) => {
 			if (url === '/api/v1/assets/batch') {
@@ -1016,12 +1016,12 @@ describe('batch runner', () => {
 	});
 });
 
-describe('curated view membership (favorites and hidden walls)', () => {
+describe('curated view membership (favorites and archived walls)', () => {
 	// The two curated walls drive the same client through the view
 	// option: the page walk is theirs unchanged, the convergence's
 	// membership rule and the membership-ending batch action follow
 	// the view instead.
-	function viewClient(view: 'favorites' | 'hidden', route: Route): TimelineClient {
+	function viewClient(view: 'favorites' | 'archived', route: Route): TimelineClient {
 		return createTimelineClient({
 			fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => route(String(input), init)),
 			path: `/api/v1/assets/${view}`,
@@ -1176,13 +1176,13 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		expect(get(favorites).items.find((i) => i.id === 'a2')?.isFavorite).toBe(true);
 	});
 
-	test('unhide on the hidden wall removes the tiles (the membership ends)', async () => {
-		const hidden = viewClient('hidden', (url, init) => {
+	test('unhide on the archived wall removes the tiles (the membership ends)', async () => {
+		const hidden = viewClient('archived', (url, init) => {
 			if (url === '/api/v1/assets/batch') {
 				expect(JSON.parse(String(init?.body))).toEqual({ action: 'unhide', ids: ['a2'] });
 				return jsonResponse(200, { affected: 1, missing: [] });
 			}
-			if (url === '/api/v1/assets/hidden?limit=100') {
+			if (url === '/api/v1/assets/archived?limit=100') {
 				return page(pageOneItems);
 			}
 			throw new Error(`unexpected fetch ${url}`);
@@ -1193,17 +1193,17 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
 	});
 
-	test('the hidden wall convergence keeps hidden rows and removes unhidden ones', async () => {
-		const hidden = viewClient('hidden', (url) => {
+	test('the archived wall convergence keeps archived rows and removes unarchived ones', async () => {
+		const hidden = viewClient('archived', (url) => {
 			if (url.includes('a2')) {
-				return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isHidden: false });
+				return detailOf(item('a2', '2026-11-01T09:00:00Z'), { isArchived: false });
 			}
 			if (url.includes('a1')) {
 				// Still hidden: the convergence patches (or keeps) the
 				// row, never removes it.
-				return detailOf(item('a1', '2026-11-02T10:00:00Z', { isFavorite: true }), { isHidden: true });
+				return detailOf(item('a1', '2026-11-02T10:00:00Z', { isFavorite: true }), { isArchived: true });
 			}
-			if (url === '/api/v1/assets/hidden?limit=100') {
+			if (url === '/api/v1/assets/archived?limit=100') {
 				return page(pageOneItems);
 			}
 			throw new Error(`unexpected fetch ${url}`);
@@ -1211,7 +1211,7 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		await hidden.loadMore();
 
 		// asset.updated (the unhide event) converges the now-live row
-		// out of the hidden wall.
+		// out of the archived wall.
 		await hidden.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
 		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
 
@@ -1221,9 +1221,9 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		expect(get(hidden).items.map((i) => i.id)).toEqual(['a1', 'a3']);
 	});
 
-	test('the hidden wall drops a trashed row (the direct removal arm)', async () => {
-		const hidden = viewClient('hidden', (url) => {
-			if (url === '/api/v1/assets/hidden?limit=100') {
+	test('the archived wall drops a trashed row (the direct removal arm)', async () => {
+		const hidden = viewClient('archived', (url) => {
+			if (url === '/api/v1/assets/archived?limit=100') {
 				return page(pageOneItems);
 			}
 			throw new Error(`unexpected fetch ${url}`);
@@ -1243,7 +1243,7 @@ describe('curated view membership (favorites and hidden walls)', () => {
 			const match = /\/api\/v1\/assets\/(a1)$/.exec(url);
 			if (match !== null) {
 				return detailOf(item('a1', '2026-11-02T10:00:00Z', { isFavorite: true }), {
-					isHidden: details.get('a1') ?? false
+					isArchived: details.get('a1') ?? false
 				});
 			}
 			if (url === '/api/v1/assets/favorites?limit=100') {
@@ -1263,5 +1263,53 @@ describe('curated view membership (favorites and hidden walls)', () => {
 		details.set('a1', false);
 		await favorites.applyEvent({ id: 2, name: 'asset.updated', assetId: 'a1', kind: 'image' });
 		expect(get(favorites).items.map((i) => i.id)).toEqual(['a1', 'a2', 'a3']);
+	});
+});
+
+describe('the album container (archived members stay)', () => {
+	// An album is a reference container: its narrow keeps archived
+	// members, so the convergence must NOT drop an archived row the
+	// page delivered -- while a memory (a family-flow surface of its
+	// own) drops it exactly like the aggregate. The detail's albums
+	// face decides which container the wall is walking.
+	function albumClient(albums: Array<Record<string, unknown>>, route: Route): TimelineClient {
+		return createTimelineClient({
+			fetcher: vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => route(String(input), init)),
+			path: '/api/v1/assets/timeline',
+			albumId: 'al-1'
+		});
+	}
+
+	test('an album wall keeps an archived member and marks it archived', async () => {
+		const timeline = albumClient([], (url) => {
+			if (url.includes('/api/v1/assets/a2')) {
+				return detailOf(item('a2', '2026-11-01T09:00:00Z', { isArchived: true }), {
+					albums: [
+						{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner', sourceWritable: true }
+					]
+				});
+			}
+			return page(pageOneItems);
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+		const kept = get(timeline).items.find((entry) => entry.id === 'a2');
+		expect(kept?.isArchived).toBe(true);
+	});
+
+	test('a memory wall drops an archived member (the memories boundary)', async () => {
+		const timeline = albumClient([], (url) => {
+			if (url.includes('/api/v1/assets/a2')) {
+				return detailOf(item('a2', '2026-11-01T09:00:00Z', { isArchived: true }), {
+					albums: [{ id: 'al-1', title: 'On this day', type: 'memory', callerRole: 'owner' }]
+				});
+			}
+			return page(pageOneItems);
+		});
+		await timeline.loadMore();
+
+		await timeline.applyEvent({ id: 1, name: 'asset.updated', assetId: 'a2', kind: 'image' });
+		expect(get(timeline).items.map((entry) => entry.id)).toEqual(['a1', 'a3']);
 	});
 });

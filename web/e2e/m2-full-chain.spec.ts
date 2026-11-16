@@ -29,7 +29,7 @@
 //     still for the component video's play stream (the component row's
 //     own id, never the photo's), and pressing again returns the
 //     still.
-//  8. Batch hide moves a tile to the hidden view; unhiding from
+//  8. Batch archive moves a tile to the archived view; unarchiving from
 //     there returns it to the timeline.
 //  9. The trash page's confirmed delete removes one asset for good
 //     (trashed there through the viewer's action bar, the viewer
@@ -483,27 +483,29 @@ test.describe('the signed-in scenes', () => {
 		await expect(press).toBeVisible();
 	});
 
-	test('scene 8: batch hide parks a tile in the hidden view and unhiding returns it', async ({ page }) => {
+	test('scene 8: batch archive parks a tile in the archived view and unarchiving returns it', async ({ page }) => {
 		await page.goto('/timeline');
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
 
-		// Select the tile and hide it through the batch bar: the tile
-		// leaves the timeline.
+		// Select the tile and archive it through the batch bar: the
+		// tile leaves the timeline, and the completion toast confirms
+		// the landing.
 		await tileCheckbox(page, PHOTO_A_NAME).click();
-		await batchBar(page).getByRole('button', { name: 'Hide', exact: true }).click();
+		await batchBar(page).getByRole('button', { name: 'Archive', exact: true }).click();
+		await expect(page.getByText('Archived 1 photo.')).toBeVisible();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
 
-		// The navigation drawer's Hidden entry opens the hidden view
-		// (the timeline's toolbar link is gone -- the drawer
+		// The navigation drawer's Archive entry opens the archived
+		// view (the timeline's toolbar link is gone -- the drawer
 		// owns the entry, beside favorites and trash): the tile lives
 		// there now.
-		await navigateViaDrawer(page, 'Hidden');
-		await expect(page).toHaveURL(/\/hidden$/);
-		await expect(page).toHaveTitle('Hidden · lumemor');
+		await navigateViaDrawer(page, 'Archive');
+		await expect(page).toHaveURL(/\/archived$/);
+		await expect(page).toHaveTitle('Archive · lumemor');
 		// The converged page bar: the title with its count on the
 		// left, the selection switch at the far right -- one row with
 		// one divider under it.
-		await expect(page.locator('.wall-page__title')).toHaveText('Hidden 1');
+		await expect(page.locator('.wall-page__title')).toHaveText('Archive 1');
 		await expect(page.locator('.wall-page__title-count')).toHaveAttribute('aria-label', '1 photo');
 		await expect(page.locator('.wall-page__toolbar')).toHaveClass(/border-b/);
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();
@@ -521,15 +523,17 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.wall__groups')).not.toHaveClass(/is-selecting/);
 		await expect(page.locator('.batchbar')).toHaveCount(0);
 
-		// Unhide from the hidden view's own batch bar: the tile leaves,
-		// the view settles empty.
+		// Unarchive from the archived view's own batch bar: the tile
+		// leaves, the completion toast confirms, the view settles
+		// empty.
 		await tileCheckbox(page, PHOTO_A_NAME).click();
-		await batchBar(page).getByRole('button', { name: 'Unhide', exact: true }).click();
+		await batchBar(page).getByRole('button', { name: 'Unarchive', exact: true }).click();
+		await expect(page.getByText('Unarchived 1 photo.')).toBeVisible();
 		await expect(tile(page, PHOTO_A_NAME)).toHaveCount(0);
-		await expect(page.getByText('Nothing hidden')).toBeVisible();
+		await expect(page.getByText('Nothing archived')).toBeVisible();
 
 		// Back on the timeline (through the drawer's navigation), the
-		// unhidden tile is back with the other two.
+		// unarchived tile is back with the other two.
 		await navigateViaDrawer(page, 'Timeline');
 		await expect(page).toHaveURL(/\/timeline$/);
 		await expect(tile(page, PHOTO_A_NAME)).toBeVisible();

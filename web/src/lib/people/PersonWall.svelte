@@ -2,9 +2,9 @@
 	// The person detail's photo wall: THIS PERSON'S
 	// photos over the shared Wall -- month groups, the 72px axis
 	// gutter, the sticky month bands under the page's context bar,
-	// and the selection with its batch bar (favorite / hide /
-	// trash + clear; hiding here is the PHOTO hide, not the retired
-	// person hide).
+	// and the selection with its batch bar (favorite / archive /
+	// trash + clear; the archive switch here is the PHOTO's, not the
+	// retired person hide).
 	//
 	// THE DATA WALK IS THIS COMPONENT'S: the timeline client over the
 	// endpoint's `clusterId` narrow (one face cluster's own photos,
@@ -52,7 +52,7 @@
 	let sentinel: HTMLElement | undefined = $state();
 
 	// The wall's batch runner: the client's own view-aware optimistic
-	// convergence (the trashed/hidden tiles leave immediately, the SSE
+	// convergence (the trashed/archived tiles leave immediately, the SSE
 	// events confirm, the favourite flags flip optimistically and stay
 	// -- favourites publish no events by contract). The page's detail
 	// converges the count through its own asset-event subscription.

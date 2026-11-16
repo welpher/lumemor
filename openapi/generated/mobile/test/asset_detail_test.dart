@@ -79,9 +79,9 @@ void main() {
       // TODO
     });
 
-    // True while the owner-level visibility switch is off: the asset is out of every live view (the timeline, the favorites) and manageable only through the hidden view, until it is unhidden. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
-    // bool isHidden
-    test('to test the property `isHidden`', () async {
+    // True while the asset is archived: out of every family flow -- the timeline, the favorites, the people and places walls, the map, the memories, the search -- and listed only through the archived view, until it is unarchived. An album keeps its archived members (the album is a reference container), and the owner unarchives from there or from the archived view. The same switch `PATCH /assets/{id}` and the batch `hide` / `unhide` actions flip. 
+    // bool isArchived
+    test('to test the property `isArchived`', () async {
       // TODO
     });
 

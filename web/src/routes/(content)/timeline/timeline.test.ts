@@ -421,12 +421,12 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 	const page = mountPage();
 	await settle();
 
-	// The toolbar is gone -- no hidden-view link, no
+	// The toolbar is gone -- no archived-view link, no
 	// select-mode button -- and the check affordance is the entry.
 	expect(document.body.querySelector('.timeline__toolbar')).toBeNull();
 	expect(() => buttonByText('Select')).toThrow();
-	expect(() => buttonByText('Hidden')).toThrow();
-	expect(document.body.querySelector('a[href="/hidden"]')).toBeNull();
+	expect(() => buttonByText('Archive')).toThrow();
+	expect(document.body.querySelector('a[href="/archived"]')).toBeNull();
 
 	// Enter the selection through the tiles' checks and pick two (the
 	// affordance's click toggles the id; the bar rises at >=1).
@@ -539,7 +539,7 @@ test('a failed batch keeps the tiles, the selection and shows the message', asyn
 	// toolbar).
 	clickTileCheck(0);
 
-	buttonByLabel('Hide').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+	buttonByLabel('Archive').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
 	await settle();
 
 	expect(tiles()).toHaveLength(3);
@@ -608,7 +608,7 @@ test('SSE events patch the wall: a ready event refetches the detail', async () =
 				'/api/v1/assets/a2': () =>
 					jsonResponse(200, {
 						...item('a2', '2026-11-01T09:00:00Z', { isReady: true }),
-						isHidden: false,
+						isArchived: false,
 						description: '',
 						exif: {}
 					})

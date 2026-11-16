@@ -213,7 +213,7 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 				// The pipeline finished the upload's asset row: the
 				// item is done. (asset.ready is the only readiness
 				// signal; the server never publishes asset.updated
-				// from the pipeline, so a hide/unhide of a row still
+				// from the pipeline, so the archive switch on a row still
 				// processing must not counterfeit completion.)
 				if (item.state === 'processing') {
 					return [{ ...item, state: 'done' as const }];

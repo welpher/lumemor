@@ -1522,15 +1522,15 @@ type AlbumCreateResponse struct {
 	// holds fewer than twice the frame count -- such an album
 	// keeps one stable sample of its own. A pinned frame that
 	// is no longer visible to the caller (moved out, trashed,
-	// hidden) is filled silently from the caller's visible
+	// archived) is filled silently from the caller's visible
 	// pool; a fully dead pin falls back to the automatic group.
 	//
 	// The order is the render order and the length is at most
-	// the card's frame count: a collection with fewer live
-	// members than frames answers the frames it has (one
-	// fills, two split, three lay one large beside two small),
-	// and an album with no live members answers an empty array
-	// (the card's empty cover, no placeholder photo).
+	// the card's frame count: a collection with fewer members
+	// than frames answers the frames it has (one fills, two
+	// split, three lay one large beside two small), and an
+	// album with no members answers an empty array (the card's
+	// empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.
@@ -1552,12 +1552,13 @@ type AlbumCreateResponse struct {
 	// on shared-group items by construction.
 	IsShared bool `json:"isShared"`
 
-	// ItemCount The album's live member count: trashed, hidden and Live
-	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family). The members of every
-	// media kind count here -- this is the collection's own
-	// size, the number the cover pool and the removal's
-	// arithmetic consult.
+	// ItemCount The album's member count: trashed and Live Photo component
+	// rows never count, while an archived member does -- an
+	// album is a reference container that keeps its archived
+	// members (a memory, a family-flow surface, drops them).
+	// The members of every media kind count here -- this is
+	// the collection's own size, the number the cover pool and
+	// the removal's arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
@@ -1565,8 +1566,8 @@ type AlbumCreateResponse struct {
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
 
-	// PhotoCount The album's live PHOTO count: the same live-member
-	// predicate narrowed to `kind: image` members. The
+	// PhotoCount The album's PHOTO count: the same member predicate
+	// narrowed to `kind: image` members. The
 	// interface's count idiom beside the image glyph reads
 	// this field (it says "12 photos", so it counts photos);
 	// a video is a member but never a photo, and the wall
@@ -1629,8 +1630,8 @@ type AlbumCreateResponseCallerRole string
 type AlbumCreateResponseType string
 
 // AlbumDetail One album's detail as the calling user sees it: the metadata,
-// the caller's role, the live member count, the live photo
-// count and one keyset page of the live items.
+// the caller's role, the member count, the photo count and one
+// keyset page of the members.
 type AlbumDetail struct {
 	// AllowAppDeletion The owner's deletability switch: whether deleting this
 	// album's photos THROUGH the application -- the trash move
@@ -1651,7 +1652,7 @@ type AlbumDetail struct {
 	// returns the order given), or an empty array when the
 	// album is on the automatic weekly group. A pinned frame
 	// that has since left the album (moved out, trashed,
-	// hidden) still appears here: the picker seeds from this
+	// archived) still appears here: the picker seeds from this
 	// list and marks the cells that are no longer in the album.
 	// The wall card's own `coverAssetIds` is the FILLED group
 	// (the dead pins replaced from the caller's visible pool);
@@ -1686,11 +1687,11 @@ type AlbumDetail struct {
 	// switch says.
 	InTimeline *bool `json:"inTimeline,omitempty"`
 
-	// ItemCount The album's live member count, the same predicate as the
+	// ItemCount The album's member count, the same predicate as the
 	// items below (every media kind).
 	ItemCount int `json:"itemCount"`
 
-	// Items One page of the album's live members, `takenAt` descending
+	// Items One page of the album's members, `takenAt` descending
 	// with the asset id as the tiebreak.
 	Items []AlbumItem `json:"items"`
 
@@ -1699,8 +1700,8 @@ type AlbumDetail struct {
 	// exactly when this is the last page.
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// PhotoCount The album's live photo count: the live-item predicate
-	// narrowed to image-kind members. The contextual bar's
+	// PhotoCount The album's photo count: the member predicate narrowed
+	// to image-kind members. The contextual bar's
 	// count idiom renders this field (the image glyph says
 	// "photos"); the wall beside it carries videos as their
 	// own tiles, never as photos. Equal to `itemCount` when
@@ -1775,8 +1776,8 @@ type AlbumFacetCount struct {
 	Title string `json:"title"`
 }
 
-// AlbumItem One live member of the album: the membership's identity and
-// the minimal asset context the detail grid renders.
+// AlbumItem One member of the album: the membership's identity and the
+// minimal asset context the detail grid renders.
 type AlbumItem struct {
 	// AddedAt When the membership row was added to the album (RFC 3339
 	// UTC).
@@ -1852,9 +1853,10 @@ type AlbumOwnerRef struct {
 // asset surface -- is a client bug and answers 400), and only
 // the fields the request carries update; the rest keep their
 // values. A present `coverAssetIds` must carry 0 or exactly the
-// card's frame count of distinct ids, every one a live member of
-// the album itself. The write publishes one `album.updated`
-// event whatever fields changed.
+// card's frame count of distinct ids, every one a renderable
+// member of the album itself (an archived member is renderable
+// on an album and refused on a memory). The write publishes one
+// `album.updated` event whatever fields changed.
 type AlbumPatch struct {
 	// AllowAppDeletion The owner's deletability switch of a DIRECTORY album:
 	// whether the album's photos may be deleted through the
@@ -1881,9 +1883,11 @@ type AlbumPatch struct {
 	// set is the picker's un-saveable state, never a stored
 	// one). Repeated ids answer 400 too -- a cover is a set,
 	// and one frame cannot fill two cells. Every id must be a
-	// LIVE member of THIS album (the membership row exists and
-	// the asset is not trashed, not hidden, not a Live Photo
-	// component row); otherwise the answer is 400 with the
+	// RENDERABLE member of THIS album (the membership row exists
+	// and the asset is not trashed, is not a Live Photo
+	// component row, and on a memory album is not archived --
+	// an album's archived members render and may pin); otherwise
+	// the answer is 400 with the
 	// message key `album_cover_not_member` and a `count` of the
 	// refused frames. Absent (or JSON null, which decodes as
 	// absent) leaves the pin unchanged.
@@ -1959,8 +1963,8 @@ type AlbumShareEntry struct {
 	UserId openapi_types.UUID `json:"userId"`
 }
 
-// AlbumSummary One album card of the wall: the metadata, the live member
-// count, the live PHOTO count and the collage source, plus the
+// AlbumSummary One album card of the wall: the metadata, the member count,
+// the PHOTO count and the collage source, plus the
 // `callerRole` discriminator the client keys each card's face
 // by (a viewer card carries the read-only mark; an own card
 // its own shared state). Shared
@@ -1994,15 +1998,15 @@ type AlbumSummary struct {
 	// holds fewer than twice the frame count -- such an album
 	// keeps one stable sample of its own. A pinned frame that
 	// is no longer visible to the caller (moved out, trashed,
-	// hidden) is filled silently from the caller's visible
+	// archived) is filled silently from the caller's visible
 	// pool; a fully dead pin falls back to the automatic group.
 	//
 	// The order is the render order and the length is at most
-	// the card's frame count: a collection with fewer live
-	// members than frames answers the frames it has (one
-	// fills, two split, three lay one large beside two small),
-	// and an album with no live members answers an empty array
-	// (the card's empty cover, no placeholder photo).
+	// the card's frame count: a collection with fewer members
+	// than frames answers the frames it has (one fills, two
+	// split, three lay one large beside two small), and an
+	// album with no members answers an empty array (the card's
+	// empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.
@@ -2024,12 +2028,13 @@ type AlbumSummary struct {
 	// on shared-group items by construction.
 	IsShared bool `json:"isShared"`
 
-	// ItemCount The album's live member count: trashed, hidden and Live
-	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family). The members of every
-	// media kind count here -- this is the collection's own
-	// size, the number the cover pool and the removal's
-	// arithmetic consult.
+	// ItemCount The album's member count: trashed and Live Photo component
+	// rows never count, while an archived member does -- an
+	// album is a reference container that keeps its archived
+	// members (a memory, a family-flow surface, drops them).
+	// The members of every media kind count here -- this is
+	// the collection's own size, the number the cover pool and
+	// the removal's arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
@@ -2037,8 +2042,8 @@ type AlbumSummary struct {
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
 
-	// PhotoCount The album's live PHOTO count: the same live-member
-	// predicate narrowed to `kind: image` members. The
+	// PhotoCount The album's PHOTO count: the same member predicate
+	// narrowed to `kind: image` members. The
 	// interface's count idiom beside the image glyph reads
 	// this field (it says "12 photos", so it counts photos);
 	// a video is a member but never a photo, and the wall
@@ -2185,7 +2190,7 @@ type AssetCoordinates struct {
 // AssetDetail One asset as the detail endpoint returns it: the upload
 // response's identity and storage fields, the pipeline's
 // refinements, the owner-level attributes the PATCH
-// endpoint edits (`description`, `isHidden`, and the
+// endpoint edits (`description`, `isArchived`, and the
 // `takenAt` / `latitude` / `longitude` edits), the asset's
 // faces as the calling user sees them (`faces`), and the
 // CALLER's tags on the asset (`tags`). The caller-visible
@@ -2267,13 +2272,16 @@ type AssetDetail struct {
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
 
-	// IsHidden True while the owner-level visibility switch is off: the
-	// asset is out of every live view (the timeline, the
-	// favorites) and manageable only through the hidden view,
-	// until it is unhidden. The same switch `PATCH
+	// IsArchived True while the asset is archived: out of every family flow
+	// -- the timeline, the favorites, the people and places
+	// walls, the map, the memories, the search -- and listed
+	// only through the archived view, until it is unarchived.
+	// An album keeps its archived members (the album is a
+	// reference container), and the owner unarchives from there
+	// or from the archived view. The same switch `PATCH
 	// /assets/{id}` and the batch `hide` / `unhide` actions
 	// flip.
-	IsHidden bool `json:"isHidden"`
+	IsArchived bool `json:"isArchived"`
 
 	// IsReady True once the whole pipeline of the asset completed -- the
 	// metadata and thumbnail jobs for an image, plus the
@@ -2469,11 +2477,12 @@ type AssetPatch struct {
 	// the same length.
 	Description *string `json:"description,omitempty"`
 
-	// IsHidden The owner-level visibility switch: `true` keeps the asset
-	// out of every live view (the timeline, the favorites)
-	// until it is unhidden; `false` returns it. The same switch
+	// IsArchived The owner-level archive switch: `true` keeps the asset out
+	// of every family flow until it is unarchived; `false`
+	// returns it. An album keeps its archived members, so the
+	// album surface is unaffected either way. The same switch
 	// the batch `hide` / `unhide` actions flip.
-	IsHidden *bool `json:"isHidden,omitempty"`
+	IsArchived *bool `json:"isArchived,omitempty"`
 
 	// Latitude The manual location edit's latitude, in degrees
 	// (-90..90). It rides with `longitude` (the pair is the
@@ -2622,7 +2631,7 @@ type BatchRequest struct {
 	// Action The set operation to apply. `favorite` / `unfavorite`
 	// write or remove the caller's per-user favorites rows;
 	// `hide` / `unhide` flip the owner-level visibility switch
-	// (a hidden asset leaves every live view until unhidden);
+	// (an archived asset leaves every live view until unarchived);
 	// `trash` / `restore` run the trash lifecycle of the trash
 	// endpoints, the Live Photo pair moving as one asset.
 	Action BatchRequestAction `json:"action"`
@@ -2635,7 +2644,7 @@ type BatchRequest struct {
 // BatchRequestAction The set operation to apply. `favorite` / `unfavorite`
 // write or remove the caller's per-user favorites rows;
 // `hide` / `unhide` flip the owner-level visibility switch
-// (a hidden asset leaves every live view until unhidden);
+// (an archived asset leaves every live view until unarchived);
 // `trash` / `restore` run the trash lifecycle of the trash
 // endpoints, the Live Photo pair moving as one asset.
 type BatchRequestAction string
@@ -3245,15 +3254,15 @@ type MemoryCreateResponse struct {
 	// holds fewer than twice the frame count -- such an album
 	// keeps one stable sample of its own. A pinned frame that
 	// is no longer visible to the caller (moved out, trashed,
-	// hidden) is filled silently from the caller's visible
+	// archived) is filled silently from the caller's visible
 	// pool; a fully dead pin falls back to the automatic group.
 	//
 	// The order is the render order and the length is at most
-	// the card's frame count: a collection with fewer live
-	// members than frames answers the frames it has (one
-	// fills, two split, three lay one large beside two small),
-	// and an album with no live members answers an empty array
-	// (the card's empty cover, no placeholder photo).
+	// the card's frame count: a collection with fewer members
+	// than frames answers the frames it has (one fills, two
+	// split, three lay one large beside two small), and an
+	// album with no members answers an empty array (the card's
+	// empty cover, no placeholder photo).
 	CoverAssetIds []openapi_types.UUID `json:"coverAssetIds"`
 
 	// Id Identifier of the album.
@@ -3275,12 +3284,13 @@ type MemoryCreateResponse struct {
 	// on shared-group items by construction.
 	IsShared bool `json:"isShared"`
 
-	// ItemCount The album's live member count: trashed, hidden and Live
-	// Photo component rows never count (a hidden asset is
-	// invisible to the whole family). The members of every
-	// media kind count here -- this is the collection's own
-	// size, the number the cover pool and the removal's
-	// arithmetic consult.
+	// ItemCount The album's member count: trashed and Live Photo component
+	// rows never count, while an archived member does -- an
+	// album is a reference container that keeps its archived
+	// members (a memory, a family-flow surface, drops them).
+	// The members of every media kind count here -- this is
+	// the collection's own size, the number the cover pool and
+	// the removal's arithmetic consult.
 	ItemCount int `json:"itemCount"`
 
 	// Owner The owner attribution of a shared item: the account that
@@ -3288,8 +3298,8 @@ type MemoryCreateResponse struct {
 	// `viewer`; own items omit it (the owner is the caller).
 	Owner *AlbumOwnerRef `json:"owner,omitempty"`
 
-	// PhotoCount The album's live PHOTO count: the same live-member
-	// predicate narrowed to `kind: image` members. The
+	// PhotoCount The album's PHOTO count: the same member predicate
+	// narrowed to `kind: image` members. The
 	// interface's count idiom beside the image glyph reads
 	// this field (it says "12 photos", so it counts photos);
 	// a video is a member but never a photo, and the wall
@@ -4422,8 +4432,8 @@ type TagNameRequest struct {
 type TagSummary struct {
 	// AssetCount The tag's assignment rows joined to caller-visible live
 	// assets: the album union plus the timeline's live filters
-	// (not trashed, not hidden, no Live Photo component). A
-	// trashed or hidden member stops counting until it
+	// (not trashed, not archived, no Live Photo component). A
+	// trashed or archived member stops counting until it
 	// returns; the assignment row survives underneath, exactly
 	// like a favorite row.
 	AssetCount int `json:"assetCount"`
@@ -4469,14 +4479,18 @@ type TilesSettingsUpdateRequest struct {
 }
 
 // TimelineItem One asset of the timeline: the asset detail's fields minus the
-// `exif` object and the two detail-panel edit attributes
-// (`description`, `isHidden`) -- the detail endpoint renders the
-// EXIF panel and the edit controls; the timeline renders tiles.
-// Every item is live by construction --
-// hidden assets, trashed assets and the component video rows of
-// Live Photos never enter the timeline -- so `isTrashed` is
-// always false here and is carried only to keep the item shape
-// identical to the detail's. `isReady` still varies: a fresh
+// `exif` object, the `place` join and the `description` edit
+// attribute -- the detail endpoint renders the EXIF panel, the
+// place card and the edit controls; the timeline renders tiles.
+// An item is live on every family-flow wall by construction --
+// archived assets, trashed assets and the component video rows of
+// Live Photos never enter those -- so `isTrashed` is always false
+// there and is carried only to keep the item shape identical to
+// the detail's. The album narrow is the exception: an album keeps
+// its archived members, so its items carry `isArchived: true` for
+// them (the container's unarchive entry reads it); the archived
+// view's items are `true` by construction. `isReady` still
+// varies: a fresh
 // upload enters the timeline immediately with its
 // pipeline-dependent fields null, and the client upgrades the
 // tile when `asset.ready` fires. The shape is fixed -- every
@@ -4513,6 +4527,12 @@ type TimelineItem struct {
 
 	// Id UUIDv7 identifier of the asset.
 	Id openapi_types.UUID `json:"id"`
+
+	// IsArchived The row's archive state: `false` on every family-flow
+	// wall (the flows exclude archived rows), `true` on the
+	// archived view's items and on an album's archived members
+	// (the container keeps them visible and unarchivable).
+	IsArchived bool `json:"isArchived"`
 
 	// IsFavorite Whether the REQUESTING user favorites this asset: the
 	// caller's own row of the per-user favorites state, written
@@ -4587,7 +4607,7 @@ type TimelineItemKind string
 type TimelineItemTakenAtSource string
 
 // TimelineResponse One page of a timeline-shaped view: the aggregated timeline,
-// the favorites view or the hidden view all answer with this
+// the favorites view or the archived view all answer with this
 // page shape (the same ordering and the same cursor semantics).
 // `nextCursor` is present exactly when another page follows the
 // `items` of this one: the client passes it back as the
@@ -5238,8 +5258,8 @@ type UploadAssetMultipartBody struct {
 	Photo openapi_types.File `json:"photo"`
 }
 
-// GetFavoritesParams defines parameters for GetFavorites.
-type GetFavoritesParams struct {
+// GetArchivedParams defines parameters for GetArchived.
+type GetArchivedParams struct {
 	// Cursor The `nextCursor` of the previous page; absent on the first
 	// page. An unparseable value answers 400
 	// `VALIDATION_FAILED` (cursors are opaque strings produced
@@ -5252,8 +5272,8 @@ type GetFavoritesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
-// GetHiddenParams defines parameters for GetHidden.
-type GetHiddenParams struct {
+// GetFavoritesParams defines parameters for GetFavorites.
+type GetFavoritesParams struct {
 	// Cursor The `nextCursor` of the previous page; absent on the first
 	// page. An unparseable value answers 400
 	// `VALIDATION_FAILED` (cursors are opaque strings produced
@@ -5295,12 +5315,17 @@ type GetTimelineParams struct {
 	// AlbumId Restrict the response to the timeline of this one album
 	// (an album the caller owns or that is shared to the caller)
 	// instead of the aggregate. An unknown or invisible album
-	// answers the empty list. For a memory shared to the caller
-	// the walk honors the re-share ground: the items are the
-	// live members the memory's owner currently sees,
-	// revalidated at read time (a photo whose source visibility
-	// died leaves the walk), while the memory's owner keeps the
-	// plain live membership.
+	// answers the empty list. An album is a reference
+	// container: its archived members ride the walk (the
+	// archive removes an asset from the family flows, never
+	// from the album that holds it). A memory is a family-flow
+	// surface of its own, so its archived members leave the
+	// walk exactly like they leave the aggregate -- and for a
+	// memory shared to the caller the walk honors the re-share
+	// ground: the items are the members the memory's owner
+	// currently sees, revalidated at read time (a photo whose
+	// source visibility died leaves the walk), while the
+	// memory's owner keeps the plain membership.
 	AlbumId *openapi_types.UUID `form:"albumId,omitempty" json:"albumId,omitempty"`
 }
 
@@ -5720,6 +5745,9 @@ type ServerInterface interface {
 	// UploadAsset Upload one photo, optionally with its Live Photo video.
 	// (POST /assets)
 	UploadAsset(w http.ResponseWriter, r *http.Request)
+	// GetArchived The caller's archived assets, one keyset page at a time.
+	// (GET /assets/archived)
+	GetArchived(w http.ResponseWriter, r *http.Request, params GetArchivedParams)
 	// BatchAssets Apply one set action to a batch of assets.
 	// (POST /assets/batch)
 	BatchAssets(w http.ResponseWriter, r *http.Request)
@@ -5729,9 +5757,6 @@ type ServerInterface interface {
 	// GetFavorites The caller's favorites, one keyset page at a time.
 	// (GET /assets/favorites)
 	GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams)
-	// GetHidden The caller's hidden assets, one keyset page at a time.
-	// (GET /assets/hidden)
-	GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams)
 	// GetTimeline The aggregated timeline, one keyset page at a time.
 	// (GET /assets/timeline)
 	GetTimeline(w http.ResponseWriter, r *http.Request, params GetTimelineParams)
@@ -6167,6 +6192,12 @@ func (_ Unimplemented) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// GetArchived The caller's archived assets, one keyset page at a time.
+// (GET /assets/archived)
+func (_ Unimplemented) GetArchived(w http.ResponseWriter, r *http.Request, params GetArchivedParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // BatchAssets Apply one set action to a batch of assets.
 // (POST /assets/batch)
 func (_ Unimplemented) BatchAssets(w http.ResponseWriter, r *http.Request) {
@@ -6182,12 +6213,6 @@ func (_ Unimplemented) GetAssetByDeviceId(w http.ResponseWriter, r *http.Request
 // GetFavorites The caller's favorites, one keyset page at a time.
 // (GET /assets/favorites)
 func (_ Unimplemented) GetFavorites(w http.ResponseWriter, r *http.Request, params GetFavoritesParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// GetHidden The caller's hidden assets, one keyset page at a time.
-// (GET /assets/hidden)
-func (_ Unimplemented) GetHidden(w http.ResponseWriter, r *http.Request, params GetHiddenParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7423,6 +7448,52 @@ func (siw *ServerInterfaceWrapper) UploadAsset(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// GetArchived operation middleware
+func (siw *ServerInterfaceWrapper) GetArchived(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetArchivedParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetArchived(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // BatchAssets operation middleware
 func (siw *ServerInterfaceWrapper) BatchAssets(w http.ResponseWriter, r *http.Request) {
 
@@ -7500,52 +7571,6 @@ func (siw *ServerInterfaceWrapper) GetFavorites(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFavorites(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetHidden operation middleware
-func (siw *ServerInterfaceWrapper) GetHidden(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetHiddenParams
-
-	// ------------- Optional query parameter "cursor" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHidden(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9036,7 +9061,7 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/assets/favorites", wrapper.GetFavorites)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/assets/hidden", wrapper.GetHidden)
+		r.Get(options.BaseURL+"/assets/archived", wrapper.GetArchived)
 	})
 	r.Group(func(r chi.Router) {
 		r.Delete(options.BaseURL+"/assets/{id}", wrapper.DeleteAsset)

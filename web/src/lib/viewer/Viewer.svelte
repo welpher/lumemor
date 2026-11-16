@@ -386,7 +386,7 @@
 
 	/**
 	 * Whether the on-photo face-box layer renders at all: a loaded,
-	 * visible image with faces (a trashed or hidden asset's crop
+	 * visible image with faces (a trashed or archived asset's crop
 	 * endpoints answer 404, and the boxes have no stage to sit on
 	 * before the media decodes).
 	 */
@@ -395,7 +395,7 @@
 			detail.kind === 'image' &&
 			viewLoaded &&
 			!detail.isTrashed &&
-			!detail.isHidden &&
+			!detail.isArchived &&
 			detail.faces.length > 0
 	);
 
@@ -405,7 +405,7 @@
 	 * never arms for one).
 	 */
 	const canDraw = $derived(
-		isOwner && detail !== null && detail.kind === 'image' && !detail.isTrashed && !detail.isHidden
+		isOwner && detail !== null && detail.kind === 'image' && !detail.isTrashed && !detail.isArchived
 	);
 
 	/**

@@ -7,7 +7,7 @@ void main() {
   // TODO add properties to the builder and call build()
 
   group(BatchRequest, () {
-    // The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (a hidden asset leaves every live view until unhidden); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
+    // The set operation to apply. `favorite` / `unfavorite` write or remove the caller's per-user favorites rows; `hide` / `unhide` flip the owner-level visibility switch (an archived asset leaves every live view until unarchived); `trash` / `restore` run the trash lifecycle of the trash endpoints, the Live Photo pair moving as one asset. 
     // String action
     test('to test the property `action`', () async {
       // TODO

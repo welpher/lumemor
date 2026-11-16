@@ -25,7 +25,7 @@ void main() {
       // TODO
     });
 
-    // The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, hidden) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
+    // The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, archived) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
     // BuiltList<String> coverAssetIds
     test('to test the property `coverAssetIds`', () async {
       // TODO
@@ -61,19 +61,19 @@ void main() {
       // TODO
     });
 
-    // The album's live member count, the same predicate as the items below (every media kind). 
+    // The album's member count, the same predicate as the items below (every media kind). 
     // int itemCount
     test('to test the property `itemCount`', () async {
       // TODO
     });
 
-    // The album's live photo count: the live-item predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
+    // The album's photo count: the member predicate narrowed to image-kind members. The contextual bar's count idiom renders this field (the image glyph says \"photos\"); the wall beside it carries videos as their own tiles, never as photos. Equal to `itemCount` when the album holds no videos. 
     // int photoCount
     test('to test the property `photoCount`', () async {
       // TODO
     });
 
-    // One page of the album's live members, `takenAt` descending with the asset id as the tiebreak. 
+    // One page of the album's members, `takenAt` descending with the asset id as the tiebreak. 
     // BuiltList<AlbumItem> items
     test('to test the property `items`', () async {
       // TODO

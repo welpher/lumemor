@@ -1,4 +1,4 @@
-// The favorites and hidden view tests: the two curated
+// The favorites and archived view tests: the two curated
 // views' listings (selection, live filters, per-user isolation, the
 // per-user isFavorite flag), their keyset pagination (the same
 // machinery the timeline uses), and the isFavorite computation on the
@@ -51,26 +51,26 @@ func (e *assetEnv) getFavoritesRaw(t *testing.T, cookie *http.Cookie, rawQuery s
 	return rec
 }
 
-// getHidden fires the hidden view request and decodes the 200 page.
-func (e *assetEnv) getHidden(t *testing.T, cookie *http.Cookie, rawQuery string) apigen.TimelineResponse {
+// getArchived fires the archived view request and decodes the 200 page.
+func (e *assetEnv) getArchived(t *testing.T, cookie *http.Cookie, rawQuery string) apigen.TimelineResponse {
 	t.Helper()
-	rec := e.getHiddenRaw(t, cookie, rawQuery)
+	rec := e.getArchivedRaw(t, cookie, rawQuery)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET /assets/hidden?%s status = %d, want %d (body %q)",
+		t.Fatalf("GET /assets/archived?%s status = %d, want %d (body %q)",
 			rawQuery, rec.Code, http.StatusOK, rec.Body.String())
 	}
 	var response apigen.TimelineResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode hidden body %q: %v", rec.Body.String(), err)
+		t.Fatalf("decode archived body %q: %v", rec.Body.String(), err)
 	}
 	return response
 }
 
-// getHiddenRaw fires the hidden view request and returns the
+// getArchivedRaw fires the archived view request and returns the
 // recorder.
-func (e *assetEnv) getHiddenRaw(t *testing.T, cookie *http.Cookie, rawQuery string) *httptest.ResponseRecorder {
+func (e *assetEnv) getArchivedRaw(t *testing.T, cookie *http.Cookie, rawQuery string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/assets/hidden", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/assets/archived", nil)
 	if rawQuery != "" {
 		req.URL.RawQuery = rawQuery
 	}
@@ -94,8 +94,8 @@ func requireFavoriteFlags(t *testing.T, items []apigen.TimelineItem, want bool) 
 }
 
 // TestFavoritesView pins the favorites listing: the caller's
-// favorites rows joined to live assets (hidden and trashed favorites
-// filtered out until unhidden/restored, the favorite row riding both
+// favorites rows joined to live assets (archived and trashed favorites
+// filtered out until unarchived/restored, the favorite row riding both
 // states out), every item isFavorite true by construction, the
 // per-user isolation between accounts, and the unfavorite removal.
 func TestFavoritesView(t *testing.T) {
@@ -107,21 +107,21 @@ func TestFavoritesView(t *testing.T) {
 	fav1 := fixtureAssetID("91")
 	fav2 := fixtureAssetID("92")
 	fav3 := fixtureAssetID("93")
-	favHidden := fixtureAssetID("94")
+	favArchived := fixtureAssetID("94")
 	favTrashed := fixtureAssetID("95")
 	plain := fixtureAssetID("96")
 	env.insertOwnedAsset(t, fav1, adminID, taken.Add(4*time.Minute), timelineAssetOpts{})
 	env.insertOwnedAsset(t, fav2, adminID, taken.Add(3*time.Minute), timelineAssetOpts{})
 	env.insertOwnedAsset(t, fav3, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
-	env.insertOwnedAsset(t, favHidden, adminID, taken.Add(time.Minute), timelineAssetOpts{})
+	env.insertOwnedAsset(t, favArchived, adminID, taken.Add(time.Minute), timelineAssetOpts{})
 	env.insertOwnedAsset(t, favTrashed, adminID, taken, timelineAssetOpts{})
 	env.insertOwnedAsset(t, plain, adminID, taken.Add(-time.Minute), timelineAssetOpts{})
 
 	// Five favorites (the plain asset stays unfavorited), then one
-	// hidden and one trashed: the favorite rows ride both states out
+	// archived and one trashed: the favorite rows ride both states out
 	// -- the view filters on the asset's state, the rows survive.
-	env.batchAssets(t, env.cookie, "favorite", fav1, fav2, fav3, favHidden, favTrashed)
-	env.batchAssets(t, env.cookie, "hide", favHidden)
+	env.batchAssets(t, env.cookie, "favorite", fav1, fav2, fav3, favArchived, favTrashed)
+	env.batchAssets(t, env.cookie, "hide", favArchived)
 	env.batchAssets(t, env.cookie, "trash", favTrashed)
 
 	// The view lists exactly the live favorites, newest capture
@@ -149,14 +149,14 @@ func TestFavoritesView(t *testing.T) {
 	page = env.getFavorites(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, fav1, fav3)
 
-	// The hidden favorite returns with the unhide, the trashed one
+	// The archived favorite returns with the unarchive, the trashed one
 	// with the restore: the favorite row was never the thing that
 	// left. (taken_at descending: fav1, fav3, then the +1 minute
-	// favHidden, then favTrashed.)
-	env.batchAssets(t, env.cookie, "unhide", favHidden)
+	// favArchived, then favTrashed.)
+	env.batchAssets(t, env.cookie, "unhide", favArchived)
 	env.batchAssets(t, env.cookie, "restore", favTrashed)
 	page = env.getFavorites(t, env.cookie, "")
-	requireTimelineIDs(t, page.Items, fav1, fav3, favHidden, favTrashed)
+	requireTimelineIDs(t, page.Items, fav1, fav3, favArchived, favTrashed)
 }
 
 // TestFavoritesPagination walks the keyset pagination of the favorites
@@ -245,22 +245,22 @@ func pgTimestamptz(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }
 
-// TestHiddenView pins the hidden listing: the caller's own hidden
+// TestArchivedView pins the archived listing: the caller's own archived
 // rows (owner scope, live rows only, no Live Photo component rows),
-// the isFavorite flag still reporting the favorites state of a hidden
-// asset, the trashed-hidden row staying in the trash until restored
-// -- and returning here still hidden -- and the unhide returning an
+// the isFavorite flag still reporting the favorites state of an archived
+// asset, the trashed-archived row staying in the trash until restored
+// -- and returning here still archived -- and the unarchive returning an
 // asset to the timeline.
-func TestHiddenView(t *testing.T) {
+func TestArchivedView(t *testing.T) {
 	env := newAssetEnv(t, testUploadLimit)
 	adminID := env.sessionUserID(t)
 	sync := env.syncAlbumIDOf(t, adminID)
-	graceID, graceCookie := env.createSecondUser(t, "hidden-grace@example.com")
+	graceID, graceCookie := env.createSecondUser(t, "archived-grace@example.com")
 
 	taken := time.Date(2026, 8, 3, 10, 0, 0, 0, time.UTC)
-	h1 := fixtureAssetID("b1") // hidden, favorited: the isFavorite flag of a hidden asset
-	h2 := fixtureAssetID("b2") // hidden, then trashed, then restored: still hidden afterwards
-	h3 := fixtureAssetID("b3") // hidden, then unhidden: returns to the timeline
+	h1 := fixtureAssetID("b1") // archived, favorited: the isFavorite flag of an archived asset
+	h2 := fixtureAssetID("b2") // archived, then trashed, then restored: still archived afterwards
+	h3 := fixtureAssetID("b3") // archived, then unarchived: returns to the timeline
 	env.insertTimelineAsset(t, h1, adminID, taken.Add(2*time.Minute), timelineAssetOpts{})
 	env.insertTimelineAsset(t, h2, adminID, taken.Add(time.Minute), timelineAssetOpts{})
 	env.insertTimelineAsset(t, h3, adminID, taken, timelineAssetOpts{})
@@ -268,85 +268,85 @@ func TestHiddenView(t *testing.T) {
 		env.addTimelineItem(t, sync, id, adminID)
 	}
 	// The component row (a Live Photo's video half) never lists even
-	// when its is_hidden flag is set: every view filters component
+	// when its is_archived flag is set: every view filters component
 	// rows, the pair is represented by its photo.
 	component := fixtureAssetID("b4")
 	env.insertTimelineAsset(t, component, adminID, taken.Add(3*time.Minute), timelineAssetOpts{isComponent: true, isHidden: true})
-	// Grace's hidden asset is hers: the view is owner-scoped.
-	graceHidden := fixtureAssetID("b5")
-	env.insertTimelineAsset(t, graceHidden, graceID, taken.Add(4*time.Minute), timelineAssetOpts{})
-	env.batchAssets(t, graceCookie, "hide", graceHidden)
+	// Grace's archived asset is hers: the view is owner-scoped.
+	graceArchived := fixtureAssetID("b5")
+	env.insertTimelineAsset(t, graceArchived, graceID, taken.Add(4*time.Minute), timelineAssetOpts{})
+	env.batchAssets(t, graceCookie, "hide", graceArchived)
 
 	// Hide all three and favorite one: the flag survives the hiding.
 	env.batchAssets(t, env.cookie, "hide", h1, h2, h3)
 	env.batchAssets(t, env.cookie, "favorite", h1)
 
-	page := env.getHidden(t, env.cookie, "")
+	page := env.getArchived(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, h1, h2, h3)
 	if len(page.Items) != 3 {
-		t.Fatalf("hidden view holds %d items, want 3", len(page.Items))
+		t.Fatalf("archived view holds %d items, want 3", len(page.Items))
 	}
 	if !page.Items[0].IsFavorite {
-		t.Error("the hidden favorited asset carries isFavorite false, want true (the favorite row survives the hiding)")
+		t.Error("the archived favorited asset carries isFavorite false, want true (the favorite row survives the hiding)")
 	}
 	if page.Items[1].IsFavorite || page.Items[2].IsFavorite {
-		t.Error("the unfavorited hidden assets carry isFavorite true, want false")
+		t.Error("the unfavorited archived assets carry isFavorite true, want false")
 	}
 
-	// The owner scope: grace's hidden asset never lists for the
+	// The owner scope: grace's archived asset never lists for the
 	// admin, and hers holds exactly her own.
-	page = env.getHidden(t, graceCookie, "")
-	requireTimelineIDs(t, page.Items, graceHidden)
+	page = env.getArchived(t, graceCookie, "")
+	requireTimelineIDs(t, page.Items, graceArchived)
 
-	// The timeline holds none of the hidden rows.
+	// The timeline holds none of the archived rows.
 	timeline := env.getTimeline(t, env.cookie, "")
 	requireTimelineIDs(t, timeline.Items)
 
-	// A trashed hidden row leaves the hidden view (the trash owns it
+	// A trashed archived row leaves the archived view (the trash owns it
 	// until restored or expired) and lands in the trash listing.
 	env.batchAssets(t, env.cookie, "trash", h2)
-	page = env.getHidden(t, env.cookie, "")
+	page = env.getArchived(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, h1, h3)
 	if items := env.getTrash(t, env.cookie).Items; len(items) != 1 || uuid.UUID(items[0].Id) != h2 {
-		t.Errorf("trash after the trashed-hidden batch holds %v, want exactly %s", trashItemIDs(items), h2)
+		t.Errorf("trash after the trashed-archived batch holds %v, want exactly %s", trashItemIDs(items), h2)
 	}
 
-	// The restore returns the row still hidden: it re-enters the
-	// hidden view, not the timeline.
+	// The restore returns the row still archived: it re-enters the
+	// archived view, not the timeline.
 	env.batchAssets(t, env.cookie, "restore", h2)
-	page = env.getHidden(t, env.cookie, "")
+	page = env.getArchived(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, h1, h2, h3)
 	timeline = env.getTimeline(t, env.cookie, "")
 	requireTimelineIDs(t, timeline.Items)
 
-	// The unhide returns the asset to every live view.
+	// The unarchive returns the asset to every live view.
 	env.batchAssets(t, env.cookie, "unhide", h1)
-	page = env.getHidden(t, env.cookie, "")
+	page = env.getArchived(t, env.cookie, "")
 	requireTimelineIDs(t, page.Items, h2, h3)
 	timeline = env.getTimeline(t, env.cookie, "")
 	requireTimelineIDs(t, timeline.Items, h1)
 
-	// The pagination: the hidden view pages like the timeline (h2 and
-	// h3 remain hidden, so limit-1 pages split them).
-	page = env.getHidden(t, env.cookie, "limit=1")
+	// The pagination: the archived view pages like the timeline (h2 and
+	// h3 remain archived, so limit-1 pages split them).
+	page = env.getArchived(t, env.cookie, "limit=1")
 	requireTimelineIDs(t, page.Items, h2)
 	if page.NextCursor == nil {
-		t.Fatal("nextCursor absent on a full hidden page with a row behind it, want present")
+		t.Fatal("nextCursor absent on a full archived page with a row behind it, want present")
 	}
-	next := env.getHidden(t, env.cookie, "limit=1&cursor="+*page.NextCursor)
+	next := env.getArchived(t, env.cookie, "limit=1&cursor="+*page.NextCursor)
 	requireTimelineIDs(t, next.Items, h3)
 	if next.NextCursor != nil {
-		t.Error("nextCursor set on the final hidden page, want absent")
+		t.Error("nextCursor set on the final archived page, want absent")
 	}
 
 	// The validation door and the authentication requirement.
 	for _, raw := range []string{"limit=0", "cursor=not-a-cursor"} {
-		if rec := env.getHiddenRaw(t, env.cookie, raw); rec.Code != http.StatusBadRequest {
-			t.Errorf("GET /assets/hidden?%s status = %d, want %d", raw, rec.Code, http.StatusBadRequest)
+		if rec := env.getArchivedRaw(t, env.cookie, raw); rec.Code != http.StatusBadRequest {
+			t.Errorf("GET /assets/archived?%s status = %d, want %d", raw, rec.Code, http.StatusBadRequest)
 		}
 	}
-	if rec := env.getHiddenRaw(t, nil, ""); rec.Code != http.StatusUnauthorized {
-		t.Errorf("unauthenticated hidden view status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	if rec := env.getArchivedRaw(t, nil, ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated archived view status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
 

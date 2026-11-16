@@ -26,6 +26,7 @@ function item(id: string, filename = `IMG_${id}.jpg`): TimelineItem {
 		createdAt: '2026-09-10T12:00:00Z',
 		takenAtSource: 'exif',
 		isTrashed: false,
+		isArchived: false,
 		isFavorite: false,
 		isReady: true,
 		width: 4000,

@@ -4,7 +4,7 @@ import { initI18n } from '$lib/i18n';
 import type { TimelineItem } from '$lib/api/timeline';
 import CuratedWall from './CuratedWall.svelte';
 
-// THE CURATED WALL'S PAGE BAR: the favorites/hidden wrapper owns the
+// THE CURATED WALL'S PAGE BAR: the favorites/archived wrapper owns the
 // one-row action bar -- the title with its count on the left, the
 // selection switch at the far right -- and that switch is a REAL
 // state machine, not a skin: pressing it arms the wall's select mode
@@ -23,6 +23,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: true,
 	isReady: true,
 	width: 4032,
