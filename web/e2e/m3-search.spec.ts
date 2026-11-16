@@ -418,7 +418,7 @@ test.describe('the signed-in scenes', () => {
 		// resolution included.
 		await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Add tag', exact: true })).toBeVisible();
-		for (const absent of ['Hide', 'Unhide', 'Trash', 'Restore']) {
+		for (const absent of ['Archive', 'Unarchive', 'Trash', 'Restore']) {
 			await expect(bar.getByRole('button', { name: absent, exact: true })).toHaveCount(0);
 		}
 
@@ -453,7 +453,7 @@ test.describe('the signed-in scenes', () => {
 		const bar = page.getByRole('toolbar', { name: '1 selected' });
 		await expect(bar).toBeVisible();
 		await expect(bar.getByRole('button', { name: 'Favorite', exact: true })).toBeVisible();
-		for (const absent of ['Hide', 'Unhide', 'Trash', 'Restore']) {
+		for (const absent of ['Archive', 'Unarchive', 'Trash', 'Restore']) {
 			await expect(bar.getByRole('button', { name: absent, exact: true })).toHaveCount(0);
 		}
 

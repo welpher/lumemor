@@ -103,8 +103,9 @@
 	// (the row-level windowing the justified math makes exact); the
 	// tiles keep their own content-visibility inside a partially
 	// visible row.
-	import { locale } from 'svelte-i18n';
+	import { _, locale } from 'svelte-i18n';
 	import { SvelteSet } from 'svelte/reactivity';
+	import { toast } from '$lib/components/toast.svelte';
 	import { packWall, WALL_FALLBACK_WIDTH, WALL_TILE_SEAM, type PackedMonth } from './layout';
 	import { groupTimelineItems } from './grouping';
 	import type { BatchAction, TimelineItem } from '$lib/api/timeline';
@@ -115,10 +116,11 @@
 	/**
 	 * The outcome the wall awaits from a page's batch run. The
 	 * client's richer BatchOutcome (with affected/missing) satisfies
-	 * this structurally; the wall reads nothing but the ok/errorKey
-	 * split -- the choreography is its own.
+	 * this structurally; the wall reads the ok/errorKey split and the
+	 * applied count (the archive actions' confirmation toast), while
+	 * the choreography is its own.
 	 */
-	type WallBatchOutcome = { ok: true } | { ok: false; errorKey: string };
+	type WallBatchOutcome = { ok: true; affected?: number } | { ok: false; errorKey: string };
 
 	type Props = {
 		/** The loaded items, newest first (the page owns the walk that fills this). */
@@ -161,7 +163,11 @@
 		 * ('favorite' names the favorite/unfavorite toggle). The
 		 * default is every action; the curated walls pass the subset
 		 * their view makes sense of (unfavorite on favorites, unhide
-		 * on hidden).
+		 * on archived). The unarchive action is further narrowed to a
+		 * selection that holds an archived tile: its button renders
+		 * only when one of the checked rows is archived (the album
+		 * container's own entry -- a family-flow wall never checks an
+		 * archived row).
 		 */
 		actions?: readonly BatchAction[];
 		/**
@@ -232,6 +238,13 @@
 	const allFavorite = $derived(
 		selectedItems.length > 0 && selectedItems.every((timelineItem) => timelineItem.isFavorite)
 	);
+	// The unarchive affordance's gate (handed to the bar): the
+	// selection holds an archived tile. The archived wall's rows are
+	// archived by construction; the album wall shows the container's
+	// unarchive entry exactly when the owner checked an archived
+	// member; a family-flow wall never checks one, so its bar carries
+	// no unarchive button.
+	const archivedSelected = $derived(selectedItems.some((timelineItem) => timelineItem.isArchived));
 
 	// The fold is the wall's own: bare items in, locale-aware month
 	// and day groups out. The input order is the rendering order (the
@@ -563,16 +576,24 @@
 	// the choreography around the awaited promise -- busy disables
 	// the bar's buttons, ok clears the selection (the success arm,
 	// an armed mode persists), a failure keeps it (the retry
-	// affordance) and surfaces the mapped error.
+	// affordance) and surfaces the mapped error. The archive pair
+	// confirms its landing with the completion toast (the same
+	// sentence form the other landing echoes use): the applied count
+	// when the server reported one, the checked count otherwise.
 	async function runAction(action: BatchAction): Promise<void> {
 		if (onbatch === undefined || batchBusy || selection.size === 0) {
 			return;
 		}
+		const checked = selection.size;
 		batchBusy = true;
 		batchErrorKey = '';
 		const outcome = await onbatch(action, [...selection]);
 		batchBusy = false;
 		if (outcome.ok) {
+			if (action === 'hide' || action === 'unhide') {
+				const count = outcome.affected ?? checked;
+				toast($_(action === 'hide' ? 'archive_done' : 'unarchive_done', { values: { count } }));
+			}
 			passLanded();
 		} else {
 			batchErrorKey = outcome.errorKey;
@@ -744,7 +765,8 @@
      organ): the wall composes the presentation-only bar whenever
      its selection holds at least one tile, feeding it the honest
      count, the all-favorite toggle state, its own busy/error
-     choreography and the page's action subset. The dialog
+     choreography and the page's action subset (the bar narrows the
+     unarchive button to an archived selection itself). The dialog
      affordance renders only when the page wired its opener (the
      ids the opener captures flow to the page's dialogs). -->
 {#if selection.size > 0}
@@ -754,6 +776,7 @@
 		errorKey={batchErrorKey}
 		busy={batchBusy}
 		{actions}
+		{archivedSelected}
 		onaddtag={onaddtag !== undefined ? openAddTag : undefined}
 		onaddmemory={onaddmemory !== undefined ? openAddMemory : undefined}
 		onremovememory={onremovememory !== undefined ? runRemoveMemory : undefined}

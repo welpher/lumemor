@@ -205,8 +205,8 @@
 				void convergeDetail();
 			}
 		});
-		// The photo set changed under the profile row (a batch hide or
-		// unhide -- both publish asset.updated --, a trash, a purge, a
+		// The photo set changed under the profile row (a batch archive
+		// or unarchive -- both publish asset.updated --, a trash, a purge, a
 		// restore): the count is the server's, so the detail converges.
 		// A mere metadata edit also rides asset.updated, and its cost is
 		// one cheap read per event (the wall converges the tile anyway).

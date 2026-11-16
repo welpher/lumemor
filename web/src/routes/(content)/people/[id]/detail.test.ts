@@ -82,6 +82,7 @@ function item(id: string, takenAt: string): TimelineItem {
 		takenAt,
 		takenAtSource: 'exif',
 		isTrashed: false,
+		isArchived: false,
 		isFavorite: false,
 		isReady: true,
 		width: 4032,

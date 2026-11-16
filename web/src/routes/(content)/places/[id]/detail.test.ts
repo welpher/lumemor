@@ -52,6 +52,7 @@ function item(id: string) {
 		createdAt: '2026-10-29T09:12:00Z',
 		takenAtSource: 'exif',
 		isTrashed: false,
+		isArchived: false,
 		isFavorite: false,
 		isReady: true,
 		width: 4000,
@@ -151,7 +152,7 @@ test('the wall renders the place\u2019s photos with the month axis', async () =>
 	expect(bar).not.toBeNull();
 	const labels = Array.from(bar?.querySelectorAll('button') ?? []).map((button) => button.getAttribute('aria-label'));
 	expect(labels).toContain('Favorite');
-	expect(labels).toContain('Hide');
+	expect(labels).toContain('Archive');
 	expect(labels).toContain('Trash');
 	expect(labels).not.toContain('Add tag');
 

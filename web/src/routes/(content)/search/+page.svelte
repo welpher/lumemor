@@ -72,7 +72,7 @@
 	// the owner resolution per caller -- is the endpoint's own) and
 	// the add-tag dialog flow the walls' openers feed (the captured
 	// ids, the done continuation). The bar renders the subset: the
-	// favorite toggle and the tag affordance; hide/unhide/trash/
+	// favorite toggle and the tag affordance; the archive pair/trash/
 	// restore stay off -- ownership actions belong to the surfaces
 	// that own them.
 	const BATCH_ACTIONS: readonly BatchAction[] = ['favorite'];

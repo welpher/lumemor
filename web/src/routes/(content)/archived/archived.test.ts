@@ -9,7 +9,7 @@ import { clearWallItems, wallItems } from '$lib/timeline/wall-sequence.svelte';
 // publishes the wall sequence, the selection bar carries exactly the
 // unhide action, the unhide batch ends the selected rows'
 // membership, and the SSE convergence follows the view's membership
-// rule -- an unhidden row (the detail answered live) leaves the
+// rule -- an unarchived row (the detail answered live) leaves the
 // wall, a row that stayed hidden keeps its place. The events module
 // is mocked with a captured handler registry, the same pattern as
 // the timeline page test.
@@ -40,6 +40,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: true,
 	isFavorite: false,
 	isReady: true,
 	width: 4000,
@@ -66,7 +67,6 @@ function detailOf(timelineItem: ReturnType<typeof item>, overrides: Record<strin
 	return jsonResponse(200, {
 		description: '',
 		exif: {},
-		isHidden: true,
 		...timelineItem,
 		...overrides
 	});
@@ -77,7 +77,7 @@ type FetchRoute = Record<string, () => Response>;
 
 function hiddenRoutes(overrides: FetchRoute = {}): FetchRoute {
 	return {
-		'/api/v1/assets/hidden?limit=100': () => jsonResponse(200, { items: pageOne }),
+		'/api/v1/assets/archived?limit=100': () => jsonResponse(200, { items: pageOne }),
 		'/api/v1/assets/batch': () => jsonResponse(200, { affected: 1, missing: [] }),
 		...overrides
 	};
@@ -163,18 +163,18 @@ test('the listing renders tiles and publishes the wall sequence', async () => {
 	flushSync();
 });
 
-test('an empty hidden view renders the empty state', async () => {
+test('an empty archived view renders the empty state', async () => {
 	vi.stubGlobal(
 		'fetch',
 		stubFetch({
-			'/api/v1/assets/hidden?limit=100': () => jsonResponse(200, { items: [] })
+			'/api/v1/assets/archived?limit=100': () => jsonResponse(200, { items: [] })
 		})
 	);
 	const page = mountPage();
 	await settle();
 
 	expect(tiles()).toHaveLength(0);
-	expect(document.body.textContent).toContain('Nothing hidden');
+	expect(document.body.textContent).toContain('Nothing archived');
 
 	unmount(page);
 	flushSync();
@@ -200,16 +200,16 @@ test('the selection bar carries exactly the unhide action, and it ends the membe
 	clickTile(0);
 	expect(document.body.querySelector('.batchbar')).not.toBeNull();
 	// The subset: only the unhide action of the timeline's set, and
-	// the wall-selection entry (a hidden row is still in the
+	// the wall-selection entry (an archived row is still in the
 	// caller's sight here -- the entry's ground).
-	expect(hasButtonByLabel('Unhide')).toBe(true);
+	expect(hasButtonByLabel('Unarchive')).toBe(true);
 	expect(hasButtonByLabel('Add to memory')).toBe(true);
 	expect(hasButtonByLabel('Favorite')).toBe(false);
-	expect(hasButtonByLabel('Hide')).toBe(false);
+	expect(hasButtonByLabel('Archive')).toBe(false);
 	expect(hasButtonByLabel('Trash')).toBe(false);
 	expect(hasButtonByLabel('Restore')).toBe(false);
 
-	buttonByLabel('Unhide').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	buttonByLabel('Unarchive').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 	expect(bodies).toEqual([{ action: 'unhide', ids: ['a1'] }]);
 	// The membership ended: the tile returned to the live views and
@@ -220,11 +220,11 @@ test('the selection bar carries exactly the unhide action, and it ends the membe
 	flushSync();
 });
 
-test('the convergence removes an unhidden row and keeps a hidden one', async () => {
+test('the convergence removes an unarchived row and keeps a hidden one', async () => {
 	const details = new Map<string, boolean>();
 	const fetchMock = stubFetch(
 		hiddenRoutes({
-			'/api/v1/assets/a1': () => detailOf(pageOne[0]!, { isHidden: details.get('a1') ?? true })
+			'/api/v1/assets/a1': () => detailOf(pageOne[0]!, { isArchived: details.get('a1') ?? true })
 		})
 	);
 	vi.stubGlobal('fetch', fetchMock);
@@ -240,7 +240,7 @@ test('the convergence removes an unhidden row and keeps a hidden one', async () 
 	};
 
 	// The edit of a row that stayed hidden (the detail answered
-	// isHidden true) converges to its own place.
+	// isArchived true) converges to its own place.
 	details.set('a1', true);
 	deliver({ id: 1, name: 'asset.updated', assetId: 'a1', kind: 'image' });
 	await settle();

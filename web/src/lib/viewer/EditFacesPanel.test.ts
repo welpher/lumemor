@@ -40,7 +40,7 @@ const detail = {
 	takenAtSource: 'import',
 	description: '',
 	isTrashed: false,
-	isHidden: false,
+	isArchived: false,
 	isReady: true,
 	width: 100,
 	height: 100,
