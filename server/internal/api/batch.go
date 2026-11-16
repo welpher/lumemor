@@ -63,8 +63,12 @@ var batchEventNames = map[apigen.BatchRequestAction]string{
 // delete fails explicitly -- never a silent skip, never a nameless
 // 500 either).
 var (
-	errBatchTrashMove   = errors.New("the external file could not be moved into the trash")
-	errBatchRestoreMove = errors.New("the external file could not be moved back to its original location")
+	errBatchTrashMove = errors.New("the external file could not be moved into the trash")
+	// The shared move-failure class of the restore's external arm,
+	// every surface that moves the file back answers with it
+	// (ASSET_RESTORE_MOVE_FAILED): the assets batch's restore arm
+	// and the trash whole/batch restores in trash.go.
+	errExternalRestoreMove = errors.New("the external file could not be moved back to its original location")
 )
 
 // batchFileMove records one external lifecycle move the batch
@@ -206,7 +210,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 					"asset_id", id, "method", r.Method, "path", r.URL.Path)
 				s.writeError(w, http.StatusInternalServerError, apigen.ASSETTRASHMOVEFAILED,
 					"the file could not be moved into the trash", nil)
-			case errors.Is(err, errBatchRestoreMove):
+			case errors.Is(err, errExternalRestoreMove):
 				s.logger.Error("the batch's external restore move failed", "error", err,
 					"asset_id", id, "method", r.Method, "path", r.URL.Path)
 				s.writeError(w, http.StatusInternalServerError, apigen.ASSETRESTOREMOVEFAILED,
@@ -396,7 +400,7 @@ func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, a
 			var move *batchFileMove
 			if row.DeletedAt.Valid && row.TrashPath.Valid {
 				if err := storage.MoveFileBack(row.TrashPath.String, row.OriginalPath.String); err != nil {
-					return false, nil, fmt.Errorf("%w: %v", errBatchRestoreMove, err)
+					return false, nil, fmt.Errorf("%w: %v", errExternalRestoreMove, err)
 				}
 				move = &batchFileMove{from: row.TrashPath.String, to: row.OriginalPath.String}
 				rows, err := queries.RestoreExternalAsset(ctx, dbgen.RestoreExternalAssetParams{

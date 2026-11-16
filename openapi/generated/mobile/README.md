@@ -137,7 +137,9 @@ Class | Method | HTTP request | Description
 [*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbum**](doc/AlbumsApi.md#updatealbum) | **PATCH** /albums/{albumId} | Patch one album&#39;s properties.
 [*AlbumsApi*](doc/AlbumsApi.md) | [**updateAlbumAudience**](doc/AlbumsApi.md#updatealbumaudience) | **PUT** /albums/{albumId}/audience | Set one album&#39;s audience (the full grantee set).
 [*AssetsApi*](doc/AssetsApi.md) | [**batchAssets**](doc/AssetsApi.md#batchassets) | **POST** /assets/batch | Apply one set action to a batch of assets.
+[*AssetsApi*](doc/AssetsApi.md) | [**batchTrash**](doc/AssetsApi.md#batchtrash) | **POST** /trash/batch | Apply one restore or delete action over a list of ids in the caller&#39;s trash.
 [*AssetsApi*](doc/AssetsApi.md) | [**deleteAsset**](doc/AssetsApi.md#deleteasset) | **DELETE** /assets/{id} | Permanently delete one asset, files and all.
+[*AssetsApi*](doc/AssetsApi.md) | [**emptyTrash**](doc/AssetsApi.md#emptytrash) | **POST** /trash/empty | Permanently delete everything in the caller&#39;s trash.
 [*AssetsApi*](doc/AssetsApi.md) | [**getArchived**](doc/AssetsApi.md#getarchived) | **GET** /assets/archived | The caller&#39;s archived assets, one keyset page at a time.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAsset**](doc/AssetsApi.md#getasset) | **GET** /assets/{id} | Fetch the detail of one owned asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**getAssetByDeviceId**](doc/AssetsApi.md#getassetbydeviceid) | **GET** /assets/by-device-id/{deviceAssetId} | Look up an uploaded asset by its device identifier.
@@ -148,6 +150,7 @@ Class | Method | HTTP request | Description
 [*AssetsApi*](doc/AssetsApi.md) | [**getTrash**](doc/AssetsApi.md#gettrash) | **GET** /trash | List the caller&#39;s trashed assets with their retention countdown.
 [*AssetsApi*](doc/AssetsApi.md) | [**patchAsset**](doc/AssetsApi.md#patchasset) | **PATCH** /assets/{id} | Edit the owner-level attributes of one asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**playAsset**](doc/AssetsApi.md#playasset) | **GET** /assets/{id}/play | Stream the transcoded playable copy of one owned video.
+[*AssetsApi*](doc/AssetsApi.md) | [**restoreAllTrash**](doc/AssetsApi.md#restorealltrash) | **POST** /trash/restore-all | Restore every trashed asset of the caller.
 [*AssetsApi*](doc/AssetsApi.md) | [**restoreAsset**](doc/AssetsApi.md#restoreasset) | **POST** /trash/{id}/restore | Restore one trashed asset.
 [*AssetsApi*](doc/AssetsApi.md) | [**uploadAsset**](doc/AssetsApi.md#uploadasset) | **POST** /assets | Upload one photo, optionally with its Live Photo video.
 [*AuthApi*](doc/AuthApi.md) | [**consumePairingToken**](doc/AuthApi.md#consumepairingtoken) | **POST** /auth/pairing/consume | Exchange a pairing token for a mobile session.
@@ -326,10 +329,13 @@ Class | Method | HTTP request | Description
  - [TranscodePreset](doc/TranscodePreset.md)
  - [TranscodingSettingsResponse](doc/TranscodingSettingsResponse.md)
  - [TranscodingSettingsUpdateRequest](doc/TranscodingSettingsUpdateRequest.md)
+ - [TrashBatchRequest](doc/TrashBatchRequest.md)
+ - [TrashBatchResponse](doc/TrashBatchResponse.md)
  - [TrashItem](doc/TrashItem.md)
  - [TrashResponse](doc/TrashResponse.md)
  - [TrashSettingsResponse](doc/TrashSettingsResponse.md)
  - [TrashSettingsUpdateRequest](doc/TrashSettingsUpdateRequest.md)
+ - [TrashSweepResponse](doc/TrashSweepResponse.md)
  - [UnnamedClusterSummary](doc/UnnamedClusterSummary.md)
  - [UnnamedClustersResponse](doc/UnnamedClustersResponse.md)
  - [UpdateCheckResponse](doc/UpdateCheckResponse.md)

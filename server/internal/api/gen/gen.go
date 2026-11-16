@@ -301,28 +301,28 @@ func (e AssetResponseState) Valid() bool {
 
 // Defines values for BatchRequestAction.
 const (
-	Favorite   BatchRequestAction = "favorite"
-	Hide       BatchRequestAction = "hide"
-	Restore    BatchRequestAction = "restore"
-	Trash      BatchRequestAction = "trash"
-	Unfavorite BatchRequestAction = "unfavorite"
-	Unhide     BatchRequestAction = "unhide"
+	BatchRequestActionFavorite   BatchRequestAction = "favorite"
+	BatchRequestActionHide       BatchRequestAction = "hide"
+	BatchRequestActionRestore    BatchRequestAction = "restore"
+	BatchRequestActionTrash      BatchRequestAction = "trash"
+	BatchRequestActionUnfavorite BatchRequestAction = "unfavorite"
+	BatchRequestActionUnhide     BatchRequestAction = "unhide"
 )
 
 // Valid indicates whether the value is a known member of the BatchRequestAction enum.
 func (e BatchRequestAction) Valid() bool {
 	switch e {
-	case Favorite:
+	case BatchRequestActionFavorite:
 		return true
-	case Hide:
+	case BatchRequestActionHide:
 		return true
-	case Restore:
+	case BatchRequestActionRestore:
 		return true
-	case Trash:
+	case BatchRequestActionTrash:
 		return true
-	case Unfavorite:
+	case BatchRequestActionUnfavorite:
 		return true
-	case Unhide:
+	case BatchRequestActionUnhide:
 		return true
 	default:
 		return false
@@ -983,6 +983,24 @@ func (e TranscodingSettingsUpdateRequestConcurrency) Valid() bool {
 	case TranscodingSettingsUpdateRequestConcurrencyN2:
 		return true
 	case TranscodingSettingsUpdateRequestConcurrencyN4:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for TrashBatchRequestAction.
+const (
+	TrashBatchRequestActionDelete  TrashBatchRequestAction = "delete"
+	TrashBatchRequestActionRestore TrashBatchRequestAction = "restore"
+)
+
+// Valid indicates whether the value is a known member of the TrashBatchRequestAction enum.
+func (e TrashBatchRequestAction) Valid() bool {
+	switch e {
+	case TrashBatchRequestActionDelete:
+		return true
+	case TrashBatchRequestActionRestore:
 		return true
 	default:
 		return false
@@ -4699,6 +4717,64 @@ type TranscodingSettingsUpdateRequest struct {
 // TranscodingSettingsUpdateRequestConcurrency The concurrency bound to save: 1, 2 or 4.
 type TranscodingSettingsUpdateRequestConcurrency int
 
+// TrashBatchRequest One batch action over a list of ids IN THE CALLER'S TRASH.
+// Both actions are destructive-of-place: `restore` returns the
+// rows to the live views, `delete` removes them permanently --
+// the client confirms the delete arm first. The id resolution
+// mirrors the assets batch's set semantics with a trash-scoped
+// guard: an id that is not in the caller's trash at the time of
+// the request (unknown, another account's, already live or
+// already purged) is ignored and reported in `missing`; a batch
+// never fails over an individual id. `ids` carries between 1 and
+// 1000 entries; repeated ids collapse to one application.
+type TrashBatchRequest struct {
+	// Action The action to apply to every id in the caller's trash.
+	// `restore` clears the trash mark (the Live Photo pair
+	// moving as one asset, the external row's file moving back
+	// to its recorded original location); `delete` removes the
+	// rows and their files permanently (the shared-blob rule
+	// applies, the component video rows go with their photos).
+	Action TrashBatchRequestAction `json:"action"`
+
+	// Ids The asset ids to apply the action to: at least 1, at most
+	// 1000.
+	Ids []openapi_types.UUID `json:"ids"`
+}
+
+// TrashBatchRequestAction The action to apply to every id in the caller's trash.
+// `restore` clears the trash mark (the Live Photo pair
+// moving as one asset, the external row's file moving back
+// to its recorded original location); `delete` removes the
+// rows and their files permanently (the shared-blob rule
+// applies, the component video rows go with their photos).
+type TrashBatchRequestAction string
+
+// TrashBatchResponse The set-semantics report of one trash batch action. `affected`
+// and `missing` partition the request's distinct ids: every id
+// is either applied or was not in the caller's trash, none is
+// both, and none is silently dropped.
+type TrashBatchResponse struct {
+	// Affected How many distinct request ids were in the caller's trash
+	// at the time of the request and were processed. The trash
+	// batch's guard is trash-scoped, so an id already live or
+	// already purged lands in `missing` instead of counting here
+	// (the deliberate difference from the assets batch, whose
+	// state-agnostic guard counts an already-in-state row as
+	// affected): the trash view's rows are the caller's whole
+	// world, and a row that left it between render and click is
+	// a missing row, not a no-op.
+	Affected int `json:"affected"`
+
+	// Missing The distinct request ids that were not in the caller's
+	// trash at the time of the request -- unknown ids, other
+	// accounts' assets (indistinguishable by design), rows
+	// already restored to the live views and rows the expiry job
+	// already purged -- in the order of their first appearance
+	// in the request. Empty when every id was still in the
+	// trash.
+	Missing []openapi_types.UUID `json:"missing"`
+}
+
 // TrashItem One asset of the trash view: the timeline item's fields (the
 // tile-relevant identity and pipeline fields, so the trash page
 // renders the same tiles as the timeline) plus the trash
@@ -4822,6 +4898,19 @@ type TrashResponse struct {
 	// Items The trashed assets of the caller, ordered by `deletedAt`
 	// descending.
 	Items []TrashItem `json:"items"`
+
+	// RetentionDays The instance's trash retention window in whole days, the
+	// same setting the listing's `remainingDays` countdowns were
+	// computed against (`trash_retention_days`, default 30). The
+	// trash page's note renders it; adjusting the setting stays
+	// the administrator's surface, but the number itself is
+	// visible to every signed-in member. A corrupt setting row
+	// answers the default 30 -- the same degradation the
+	// countdowns follow.
+	//
+	//
+	// Examples: 30
+	RetentionDays int `json:"retentionDays"`
 }
 
 // TrashSettingsResponse The trash settings of `GET /admin/settings/trash` and the
@@ -4844,6 +4933,23 @@ type TrashSettingsUpdateRequest struct {
 	//
 	// Examples: 14
 	RetentionDays int `json:"retentionDays"`
+}
+
+// TrashSweepResponse The report of one whole-trash action (`restore-all`, `empty`):
+// how many rows the sweep actually applied. An empty trash
+// answers 0 -- the endpoints are idempotent, there is no
+// not-found surface (the sweep scans what is in the trash right
+// now, so the 404 of the single-row endpoints never appears).
+type TrashSweepResponse struct {
+	// Affected The number of trashed rows the sweep applied: the rows the
+	// restore-all returned to the live views (the events the
+	// sweep published), or the rows the empty permanently
+	// deleted. The trash is owner-scoped, so the sweep never
+	// touches another account's rows.
+	//
+	//
+	// Examples: 6
+	Affected int `json:"affected"`
 }
 
 // UnnamedClusterSummary One unnamed face cluster of the caller's unnamed region: a
@@ -5608,6 +5714,9 @@ type RemoveTagAssetsJSONRequestBody = TagAssetsRequest
 // AddTagAssetsJSONRequestBody defines body for AddTagAssets for application/json ContentType.
 type AddTagAssetsJSONRequestBody = TagAssetsRequest
 
+// BatchTrashJSONRequestBody defines body for BatchTrash for application/json ContentType.
+type BatchTrashJSONRequestBody = TrashBatchRequest
+
 // UpdateUserSelfJSONRequestBody defines body for UpdateUserSelf for application/json ContentType.
 type UpdateUserSelfJSONRequestBody = UserSelfPatch
 
@@ -5895,6 +6004,15 @@ type ServerInterface interface {
 	// GetTrash List the caller's trashed assets with their retention countdown.
 	// (GET /trash)
 	GetTrash(w http.ResponseWriter, r *http.Request)
+	// BatchTrash Apply one restore or delete action over a list of ids in the caller's trash.
+	// (POST /trash/batch)
+	BatchTrash(w http.ResponseWriter, r *http.Request)
+	// EmptyTrash Permanently delete everything in the caller's trash.
+	// (POST /trash/empty)
+	EmptyTrash(w http.ResponseWriter, r *http.Request)
+	// RestoreAllTrash Restore every trashed asset of the caller.
+	// (POST /trash/restore-all)
+	RestoreAllTrash(w http.ResponseWriter, r *http.Request)
 	// RestoreAsset Restore one trashed asset.
 	// (POST /trash/{id}/restore)
 	RestoreAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -6477,6 +6595,24 @@ func (_ Unimplemented) AddTagAssets(w http.ResponseWriter, r *http.Request, tagI
 // GetTrash List the caller's trashed assets with their retention countdown.
 // (GET /trash)
 func (_ Unimplemented) GetTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// BatchTrash Apply one restore or delete action over a list of ids in the caller's trash.
+// (POST /trash/batch)
+func (_ Unimplemented) BatchTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// EmptyTrash Permanently delete everything in the caller's trash.
+// (POST /trash/empty)
+func (_ Unimplemented) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// RestoreAllTrash Restore every trashed asset of the caller.
+// (POST /trash/restore-all)
+func (_ Unimplemented) RestoreAllTrash(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -8792,6 +8928,48 @@ func (siw *ServerInterfaceWrapper) GetTrash(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// BatchTrash operation middleware
+func (siw *ServerInterfaceWrapper) BatchTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BatchTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// EmptyTrash operation middleware
+func (siw *ServerInterfaceWrapper) EmptyTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.EmptyTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RestoreAllTrash operation middleware
+func (siw *ServerInterfaceWrapper) RestoreAllTrash(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RestoreAllTrash(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RestoreAsset operation middleware
 func (siw *ServerInterfaceWrapper) RestoreAsset(w http.ResponseWriter, r *http.Request) {
 
@@ -9101,6 +9279,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/trash/{id}/restore", wrapper.RestoreAsset)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/trash/restore-all", wrapper.RestoreAllTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/trash/empty", wrapper.EmptyTrash)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/trash/batch", wrapper.BatchTrash)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/albums", wrapper.ListAlbums)
