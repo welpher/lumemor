@@ -16,6 +16,7 @@ part 'job_run_response.g.dart';
 /// * [id] - UUIDv7 identifier of the run's `job_runs` row.
 /// * [kind] 
 /// * [state] 
+/// * [subject] - The run's subject label (E41): the directory album a rescan run walks, by title, so the panel's row names what it did (\"Album rescan · Family archive\"). Every other kind has no subject -- the instance-wide reruns never name one -- and answers null; a null subject renders the kind's own label alone. 
 /// * [total] - The run's whole work, in the run's own units: the download group's pinned bytes, or the rerun scope's asset count. 
 /// * [done] - The work completed so far, in the same units as `total`. 
 /// * [failed] - The failed work count: failed models for the download, assets whose rerun failed for a rerun. 
@@ -33,7 +34,11 @@ abstract class JobRunResponse implements Built<JobRunResponse, JobRunResponseBui
 
   @BuiltValueField(wireName: r'state')
   JobRunState get state;
-  // enum stateEnum {  queued,  running,  succeeded,  failed,  };
+  // enum stateEnum {  queued,  running,  succeeded,  failed,  cancelled,  };
+
+  /// The run's subject label (E41): the directory album a rescan run walks, by title, so the panel's row names what it did (\"Album rescan · Family archive\"). Every other kind has no subject -- the instance-wide reruns never name one -- and answers null; a null subject renders the kind's own label alone. 
+  @BuiltValueField(wireName: r'subject')
+  String? get subject;
 
   /// The run's whole work, in the run's own units: the download group's pinned bytes, or the rerun scope's asset count. 
   @BuiltValueField(wireName: r'total')
@@ -92,6 +97,11 @@ class _$JobRunResponseSerializer implements PrimitiveSerializer<JobRunResponse> 
     yield serializers.serialize(
       object.state,
       specifiedType: const FullType(JobRunState),
+    );
+    yield r'subject';
+    yield object.subject == null ? null : serializers.serialize(
+      object.subject,
+      specifiedType: const FullType.nullable(String),
     );
     yield r'total';
     yield serializers.serialize(
@@ -161,6 +171,14 @@ class _$JobRunResponseSerializer implements PrimitiveSerializer<JobRunResponse> 
             specifiedType: const FullType(JobRunState),
           ) as JobRunState;
           result.state = valueDes;
+          break;
+        case r'subject':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.subject = valueDes;
           break;
         case r'total':
           final valueDes = serializers.deserialize(

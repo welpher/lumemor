@@ -4166,15 +4166,60 @@ export interface paths {
          *     re-derived, and the next rebuild's `missing` scope skips
          *     them.
          *
-         *     The run closes `failed` with `failed` counting nothing: the
-         *     task panel renders the reason line as stopped, not as a
-         *     broken run -- the admin asked for this ending.
+         *     The run closes `cancelled` -- the task panel renders the
+         *     cancelled state, not a broken run: the admin asked for this
+         *     ending (E41 shared the flag-closed ending with the task
+         *     panel's per-run cancel, and the two speak one state).
          *
          *     A stop with no rebuild in flight (the run finished between the
          *     panel's listing and the click, or none ever started) answers
          *     409 `REBUILD_NOT_RUNNING`: the flag has nothing to land on.
          */
         post: operations["stopDerivativesRebuild"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/jobs/{runId}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel one in-flight job run.
+         * @description The task panel's cancel (E41): asks the named run to end at
+         *     its next chunk boundary. The request itself flags the run
+         *     only -- the run's driver checks the flag BETWEEN chunks (a
+         *     walk page, a rescan batch, one model of a download group) and
+         *     closes the run `cancelled` there, so:
+         *
+         *     - The committed portion stays: every chunk already finished
+         *     keeps its work on disk and its count in the run's `done`.
+         *     The response makes no promise about work that has not
+         *     committed yet.
+         *     - An in-flight asset-level job (one decode, one inference,
+         *     one encode) runs to its own end -- the boundary is between
+         *     chunks, never mid-asset.
+         *     - The run's state flips to `cancelled` when the driver
+         *     closes it, and the close rides the task panel's existing
+         *     events (`job.finished`) -- the listing converges through the
+         *     same stream it always converges through. A QUEUED run cancels
+         *     at once (its driver checks the flag before the first chunk).
+         *     - A run that already finished -- succeeded, failed or
+         *     cancelled -- answers 409 `JOB_NOT_CANCELLABLE`: nothing is in
+         *     flight to cancel, and the row's own state is the honest
+         *     answer. An unknown run id answers 404 `JOB_RUN_NOT_FOUND`.
+         *
+         *     The cancel takes no request body and answers no body: the
+         *     204 is the flag's whole receipt.
+         */
+        post: operations["cancelJobRun"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4531,9 +4576,12 @@ export interface paths {
         };
         /**
          * Read the model download settings.
-         * @description The model store's one policy switch: whether an AI job whose
-         *     slot is configured but whose weights are missing may start
-         *     the model group's download on its own.
+         * @description The model store's policy switch, download sources and
+         *     pipeline params: whether an AI job whose slot is configured
+         *     but whose weights are missing may start the model group's
+         *     download on its own, where the bytes may travel, and the two
+         *     steering params the ML jobs read at their own dispatch (see
+         *     `ModelParams`).
          *
          *     WHAT AUTO-FILLS: only a slot that already has an active
          *     model whose files are gone from the store -- the case of a
@@ -4543,16 +4591,17 @@ export interface paths {
          *     active path, and an unconfigured slot keeps the honest
          *     no-AI degraded mode.
          *
-         *     A corrupt settings row answers the default (on) with the
+         *     A corrupt settings row answers the defaults (the policy on,
+         *     the shipped hosts, the pipeline's own params) with the
          *     corruption logged server-side.
          */
         get: operations["getModelSettings"];
         /**
          * Save the model download settings and download sources.
-         * @description The settings save. `autoDownload`, `allowedHosts` and
-         *     `mirrorBaseUrl` are required (an omitted field would decode
-         *     as its zero value, silently changing the policy): the caller
-         *     saves the whole object it read.
+         * @description The settings save. `autoDownload`, `allowedHosts`,
+         *     `mirrorBaseUrl` and `params` are required (an omitted field
+         *     would decode as its zero value, silently changing the
+         *     policy): the caller saves the whole object it read.
          *
          *     `allowedHosts` replaces the stored list wholesale; every
          *     entry must be a hostname, optionally with a leading `*.`
@@ -4560,8 +4609,15 @@ export interface paths {
          *     non-empty, must be a host (or a full http/https URL whose
          *     host is kept); its host joins `allowedHosts` automatically,
          *     so saving a mirror never leaves it refusing its own first
-         *     hop. The values take effect on the next download run; no run
-         *     is started or cancelled by the save itself.
+         *     hop. `params` carries the two pipeline steering values, each
+         *     validated against the closed 0-1 domain -- a value outside it
+         *     answers 400 `VALIDATION_FAILED` naming the field, and nothing
+         *     is written.
+         *
+         *     The values take effect on the next dispatch (the download's
+         *     next run; the ML jobs' next per-asset enqueue) -- no run is
+         *     started or cancelled by the save itself, and work already in
+         *     flight runs to completion on the values it read.
          */
         put: operations["updateModelSettings"];
         post?: never;
@@ -5378,8 +5434,9 @@ export interface components {
             tilejsonUrl: string;
         };
         /**
-         * @description The model store's policy and download sources of
-         *     `GET /admin/settings/models` and the successful `PUT`.
+         * @description The model store's policy, download sources and pipeline
+         *     params of `GET /admin/settings/models` and the successful
+         *     `PUT`.
          */
         ModelSettingsResponse: {
             /**
@@ -5420,6 +5477,46 @@ export interface components {
              * @example hf-mirror.com
              */
             mirrorBaseUrl: string;
+            params: components["schemas"]["ModelParams"];
+        };
+        /**
+         * @description The pipeline's steering params (E41): the values the ML jobs
+         *     read at their own dispatch. The set is honest by contract --
+         *     v1 carries exactly the two knobs the pipeline actually reads,
+         *     and it grows only as the pipeline grows (a slot without a
+         *     knob renders no empty block).
+         *
+         *     A change takes effect on the NEXT dispatch: each job reads
+         *     the params once at its own start, so work already in flight
+         *     runs to completion on the values it read; no in-flight job is
+         *     re-steered. A corrupt stored value (a row the save
+         *     endpoint's validation should have kept honest) answers the
+         *     pipeline default on the read -- 0.6 for the minimum score,
+         *     0.55 for the clustering threshold -- with the corruption
+         *     logged server-side.
+         */
+        ModelParams: {
+            /**
+             * @description The face detection's minimum confidence, 0 to 1
+             *     inclusive: a candidate scoring below it never enters the
+             *     library. The shipped default is the pipeline's own 0.6;
+             *     the admin value overrides the active model's manifest
+             *     entry for this knob. Contract granularity is steps of
+             *     0.05 (the page's stepper); the domain is what validates.
+             * @example 0.6
+             */
+            faceDetectMinScore: number;
+            /**
+             * @description The face recognition's clustering threshold, 0 to 1
+             *     inclusive: two embeddings whose cosine distance is below
+             *     it belong to one person. The shipped default is the
+             *     pipeline's own 0.55; the admin value overrides the
+             *     active model's manifest entry for this knob. Contract
+             *     granularity is steps of 0.05 (the page's stepper); the
+             *     domain is what validates.
+             * @example 0.55
+             */
+            faceRecognizeThreshold: number;
         };
         /** @description Payload of `PUT /admin/settings/models`. */
         ModelSettingsUpdateRequest: {
@@ -5429,6 +5526,7 @@ export interface components {
             allowedHosts: string[];
             /** @description The mirror base host to save, or the empty string to clear it. */
             mirrorBaseUrl: string;
+            params: components["schemas"]["ModelParams"];
         };
         /**
          * @description The map's client-side configuration of `GET /map/config`:
@@ -5624,10 +5722,13 @@ export interface components {
         /**
          * @description The lifecycle of a job run: `queued` from creation until the
          *     driver picks it up, `running` while it works, then
-         *     `succeeded` or `failed`.
+         *     `succeeded`, `failed` -- or `cancelled` when the
+         *     administrator's cancel ended it at a chunk boundary (the
+         *     committed portion keeps its counts; a cancelled run is the
+         *     admin's own deliberate ending, never a broken one).
          * @enum {string}
          */
-        JobRunState: "queued" | "running" | "succeeded" | "failed";
+        JobRunState: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         /**
          * @description One job run as the task panel and the model page render it.
          *     The progress fields carry the run's own work's units: pinned
@@ -5643,6 +5744,15 @@ export interface components {
             id: string;
             kind: components["schemas"]["JobRunKind"];
             state: components["schemas"]["JobRunState"];
+            /**
+             * @description The run's subject label (E41): the directory album a
+             *     rescan run walks, by title, so the panel's row names what
+             *     it did ("Album rescan · Family archive"). Every other
+             *     kind has no subject -- the instance-wide reruns never
+             *     name one -- and answers null; a null subject renders the
+             *     kind's own label alone.
+             */
+            subject: string | null;
             /**
              * @description The run's whole work, in the run's own units: the
              *     download group's pinned bytes, or the rerun scope's
@@ -8809,7 +8919,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING" | "JOB_NOT_CANCELLABLE" | "JOB_RUN_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -15197,6 +15307,87 @@ export interface operations {
                 };
             };
             /** @description No rebuild run is in flight: nothing to stop. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    cancelJobRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The `job_runs` row identifier of the run to cancel.
+                 * @example 0192f8b2-6c7d-8e9f-a0b1-2c3d4e5f6070
+                 */
+                runId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The cancel was recorded against the in-flight run; its
+             *     driver closes it `cancelled` at the next chunk boundary.
+             */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description No run carries the id. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The run already finished: nothing is in flight to
+             *     cancel.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;

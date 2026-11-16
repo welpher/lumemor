@@ -25,5 +25,10 @@ void main() {
       // TODO
     });
 
+    // ModelParams params
+    test('to test the property `params`', () async {
+      // TODO
+    });
+
   });
 }

@@ -84,6 +84,7 @@ doc/ModelCatalogEntry.md
 doc/ModelDimensionChange.md
 doc/ModelDownloadResponse.md
 doc/ModelListResponse.md
+doc/ModelParams.md
 doc/ModelProbeAcceptedResponse.md
 doc/ModelProbeResponse.md
 doc/ModelProbeResponseInputSize.md
@@ -270,6 +271,7 @@ lib/src/model/model_catalog_entry.dart
 lib/src/model/model_dimension_change.dart
 lib/src/model/model_download_response.dart
 lib/src/model/model_list_response.dart
+lib/src/model/model_params.dart
 lib/src/model/model_probe_accepted_response.dart
 lib/src/model/model_probe_response.dart
 lib/src/model/model_probe_response_input_size.dart
@@ -436,6 +438,7 @@ test/model_catalog_entry_test.dart
 test/model_dimension_change_test.dart
 test/model_download_response_test.dart
 test/model_list_response_test.dart
+test/model_params_test.dart
 test/model_probe_accepted_response_test.dart
 test/model_probe_response_input_size_test.dart
 test/model_probe_response_progress_test.dart

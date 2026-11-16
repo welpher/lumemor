@@ -99,6 +99,7 @@ export 'package:lumemor_api/src/model/model_catalog_entry.dart';
 export 'package:lumemor_api/src/model/model_dimension_change.dart';
 export 'package:lumemor_api/src/model/model_download_response.dart';
 export 'package:lumemor_api/src/model/model_list_response.dart';
+export 'package:lumemor_api/src/model/model_params.dart';
 export 'package:lumemor_api/src/model/model_probe_accepted_response.dart';
 export 'package:lumemor_api/src/model/model_probe_response.dart';
 export 'package:lumemor_api/src/model/model_probe_response_input_size.dart';
