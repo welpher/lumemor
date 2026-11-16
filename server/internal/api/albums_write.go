@@ -4,7 +4,9 @@
 // -- the request names an existing path the server validates and
 // references in place; the face is the administrator's, and the
 // creation-time write probe lands the source-writable fact; the
-// create dialog's two switches ride the same request -- the
+// creation also enqueues the album's first scan, so a new directory
+// album's wall converges without a manual rescan), the create
+// dialog's two switches ride the same request -- the
 // deletability switch onto the row, the creator's timeline
 // exclusion into their own preference), the property patch behind
 // PATCH /albums/{albumId} (with the cover's live-member validation
@@ -269,10 +271,15 @@ func (s *server) albumItemsIDs(w http.ResponseWriter, assetIds []openapi_types.U
 // preference row in the creation itself -- the album is born out of
 // its creator's aggregated timeline, the audience's own feeds
 // governed by their own preference rows. The response is the fresh
-// row's wall card -- the owner role, no members, no cover -- widened
-// with the probe's fact and the honest audience report, and the
-// write publishes album.created plus one album.shared per audience
-// row that landed.
+// row's wall card -- the owner role, no members yet, no cover --
+// widened with the probe's fact and the honest audience report, and
+// the write publishes album.created plus one album.shared per
+// audience row that landed. The creation also STARTS the album's
+// first scan (the creation-time scan: the folder's files are the
+// album's members, and the wall must never wait for a manual rescan
+// to learn that). The card's zero counts are the run's own starting
+// point, not the album's meaning -- the scan converges them through
+// the existing items-changed event.
 func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -390,6 +397,36 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.publishAlbumEvent("album.created", id, requester.userID)
+
+	// The creation-time scan: the folder's first scan enqueues HERE,
+	// immediately after the row commits, so the album is never an
+	// empty wall waiting for somebody to press Rescan -- a directory
+	// album IS the scan's verdict on the folder it references, and
+	// the row alone is only the reference (the wall converges the
+	// moment the run lands: the scan ingests the folder's files
+	// through the existing pipeline and publishes the album's own
+	// items-changed). The enqueue is the endpoint's own seam (the
+	// run's job_runs row and its River job in one transaction), so
+	// the run is visible in the task panel exactly like a manual one.
+	//
+	// A creation whose enqueue fails does NOT fail the creation: the
+	// album exists, the reference is honest, and the manual rescan
+	// (and, on the next tick, the folder sync) starts the scan that
+	// was missed. A missing seam is the same story with one log line:
+	// only a directly constructed router gets here.
+	if s.albumRescans == nil {
+		s.logger.Error("directory album created without a job queue",
+			"album_id", id, "root_path", resolved)
+	} else if runID, err := s.albumRescans.EnqueueAlbumRescan(ctx, id); err != nil {
+		// The write is committed and the card below is the truth
+		// about the album; the scan's failure to start belongs in the
+		// log and the task panel, not in the creation's answer.
+		s.logger.Error("enqueue the creation-time scan of a new directory album",
+			"error", err, "album_id", id)
+	} else {
+		s.logger.Info("the creation-time scan of a new directory album started",
+			"album_id", id, "job_run_id", runID)
+	}
 
 	// The creation's audience lands through the same convergence the
 	// audience face runs: the grants that land fire their events,
