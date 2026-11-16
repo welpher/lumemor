@@ -1826,3 +1826,310 @@ func TestPeopleFaceDetach(t *testing.T) {
 		}
 	})
 }
+
+// patchFaceBox fires PATCH /faces/{faceId} with the raw body.
+func (e *assetEnv) patchFaceBox(t *testing.T, cookie *http.Cookie, faceID uuid.UUID, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writePeopleRaw(t, cookie, http.MethodPatch, "/api/v1/faces/"+faceID.String(), body)
+}
+
+// deletePerson fires DELETE /people/{clusterId}: the person's real
+// delete carries no body at all.
+func (e *assetEnv) deletePerson(t *testing.T, cookie *http.Cookie, clusterID uuid.UUID) *httptest.ResponseRecorder {
+	t.Helper()
+	return e.writePeopleRaw(t, cookie, http.MethodDelete, "/api/v1/people/"+clusterID.String(), "")
+}
+
+// requireAuthForbidden asserts the admin-domain 403: the code the
+// admin route group answers with, the domain in the message.
+func requireAuthForbidden(t *testing.T, rec *httptest.ResponseRecorder, what string) {
+	t.Helper()
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("%s status = %d, want %d (body %q)", what, rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	apiErr, _ := decodeError(t, rec)
+	if apiErr.Code != apigen.AUTHFORBIDDEN {
+		t.Errorf("%s code = %q, want %q", what, apiErr.Code, apigen.AUTHFORBIDDEN)
+	}
+	if apiErr.Message == nil || !strings.Contains(*apiErr.Message, "administrator") {
+		t.Errorf("%s message = %v, want the domain explained in the body", what, apiErr.Message)
+	}
+}
+
+// TestPeopleFaceBoxPatch walks the face-box editor's write through
+// the API: the normalized box stores in the per-mille units, the
+// out-of-frame and sub-floor boxes refuse with the validation
+// envelope, every miss shape answers the pinned 404, and the write
+// publishes its event.
+func TestPeopleFaceBoxPatch(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, _ := env.createSecondUser(t, "face-box-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The caller's face: one face on one live asset.
+	face := fixtureWriteFaceID("91")
+	env.insertOwnedAsset(t, fixtureWriteAssetID("91"), adminID,
+		time.Date(2026, 7, 1, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertFace(t, face, fixtureWriteAssetID("91"), 0.90)
+
+	t.Run("NormalizedBoxStoresPerMille", func(t *testing.T) {
+		rec := env.patchFaceBox(t, env.cookie, face, `{"x":0.25,"y":0.3,"width":0.15,"height":0.15}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PATCH face box status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var response apigen.FaceBoxPatchResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode face box response %q: %v", rec.Body.String(), err)
+		}
+		if uuid.UUID(response.FaceId) != face {
+			t.Errorf("faceId = %s, want %s", response.FaceId, face)
+		}
+		if response.Thumbnail != "/api/v1/faces/"+face.String()+"/thumbnail" {
+			t.Errorf("thumbnail = %q, want the face crop endpoint", response.Thumbnail)
+		}
+		if response.Bbox.X != 250 || response.Bbox.Y != 300 || response.Bbox.W != 150 || response.Bbox.H != 150 {
+			t.Errorf("bbox = %+v, want the per-mille halves of the normalized box", response.Bbox)
+		}
+
+		// The row itself carries the stored box (the faces table's
+		// own units).
+		row := env.queryInt(t, "SELECT bbox_x FROM faces WHERE id = $1", pgUUID(face))
+		if row != 250 {
+			t.Errorf("stored bbox_x = %d, want 250", row)
+		}
+		if h := env.queryInt(t, "SELECT bbox_h FROM faces WHERE id = $1", pgUUID(face)); h != 150 {
+			t.Errorf("stored bbox_h = %d, want 150", h)
+		}
+
+		// The asset detail's faces array is the caller's read-side
+		// truth: the on-photo box layer renders from it.
+		faces := env.getAssetFaces(t, env.cookie, fixtureWriteAssetID("91"))
+		if len(faces) != 1 || faces[0].Bbox.X != 250 || faces[0].Bbox.W != 150 {
+			t.Fatalf("asset faces = %+v, want the rewritten box on the one face", faces)
+		}
+
+		events := busEventsOf(t, env.bus, "person.face_box_updated")
+		if len(events) != 1 {
+			t.Fatalf("person.face_box_updated events = %d, want 1", len(events))
+		}
+		requirePayloadIDs(t, events[0], "person.face_box_updated", map[string]string{
+			"faceId": face.String(),
+			"userId": adminID.String(),
+		})
+	})
+
+	t.Run("FrameEdgeRoundsIntoTheCheck", func(t *testing.T) {
+		// A box hugging the right edge: the two half-roundings must
+		// not drift the stored pair past the frame (the faces
+		// table's own CHECK would refuse the row).
+		rec := env.patchFaceBox(t, env.cookie, face, `{"x":0.9895,"y":0.5,"width":0.0105,"height":0.01}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("PATCH edge box status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+		}
+		var response apigen.FaceBoxPatchResponse
+		if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+			t.Fatalf("decode edge box response %q: %v", rec.Body.String(), err)
+		}
+		if response.Bbox.X+response.Bbox.W > 1000 {
+			t.Errorf("bbox = %+v, the pair crosses the frame", response.Bbox)
+		}
+		if response.Bbox.W < 1 {
+			t.Errorf("bbox.W = %d, want a live extent", response.Bbox.W)
+		}
+	})
+
+	t.Run("OutOfFrameAndSubFloorBoxesRefuse", func(t *testing.T) {
+		refusals := []struct {
+			what string
+			body string
+		}{
+			{"crossing the right edge", `{"x":0.9,"y":0.5,"width":0.2,"height":0.1}`},
+			{"crossing the bottom edge", `{"x":0.5,"y":0.9,"width":0.1,"height":0.2}`},
+			{"extent below the floor", `{"x":0.1,"y":0.1,"width":0.009,"height":0.1}`},
+			{"zero extent", `{"x":0.1,"y":0.1,"width":0.1,"height":0}`},
+			{"out of range corner", `{"x":1.2,"y":0.1,"width":0.1,"height":0.1}`},
+			{"negative corner", `{"x":-0.1,"y":0.1,"width":0.1,"height":0.1}`},
+			{"missing field", `{"x":0.1,"y":0.1,"width":0.1}`},
+			{"non-numeric value", `{"x":"left","y":0.1,"width":0.1,"height":0.1}`},
+		}
+		for _, refusal := range refusals {
+			rec := env.patchFaceBox(t, env.cookie, face, refusal.body)
+			requireValidationError(t, rec, refusal.what)
+		}
+		// The rejected writes changed nothing: the row still holds
+		// the frame-edge box the last accepted write stored.
+		if row := env.queryInt(t, "SELECT bbox_x FROM faces WHERE id = $1", pgUUID(face)); row != 990 {
+			t.Errorf("bbox_x after the refusals = %d, want the untouched 990", row)
+		}
+	})
+
+	t.Run("MissShapesNotFound", func(t *testing.T) {
+		// Grace's face on her own asset, a face on a trashed asset,
+		// and an unknown id: the face writes' one 404, byte for byte.
+		graceFace := fixtureWriteFaceID("92")
+		env.seedWriteCluster(t, fixtureWriteAssetID("92"), graceID,
+			time.Date(2026, 7, 2, 10, 0, 0, 0, time.UTC), fixtureWriteClusterID("92"),
+			writeFaceSpec{graceFace, 0.55})
+		env.insertOwnedAsset(t, fixtureWriteAssetID("93"), adminID,
+			time.Date(2026, 7, 3, 10, 0, 0, 0, time.UTC), timelineAssetOpts{deleted: true})
+		trashedFace := fixtureWriteFaceID("93")
+		env.insertFace(t, trashedFace, fixtureWriteAssetID("93"), 0.40)
+
+		probes := []struct {
+			what string
+			face uuid.UUID
+		}{
+			{"unknown face", fixtureWriteFaceID("ff")},
+			{"foreign-asset face", graceFace},
+			{"trashed-asset face", trashedFace},
+		}
+		var bodies []string
+		for _, probe := range probes {
+			rec := env.patchFaceBox(t, env.cookie, probe.face, `{"x":0.1,"y":0.1,"width":0.1,"height":0.1}`)
+			requirePersonNotFound(t, rec, probe.what)
+			bodies = append(bodies, rec.Body.String())
+		}
+		for _, body := range bodies[1:] {
+			if body != bodies[0] {
+				t.Errorf("404 bodies differ across the refusal matrix: %q vs %q", body, bodies[0])
+			}
+		}
+	})
+}
+
+// TestPeopleDeletePerson walks the person's real delete: the cluster
+// and ALL of its face rows go in one transaction, the assets are
+// untouched, the unnamed pool gains nothing, every miss shape
+// answers the pinned 404, and the domain is the administrator's.
+func TestPeopleDeletePerson(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	graceID, graceCookie := env.createSecondUser(t, "person-delete-grace@example.com")
+	env.insertPeopleModel(t)
+
+	// The caller's person: two faces on one live asset, labeled.
+	person := fixtureWriteClusterID("95")
+	f1 := writeFaceSpec{fixtureWriteFaceID("95"), 0.90}
+	f2 := writeFaceSpec{fixtureWriteFaceID("96"), 0.70}
+	asset := fixtureWriteAssetID("95")
+	env.seedWriteCluster(t, asset, adminID, time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC), person, f1, f2)
+	if rec := env.putPersonLabel(t, env.cookie, person, `{"name":"Dad"}`); rec.Code != http.StatusOK {
+		t.Fatalf("label the person: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	// An unnamed cluster of the caller's (the unnamed pool's own
+	// row, whose count must not move when the person dies) and a
+	// foreign-only cluster (invisible through every write).
+	pool := fixtureWriteClusterID("96")
+	env.seedWriteCluster(t, fixtureWriteAssetID("96"), adminID,
+		time.Date(2026, 8, 2, 10, 0, 0, 0, time.UTC), pool, writeFaceSpec{fixtureWriteFaceID("97"), 0.60})
+	foreign := fixtureWriteClusterID("97")
+	env.seedWriteCluster(t, fixtureWriteAssetID("97"), graceID,
+		time.Date(2026, 8, 3, 10, 0, 0, 0, time.UTC), foreign, writeFaceSpec{fixtureWriteFaceID("98"), 0.55})
+
+	unnamedCount := func() int {
+		rec := env.writePeopleRaw(t, env.cookie, http.MethodGet, "/api/v1/people/unnamed", "")
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET unnamed status = %d, want %d", rec.Code, http.StatusOK)
+		}
+		var page struct {
+			TotalCount int `json:"totalCount"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
+			t.Fatalf("decode unnamed page %q: %v", rec.Body.String(), err)
+		}
+		return page.TotalCount
+	}
+
+	t.Run("MemberForbiddenBeforeAnyLookup", func(t *testing.T) {
+		// The domain is the administrator's: a member answers 403
+		// with the domain in the message -- against a real cluster
+		// AND an unknown id alike (the 403 never becomes an
+		// existence oracle).
+		requireAuthForbidden(t, env.deletePerson(t, graceCookie, person), "member delete of a real cluster")
+		requireAuthForbidden(t, env.deletePerson(t, graceCookie, fixtureWriteClusterID("ff")), "member delete of an unknown id")
+		// The refused writes changed nothing.
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(person)); got != 1 {
+			t.Errorf("cluster rows after the member refusals = %d, want 1", got)
+		}
+	})
+
+	t.Run("UnknownOrInvisibleClusterNotFound", func(t *testing.T) {
+		unknown := env.deletePerson(t, env.cookie, fixtureWriteClusterID("fe"))
+		requirePersonNotFound(t, unknown, "delete unknown cluster")
+		invisible := env.deletePerson(t, env.cookie, foreign)
+		requirePersonNotFound(t, invisible, "delete foreign-only cluster")
+		if unknown.Body.String() != invisible.Body.String() {
+			t.Errorf("404 bodies differ between unknown and foreign-only clusters: %q vs %q",
+				unknown.Body.String(), invisible.Body.String())
+		}
+	})
+
+	t.Run("DeleteCascadesFacesAndSparesTheAssets", func(t *testing.T) {
+		// The unnamed pool's count BEFORE the delete: the same
+		// number after -- the faces are deleted, never released,
+		// so the pool gains nothing.
+		before := unnamedCount()
+
+		rec := env.deletePerson(t, env.cookie, person)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("DELETE person status = %d, want %d (body %q)", rec.Code, http.StatusNoContent, rec.Body.String())
+		}
+
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters WHERE id = $1", pgUUID(person)); got != 0 {
+			t.Errorf("cluster rows after the delete = %d, want 0", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM faces WHERE id = ANY($1::uuid[])",
+			"{"+f1.id.String()+","+f2.id.String()+"}"); got != 0 {
+			t.Errorf("face rows after the delete = %d, want 0 (the faces die WITH the person)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM user_face_labels WHERE cluster_id = $1", pgUUID(person)); got != 0 {
+			t.Errorf("labels after the delete = %d, want 0 (cascaded)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE id = $1", pgUUID(asset)); got != 1 {
+			t.Errorf("asset rows after the delete = %d, want 1 (the photos are untouched)", got)
+		}
+		if got := env.queryInt(t, "SELECT count(*) FROM face_clusters"); got != 2 {
+			t.Errorf("cluster rows total after the delete = %d, want 2 (the pool cluster and the foreign one)", got)
+		}
+
+		// The photo's face list loses the person's chips outright:
+		// nothing re-renders among the not grouped yet.
+		if faces := env.getAssetFaces(t, env.cookie, asset); len(faces) != 0 {
+			t.Fatalf("asset faces after the delete = %+v, want none (the rows are gone, not unassigned)", faces)
+		}
+
+		// The lists converge: /people loses the person, the
+		// unnamed pool's count is what it was.
+		if people := env.getPeopleList(t, env.cookie); len(people) != 0 {
+			t.Errorf("/people after the delete = %+v, want empty", people)
+		}
+		if after := unnamedCount(); after != before {
+			t.Errorf("unnamed pool count after the delete = %d, want the untouched %d", after, before)
+		}
+
+		events := busEventsOf(t, env.bus, "person.deleted")
+		if len(events) != 1 {
+			t.Fatalf("person.deleted events = %d, want 1", len(events))
+		}
+		requirePayloadIDs(t, events[0], "person.deleted", map[string]string{
+			"clusterId": person.String(),
+			"userId":    adminID.String(),
+		})
+
+		// The person page's own read: the deleted id answers the
+		// same dead-end 404 it answers for an unknown one.
+		requirePersonNotFound(t, env.writePeopleRaw(t, env.cookie, http.MethodGet,
+			"/api/v1/people/"+person.String(), ""), "detail of the deleted cluster")
+	})
+
+	t.Run("UnauthenticatedRejected", func(t *testing.T) {
+		if rec := env.deletePerson(t, nil, pool); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated DELETE person status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+		if rec := env.patchFaceBox(t, nil, f1.id, `{"x":0.1,"y":0.1,"width":0.1,"height":0.1}`); rec.Code != http.StatusUnauthorized {
+			t.Fatalf("unauthenticated PATCH face box status = %d, want %d", rec.Code, http.StatusUnauthorized)
+		}
+	})
+}
