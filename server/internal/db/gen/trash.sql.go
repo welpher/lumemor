@@ -361,6 +361,143 @@ func (q *Queries) ListTrash(ctx context.Context, arg ListTrashParams) ([]ListTra
 	return items, nil
 }
 
+const listTrashedForSweep = `-- name: ListTrashedForSweep :many
+SELECT a.id, a.owner_id, a.storage_kind, a.file_path, a.checksum, a.original_filename, a.file_size, a.mime_type, a.media_kind, a.live_photo_video_id, a.is_component, a.width, a.height, a.duration_ms, a.taken_at, a.taken_at_source, a.place_id, a.blurhash, a.phash, a.is_hidden, a.description, a.deleted_at, a.original_path, a.trash_path, a.created_at, a.updated_at, a.device_asset_id, a.pending_jobs, a.ready_at, a.file_mtime, a.taken_at_zone, a.location_lat, a.location_lon, a.motion_extracted, a.live_photo_cid
+FROM assets a
+WHERE a.owner_id = $1
+  AND a.deleted_at IS NOT NULL
+  AND a.is_component = false
+  AND NOT (a.storage_kind = 'external' AND a.trash_path IS NULL)
+ORDER BY a.deleted_at
+LIMIT $2
+`
+
+type ListTrashedForSweepParams struct {
+	OwnerID    pgtype.UUID `json:"owner_id"`
+	LimitCount int32       `json:"limit_count"`
+}
+
+// The whole-trash sweeps' candidate listing (restore-all, empty):
+// every row of one owner's trash right now, oldest deletion first,
+// bounded per chunk so one request's sweep stays a bounded
+// transaction-and-filesystem pass -- the caller loops the query until
+// it comes back empty (a purge removes the rows, so each chunk
+// advances the sweep). The predicate is the trash view's own: the
+// component rows never sweep alone (their purge rides their photo's
+// through the pair semantics), an external orphan mark (trash_path
+// NULL) is not the trash's business, and the full row shape is what
+// the per-row restore and delete semantics need (the external move's
+// paths, the media kinds, the storage eras).
+func (q *Queries) ListTrashedForSweep(ctx context.Context, arg ListTrashedForSweepParams) ([]Asset, error) {
+	rows, err := q.db.Query(ctx, listTrashedForSweep, arg.OwnerID, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Asset
+	for rows.Next() {
+		var i Asset
+		if err := rows.Scan(
+			&i.ID,
+			&i.OwnerID,
+			&i.StorageKind,
+			&i.FilePath,
+			&i.Checksum,
+			&i.OriginalFilename,
+			&i.FileSize,
+			&i.MimeType,
+			&i.MediaKind,
+			&i.LivePhotoVideoID,
+			&i.IsComponent,
+			&i.Width,
+			&i.Height,
+			&i.DurationMs,
+			&i.TakenAt,
+			&i.TakenAtSource,
+			&i.PlaceID,
+			&i.Blurhash,
+			&i.Phash,
+			&i.IsHidden,
+			&i.Description,
+			&i.DeletedAt,
+			&i.OriginalPath,
+			&i.TrashPath,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeviceAssetID,
+			&i.PendingJobs,
+			&i.ReadyAt,
+			&i.FileMtime,
+			&i.TakenAtZone,
+			&i.LocationLat,
+			&i.LocationLon,
+			&i.MotionExtracted,
+			&i.LivePhotoCid,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const resolveTrashedAssets = `-- name: ResolveTrashedAssets :many
+SELECT id, media_kind
+FROM assets
+WHERE id = ANY($1::uuid[])
+  AND owner_id = $2
+  AND deleted_at IS NOT NULL
+  AND is_component = false
+  AND NOT (storage_kind = 'external' AND trash_path IS NULL)
+`
+
+type ResolveTrashedAssetsParams struct {
+	Ids     []pgtype.UUID `json:"ids"`
+	OwnerID pgtype.UUID   `json:"owner_id"`
+}
+
+type ResolveTrashedAssetsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	MediaKind MediaKind   `json:"media_kind"`
+}
+
+// The trash batch's id resolution for both of its actions: which of
+// the request's ids are IN THE CALLER'S TRASH at the time of the
+// request. The trash-scoped guard is the deliberate difference from
+// ResolveBatchAssets's state-agnostic owner guard: an already-live
+// row, an already-purged row and a foreign or unknown id all resolve
+// to no row and land in the response's missing list together (the
+// anti-enumeration discipline -- the caller cannot probe an id's
+// state apart). The view's own exclusions ride along: component
+// video rows never surface in the trash (the pair is represented by
+// its photo, which carries the restore and the delete), and an
+// external row with no trash_path is the rescan's orphan mark the
+// trash view never listed -- an id the caller could only know from
+// outside the view. media_kind rides along for the per-row events,
+// the same (id, kind) pair every asset event carries.
+func (q *Queries) ResolveTrashedAssets(ctx context.Context, arg ResolveTrashedAssetsParams) ([]ResolveTrashedAssetsRow, error) {
+	rows, err := q.db.Query(ctx, resolveTrashedAssets, arg.Ids, arg.OwnerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResolveTrashedAssetsRow
+	for rows.Next() {
+		var i ResolveTrashedAssetsRow
+		if err := rows.Scan(&i.ID, &i.MediaKind); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restoreAsset = `-- name: RestoreAsset :execrows
 UPDATE assets SET
     deleted_at = NULL,

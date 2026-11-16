@@ -422,6 +422,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				// removals), so they belong in this group like every
 				// other JSON handler.
 				r.Get("/trash", wrapper.GetTrash)
+				// The whole-trash pair and the multi-select batch:
+				// static segments, deliberately mounted BEFORE the
+				// {id}/restore parametric route's siblings so chi's
+				// static-over-param precedence keeps them unambiguous.
+				r.Post("/trash/restore-all", wrapper.RestoreAllTrash)
+				r.Post("/trash/empty", wrapper.EmptyTrash)
+				r.Post("/trash/batch", wrapper.BatchTrash)
 				r.Post("/trash/{id}/restore", wrapper.RestoreAsset)
 				r.Delete("/assets/{id}", wrapper.DeleteAsset)
 				// The album surface reads: the wall

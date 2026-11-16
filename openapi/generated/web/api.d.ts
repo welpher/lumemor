@@ -1127,7 +1127,9 @@ export interface paths {
          *     recent deletes, and older items age out through expiry long
          *     before the bound could bite). The component video rows of
          *     Live Photos never appear: the pair is represented by its
-         *     photo.
+         *     photo. `retentionDays` carries the instance setting the
+         *     countdowns were computed against -- the note the trash page
+         *     renders its number from.
          */
         get: operations["getTrash"];
         put?: never;
@@ -1183,6 +1185,122 @@ export interface paths {
          *     directory album's source file, the next rescan's add arm.
          */
         post: operations["restoreAsset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash/restore-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore every trashed asset of the caller.
+         * @description The whole-trash restore: every row of the caller's trash
+         *     right now returns to the live views, the newest deletion
+         *     last. The Live Photo pair restores as one asset (its
+         *     component video row rides the photo's restore), an external
+         *     row's file moves back to its recorded original location, and
+         *     the rows that actually left the trash announce one
+         *     `asset.restored` each on the activity stream.
+         *
+         *     The endpoint is idempotent: an empty trash answers 200 with
+         *     `affected` 0 -- there is no not-found surface, the sweep
+         *     scans what is in the caller's trash at the time of the
+         *     request, so the 404 of the single-row restore never appears.
+         *     The sweep never touches another account's rows (the trash is
+         *     owner-scoped) and never reaches rows that are already live.
+         *
+         *     The caller confirms nothing: a whole restore is reversible
+         *     through the timeline's own trash flow, so unlike the empty
+         *     arm no confirmation gate is specified -- the client runs it
+         *     directly.
+         */
+        post: operations["restoreAllTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash/empty": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Permanently delete everything in the caller's trash.
+         * @description The whole-trash delete: every row of the caller's trash right
+         *     now goes for good, under the same rules the single-row
+         *     permanent delete pins (the shared-blob reference rule keeps a
+         *     file another row still uses; the derived trees go with the
+         *     rows; the Live Photo pair goes together). Each purged row
+         *     announces one `asset.deleted` on the activity stream, so the
+         *     connected surfaces converge the way they follow the expiry
+         *     job's purges.
+         *
+         *     The endpoint is idempotent: an empty trash answers 200 with
+         *     `affected` 0 -- the sweep scans what is in the caller's trash
+         *     at the time of the request, so the 404 of the single-row
+         *     delete never appears. The sweep never touches another
+         *     account's rows: the trash is owner-scoped, an empty answers
+         *     only ever concern the caller's own deletes.
+         *
+         *     The caller confirms FIRST: the permanent deletion of every
+         *     trashed asset is irreversible, so the client opens its
+         *     confirmation dialog (naming the count it is about to destroy)
+         *     before the request may fire.
+         */
+        post: operations["emptyTrash"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/trash/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply one restore or delete action over a list of ids in the caller's trash.
+         * @description The trash view's multi-select surface: one request applies one
+         *     action (`restore` or `delete`) to a list of ids. The id
+         *     resolution mirrors the assets batch's set semantics with a
+         *     TRASH-SCOPED guard: only an id that is in the caller's trash
+         *     at the time of the request resolves -- unknown ids, other
+         *     accounts' assets (indistinguishable, so ids cannot be
+         *     enumerated), rows already restored to the live views and rows
+         *     the expiry job already purged land in the response's
+         *     `missing` list instead, and the batch never fails over an
+         *     individual id. The resolved ids' actions run under the same
+         *     semantics the single-row endpoints pin: the restore moves a
+         *     Live Photo pair and an external row's file as the single-row
+         *     restore does, the delete runs the permanent-delete rules (the
+         *     shared-blob rule included) row by row, and the rows whose
+         *     state actually changed announce the same events per row
+         *     (`asset.restored` / `asset.deleted`).
+         *
+         *     `delete` is the destructive arm: the caller's client confirms
+         *     first (the count in the sentence), exactly like the whole-trash
+         *     empty.
+         */
+        post: operations["batchTrash"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6634,6 +6752,95 @@ export interface components {
              *     descending.
              */
             items: components["schemas"]["TrashItem"][];
+            /**
+             * @description The instance's trash retention window in whole days, the
+             *     same setting the listing's `remainingDays` countdowns were
+             *     computed against (`trash_retention_days`, default 30). The
+             *     trash page's note renders it; adjusting the setting stays
+             *     the administrator's surface, but the number itself is
+             *     visible to every signed-in member. A corrupt setting row
+             *     answers the default 30 -- the same degradation the
+             *     countdowns follow.
+             * @example 30
+             */
+            retentionDays: number;
+        };
+        /**
+         * @description The report of one whole-trash action (`restore-all`, `empty`):
+         *     how many rows the sweep actually applied. An empty trash
+         *     answers 0 -- the endpoints are idempotent, there is no
+         *     not-found surface (the sweep scans what is in the trash right
+         *     now, so the 404 of the single-row endpoints never appears).
+         */
+        TrashSweepResponse: {
+            /**
+             * @description The number of trashed rows the sweep applied: the rows the
+             *     restore-all returned to the live views (the events the
+             *     sweep published), or the rows the empty permanently
+             *     deleted. The trash is owner-scoped, so the sweep never
+             *     touches another account's rows.
+             * @example 6
+             */
+            affected: number;
+        };
+        /**
+         * @description One batch action over a list of ids IN THE CALLER'S TRASH.
+         *     Both actions are destructive-of-place: `restore` returns the
+         *     rows to the live views, `delete` removes them permanently --
+         *     the client confirms the delete arm first. The id resolution
+         *     mirrors the assets batch's set semantics with a trash-scoped
+         *     guard: an id that is not in the caller's trash at the time of
+         *     the request (unknown, another account's, already live or
+         *     already purged) is ignored and reported in `missing`; a batch
+         *     never fails over an individual id. `ids` carries between 1 and
+         *     1000 entries; repeated ids collapse to one application.
+         */
+        TrashBatchRequest: {
+            /**
+             * @description The action to apply to every id in the caller's trash.
+             *     `restore` clears the trash mark (the Live Photo pair
+             *     moving as one asset, the external row's file moving back
+             *     to its recorded original location); `delete` removes the
+             *     rows and their files permanently (the shared-blob rule
+             *     applies, the component video rows go with their photos).
+             * @enum {string}
+             */
+            action: "restore" | "delete";
+            /**
+             * @description The asset ids to apply the action to: at least 1, at most
+             *     1000.
+             */
+            ids: string[];
+        };
+        /**
+         * @description The set-semantics report of one trash batch action. `affected`
+         *     and `missing` partition the request's distinct ids: every id
+         *     is either applied or was not in the caller's trash, none is
+         *     both, and none is silently dropped.
+         */
+        TrashBatchResponse: {
+            /**
+             * @description How many distinct request ids were in the caller's trash
+             *     at the time of the request and were processed. The trash
+             *     batch's guard is trash-scoped, so an id already live or
+             *     already purged lands in `missing` instead of counting here
+             *     (the deliberate difference from the assets batch, whose
+             *     state-agnostic guard counts an already-in-state row as
+             *     affected): the trash view's rows are the caller's whole
+             *     world, and a row that left it between render and click is
+             *     a missing row, not a no-op.
+             */
+            affected: number;
+            /**
+             * @description The distinct request ids that were not in the caller's
+             *     trash at the time of the request -- unknown ids, other
+             *     accounts' assets (indistinguishable by design), rows
+             *     already restored to the live views and rows the expiry job
+             *     already purged -- in the order of their first appearance
+             *     in the request. Empty when every id was still in the
+             *     trash.
+             */
+            missing: string[];
         };
         /**
          * @description One batch action over a list of asset ids. The action applies
@@ -10297,6 +10504,168 @@ export interface operations {
              *     recorded original location. The row stayed trashed and
              *     the file stayed in the trash area -- a retry after the
              *     source location returns is the recovery.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    restoreAllTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The restore landed: `affected` names the rows that left
+             *     the trash (0 when the trash was already empty -- the
+             *     idempotent no-op).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashSweepResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Unexpected server failure, or the external restore's move
+             *     failure: the file could not be moved back to its recorded
+             *     original location. The rows restored before the failure
+             *     stay restored and the row in question stays trashed --
+             *     the sweep answers like the single-row restore's move
+             *     failure, and a retry after remounting finds the rest.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    emptyTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /**
+             * @description The empty landed: `affected` names the rows that were
+             *     purged (0 when the trash was already empty -- the
+             *     idempotent no-op).
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashSweepResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Unexpected server failure. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    batchTrash: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrashBatchRequest"];
+            };
+        };
+        responses: {
+            /**
+             * @description The batch landed: `affected` and `missing` partition the
+             *     request's distinct ids.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrashBatchResponse"];
+                };
+            };
+            /**
+             * @description The request body is malformed JSON, the action is not one
+             *     of the two the surface knows, or the id list is empty or
+             *     over the batch bound of 1000.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description Unexpected server failure, or the external restore's move
+             *     failure (the same explicit answer the single-row restore
+             *     gives).
              */
             500: {
                 headers: {

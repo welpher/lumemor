@@ -148,7 +148,7 @@ func TestRemoveDirectoryAlbum(t *testing.T) {
 	// semantics hold its file in the server's trash area); the
 	// removal takes the row and the trash copy together.
 	trashed := env.insertRemovalMember(t, album, adminID, sourceDir, "trashed.jpg", content("trashed"), mtime)
-	report := env.batchAssets(t, env.cookie, string(apigen.Trash), trashed)
+	report := env.batchAssets(t, env.cookie, string(apigen.BatchRequestActionTrash), trashed)
 	if report.Affected != 1 {
 		t.Fatalf("trash report = %+v, want 1 affected", report)
 	}

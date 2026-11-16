@@ -14,11 +14,16 @@ part 'trash_response.g.dart';
 ///
 /// Properties:
 /// * [items] - The trashed assets of the caller, ordered by `deletedAt` descending. 
+/// * [retentionDays] - The instance's trash retention window in whole days, the same setting the listing's `remainingDays` countdowns were computed against (`trash_retention_days`, default 30). The trash page's note renders it; adjusting the setting stays the administrator's surface, but the number itself is visible to every signed-in member. A corrupt setting row answers the default 30 -- the same degradation the countdowns follow. 
 @BuiltValue()
 abstract class TrashResponse implements Built<TrashResponse, TrashResponseBuilder> {
   /// The trashed assets of the caller, ordered by `deletedAt` descending. 
   @BuiltValueField(wireName: r'items')
   BuiltList<TrashItem> get items;
+
+  /// The instance's trash retention window in whole days, the same setting the listing's `remainingDays` countdowns were computed against (`trash_retention_days`, default 30). The trash page's note renders it; adjusting the setting stays the administrator's surface, but the number itself is visible to every signed-in member. A corrupt setting row answers the default 30 -- the same degradation the countdowns follow. 
+  @BuiltValueField(wireName: r'retentionDays')
+  int get retentionDays;
 
   TrashResponse._();
 
@@ -47,6 +52,11 @@ class _$TrashResponseSerializer implements PrimitiveSerializer<TrashResponse> {
     yield serializers.serialize(
       object.items,
       specifiedType: const FullType(BuiltList, [FullType(TrashItem)]),
+    );
+    yield r'retentionDays';
+    yield serializers.serialize(
+      object.retentionDays,
+      specifiedType: const FullType(int),
     );
   }
 
@@ -77,6 +87,13 @@ class _$TrashResponseSerializer implements PrimitiveSerializer<TrashResponse> {
             specifiedType: const FullType(BuiltList, [FullType(TrashItem)]),
           ) as BuiltList<TrashItem>;
           result.items.replace(valueDes);
+          break;
+        case r'retentionDays':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(int),
+          ) as int;
+          result.retentionDays = valueDes;
           break;
         default:
           unhandled.add(key);

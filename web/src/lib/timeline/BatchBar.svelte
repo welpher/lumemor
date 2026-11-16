@@ -89,6 +89,15 @@
 		 * the bar stays presentation-only.
 		 */
 		onremovememory?: () => void;
+		/**
+		 * Open the selected rows' permanent-delete confirmation (the
+		 * trash view's bar carries it; every wall that runs the
+		 * reversible batch actions does not). The delete flow carries
+		 * its own dialog and endpoint -- the same optional-callback
+		 * shape as the tag opener, and the page runs the destructive
+		 * write only past its own confirm gate.
+		 */
+		ondeleteselected?: () => void;
 		/** Run one batch action over the current selection. */
 		onaction: (action: BatchAction) => void;
 		/** Clear the selection. */
@@ -105,6 +114,7 @@
 		onaddtag,
 		onaddmemory,
 		onremovememory,
+		ondeleteselected,
 		onaction,
 		onclear
 	}: Props = $props();
@@ -237,6 +247,23 @@
 				onclick={onremovememory}
 			>
 				<Minus size={20} aria-hidden="true" />
+			</IconButton>
+		{/if}
+
+		{#if ondeleteselected !== undefined}
+			<!-- The destructive arm opens the page's confirm dialog instead
+			     of running (the irreversible action is never one click
+			     away): the callback's presence is the capability, the
+			     confirm gate stays the page's own. -->
+			<IconButton
+				class="batchbar__action batchbar__action--delete"
+				variant="danger"
+				disabled={busy}
+				aria-label={$_('trash_delete_permanently')}
+				title={$_('trash_delete_permanently')}
+				onclick={ondeleteselected}
+			>
+				<Trash2 size={20} aria-hidden="true" />
 			</IconButton>
 		{/if}
 

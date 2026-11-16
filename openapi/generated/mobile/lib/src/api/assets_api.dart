@@ -18,7 +18,10 @@ import 'package:lumemor_api/src/model/batch_request.dart';
 import 'package:lumemor_api/src/model/batch_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/timeline_response.dart';
+import 'package:lumemor_api/src/model/trash_batch_request.dart';
+import 'package:lumemor_api/src/model/trash_batch_response.dart';
 import 'package:lumemor_api/src/model/trash_response.dart';
+import 'package:lumemor_api/src/model/trash_sweep_response.dart';
 
 class AssetsApi {
 
@@ -134,6 +137,112 @@ class AssetsApi {
     );
   }
 
+  /// Apply one restore or delete action over a list of ids in the caller&#39;s trash.
+  /// The trash view&#39;s multi-select surface: one request applies one action (&#x60;restore&#x60; or &#x60;delete&#x60;) to a list of ids. The id resolution mirrors the assets batch&#39;s set semantics with a TRASH-SCOPED guard: only an id that is in the caller&#39;s trash at the time of the request resolves -- unknown ids, other accounts&#39; assets (indistinguishable, so ids cannot be enumerated), rows already restored to the live views and rows the expiry job already purged land in the response&#39;s &#x60;missing&#x60; list instead, and the batch never fails over an individual id. The resolved ids&#39; actions run under the same semantics the single-row endpoints pin: the restore moves a Live Photo pair and an external row&#39;s file as the single-row restore does, the delete runs the permanent-delete rules (the shared-blob rule included) row by row, and the rows whose state actually changed announce the same events per row (&#x60;asset.restored&#x60; / &#x60;asset.deleted&#x60;).  &#x60;delete&#x60; is the destructive arm: the caller&#39;s client confirms first (the count in the sentence), exactly like the whole-trash empty. 
+  ///
+  /// Parameters:
+  /// * [trashBatchRequest] 
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TrashBatchResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TrashBatchResponse>> batchTrash({ 
+    required TrashBatchRequest trashBatchRequest,
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/trash/batch';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      contentType: 'application/json',
+      validateStatus: validateStatus,
+    );
+
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(TrashBatchRequest);
+      _bodyData = _serializers.serialize(trashBatchRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    final _response = await _dio.request<Object>(
+      _path,
+      data: _bodyData,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TrashBatchResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TrashBatchResponse),
+      ) as TrashBatchResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TrashBatchResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
   /// Permanently delete one asset, files and all.
   /// The explicit permanent deletion -- the destructive surface beside the trash. It removes the asset row whatever its state (live or trashed: this endpoint does not route through the trash), and with it the asset&#39;s on-disk artifacts under the shared-blob rule: content addressing means another owner&#39;s row (or any other row) with the same checksum references the SAME physical file, so the original file is removed only when no other asset row references it; otherwise the row goes and the file stays. The derived serving copies (the per-asset thumbnail directory) belong to this asset id alone and are always removed. The component video row of a Live Photo is deleted with its photo (it is never an asset of its own).  The application-layer permission gate of the two-layer delete discipline: the owner of the asset, or an administrator. An id of another user&#39;s asset answers the same 404 &#x60;ASSET_NOT_FOUND&#x60; as an id that does not exist, byte for byte, so asset ids cannot be enumerated. (The file-system layer of the gate matters for directory albums, whose files move on delete; it arrives with the album domain later -- blob originals live inside the server&#39;s own data directory.)  The ordinary client \&quot;delete\&quot; is the trash (soft delete through the batch endpoint); this endpoint is the explicit bypass: the client that already knows it wants the asset gone forever, and the empty-trash surface. Repeating the request after a successful deletion answers 404 -- the asset no longer exists, exactly like an unknown id.  The deletion is committed before the files are removed: a failure between the two (a full disk, a failing mount) leaves the row gone and the file orphaned, which is a storage leak, never data loss; it is logged server-side and the response still reports the deletion. 
   ///
@@ -190,6 +299,90 @@ class AssetsApi {
     );
 
     return _response;
+  }
+
+  /// Permanently delete everything in the caller&#39;s trash.
+  /// The whole-trash delete: every row of the caller&#39;s trash right now goes for good, under the same rules the single-row permanent delete pins (the shared-blob reference rule keeps a file another row still uses; the derived trees go with the rows; the Live Photo pair goes together). Each purged row announces one &#x60;asset.deleted&#x60; on the activity stream, so the connected surfaces converge the way they follow the expiry job&#39;s purges.  The endpoint is idempotent: an empty trash answers 200 with &#x60;affected&#x60; 0 -- the sweep scans what is in the caller&#39;s trash at the time of the request, so the 404 of the single-row delete never appears. The sweep never touches another account&#39;s rows: the trash is owner-scoped, an empty answers only ever concern the caller&#39;s own deletes.  The caller confirms FIRST: the permanent deletion of every trashed asset is irreversible, so the client opens its confirmation dialog (naming the count it is about to destroy) before the request may fire. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TrashSweepResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TrashSweepResponse>> emptyTrash({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/trash/empty';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TrashSweepResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TrashSweepResponse),
+      ) as TrashSweepResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TrashSweepResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
   }
 
   /// The caller&#39;s archived assets, one keyset page at a time.
@@ -838,7 +1031,7 @@ class AssetsApi {
   }
 
   /// List the caller&#39;s trashed assets with their retention countdown.
-  /// The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting &#x60;trash_retention_days&#x60; (default 30): the expiry job runs hourly and permanently deletes rows whose &#x60;deletedAt&#x60; fell past the retention window, so an item shows &#x60;remainingDays&#x60; 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  &#x60;remainingDays&#x60; counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. 
+  /// The trash view of the caller: every asset the caller soft deleted, newest deletion first, each with the countdown of whole days until the expiry job removes it. Retention is the instance setting &#x60;trash_retention_days&#x60; (default 30): the expiry job runs hourly and permanently deletes rows whose &#x60;deletedAt&#x60; fell past the retention window, so an item shows &#x60;remainingDays&#x60; 0 on its way out (the row survives only until the next job run) and disappears afterwards -- restoring it then answers 404, it does not resurrect.  &#x60;remainingDays&#x60; counts the days left rounded up: an asset trashed moments ago with the default retention shows 30. The list is owner-scoped and bounded: it answers at most the 200 most recent deletions (the trash is a recovery view for recent deletes, and older items age out through expiry long before the bound could bite). The component video rows of Live Photos never appear: the pair is represented by its photo. &#x60;retentionDays&#x60; carries the instance setting the countdowns were computed against -- the note the trash page renders its number from. 
   ///
   /// Parameters:
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
@@ -1110,6 +1303,90 @@ class AssetsApi {
     }
 
     return Response<Uint8List>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Restore every trashed asset of the caller.
+  /// The whole-trash restore: every row of the caller&#39;s trash right now returns to the live views, the newest deletion last. The Live Photo pair restores as one asset (its component video row rides the photo&#39;s restore), an external row&#39;s file moves back to its recorded original location, and the rows that actually left the trash announce one &#x60;asset.restored&#x60; each on the activity stream.  The endpoint is idempotent: an empty trash answers 200 with &#x60;affected&#x60; 0 -- there is no not-found surface, the sweep scans what is in the caller&#39;s trash at the time of the request, so the 404 of the single-row restore never appears. The sweep never touches another account&#39;s rows (the trash is owner-scoped) and never reaches rows that are already live.  The caller confirms nothing: a whole restore is reversible through the timeline&#39;s own trash flow, so unlike the empty arm no confirmation gate is specified -- the client runs it directly. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [TrashSweepResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<TrashSweepResponse>> restoreAllTrash({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/trash/restore-all';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    TrashSweepResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(TrashSweepResponse),
+      ) as TrashSweepResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<TrashSweepResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
