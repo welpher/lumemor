@@ -106,6 +106,28 @@ func (e *env) rescan(t *testing.T, albumID uuid.UUID) uuid.UUID {
 	return response.JobRunId
 }
 
+// waitCreationScan waits for the creation-time scan the album's
+// creation enqueued (the album's newest album_rescan run) and answers
+// its id once it closed. A test that stages the source BEFORE the
+// creation lets this run be the scan it asserts on -- the album's
+// first scan is the creation's, never a manual button's -- and a test
+// that stages after the creation waits here first, so the run it
+// drives afterwards is its own.
+func (e *env) waitCreationScan(t *testing.T, albumID uuid.UUID) uuid.UUID {
+	t.Helper()
+	var runID uuid.UUID
+	eventually(t, jobWaitTimeout, "the creation-time scan of the album", func() bool {
+		return e.pool.QueryRow(context.Background(), `
+			SELECT id FROM job_runs
+			WHERE kind = 'album_rescan' AND album_id = $1
+			ORDER BY created_at DESC, id DESC LIMIT 1`, pgUUID(albumID)).Scan(&runID) == nil
+	})
+	if state := e.waitRescanFinished(t, runID); state != "succeeded" {
+		t.Fatalf("the creation-time scan closed %s, want succeeded", state)
+	}
+	return runID
+}
+
 // waitRescanFinished polls the run's row until it closes, answering
 // its final state.
 func (e *env) waitRescanFinished(t *testing.T, runID uuid.UUID) string {
@@ -179,11 +201,9 @@ func TestAlbumRescanThreeArms(t *testing.T) {
 
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
-	// The first scan: the add arm over the whole source.
-	run := e.rescan(t, album)
-	if state := e.waitRescanFinished(t, run); state != "succeeded" {
-		t.Fatalf("the first rescan closed %s, want succeeded", state)
-	}
+	// The first scan is the creation's own: the staged source is what
+	// the creation-time scan walks (no manual trigger anywhere).
+	e.waitCreationScan(t, album)
 
 	a, ok := e.rescanAssetByPath(t, e.ownerID, filepath.Join(source, "a.jpg"))
 	if !ok {
@@ -305,6 +325,14 @@ func TestAlbumRescanThreeArms(t *testing.T) {
 	if got := countEvents(e.bus, "asset.updated"); got != 1 {
 		t.Errorf("asset.updated events = %d, want the change arm's one", got)
 	}
+	// The album's live membership moved in both directions in this
+	// run: the vanish (a live member left the view) and the add (a
+	// new member landed) ride ONE album.items-changed -- the held-open
+	// surfaces' count must fall with the departed tile, so the vanish
+	// arm speaks at the album level beside its asset.trashed.
+	if got := countEvents(e.bus, "album.items-changed"); got != 2 {
+		t.Errorf("album.items-changed events = %d, want the first scan's growth plus the second scan's one", got)
+	}
 	kinds := e.riverJobsOf(t, b.id)
 	if kinds["metadata"] != 2 || kinds["thumbnail"] != 2 {
 		t.Errorf("b.jpg river jobs = %v, want the metadata and thumbnail pair of both scans (the re-run)", kinds)
@@ -375,9 +403,7 @@ func TestAlbumRescanIdempotent(t *testing.T) {
 
 	album := e.createDirectoryAlbum(t, "Family archive", source)
 
-	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
-		t.Fatalf("the first rescan closed %s, want succeeded", state)
-	}
+	e.waitCreationScan(t, album)
 	row, ok := e.rescanAssetByPath(t, e.ownerID, filepath.Join(source, "a.jpg"))
 	if !ok {
 		t.Fatal("the first scan never ingested a.jpg")
@@ -492,10 +518,7 @@ func TestAlbumRescanSkipsSymlinks(t *testing.T) {
 	}
 
 	album := e.createDirectoryAlbum(t, "Family archive", source)
-
-	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
-		t.Fatalf("the rescan closed %s, want succeeded", state)
-	}
+	e.waitCreationScan(t, album)
 
 	if _, ok := e.rescanAssetByPath(t, e.ownerID, filepath.Join(source, "linked.jpg")); ok {
 		t.Error("the walk ingested the symlinked file entry, want it skipped")
@@ -564,10 +587,7 @@ func TestAlbumRescanDuplicates(t *testing.T) {
 	writeSourceFile(t, filepath.Join(source, "trashed-content.jpg"), plain, stamp)
 
 	album := e.createDirectoryAlbum(t, "Family archive", source)
-
-	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
-		t.Fatalf("the rescan closed %s, want succeeded", state)
-	}
+	e.waitCreationScan(t, album)
 
 	// The live duplicate: no new row, the existing row gained the
 	// membership.
@@ -631,9 +651,7 @@ func TestAlbumRescanRootGuard(t *testing.T) {
 	writeSourceFile(t, filepath.Join(source, "a.jpg"), jpegBytes(t), stamp)
 
 	album := e.createDirectoryAlbum(t, "Family archive", source)
-	if state := e.waitRescanFinished(t, e.rescan(t, album)); state != "succeeded" {
-		t.Fatalf("the first rescan closed %s, want succeeded", state)
-	}
+	e.waitCreationScan(t, album)
 
 	t.Run("VanishedRoot", func(t *testing.T) {
 		if err := os.RemoveAll(source); err != nil {
