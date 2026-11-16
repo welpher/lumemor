@@ -32,18 +32,21 @@
 # honest skip -- the report is per-entry, never an error), and the
 # CREATION-TIME WRITE PROBE answers its fact honestly: the fixture
 # bind is read-only, so the response carries sourceWritable false --
-# feedback, never a failure. The rescan then fills the membership:
-# POST /albums/{id}/rescan answers 202 with the run's id, the
-# album_rescan job run reaches succeeded, and the two fixture photos
+# feedback, never a failure. The CREATION's own scan then fills the
+# membership (a directory album is its folder's scan verdict: the
+# creation enqueues it, so the wall never waits for a manual rescan),
+# the manual POST /albums/{id}/rescan still answers the run's id (202,
+# or 200 joining a run in flight), the album_rescan job run reaches
+# succeeded, and the two fixture photos
 # are ingested BY REFERENCE (storage_kind external, file_path the
 # real source paths, taken_at_source file -- zero copy, zero move;
 # the read-only bind is the pin held by construction) through the
 # same pipeline fan-out an upload's, converging the two faces into
 # the one cluster (the per-user-state people arm's structure, now over external
 # rows). The member's whole shared surface is asserted: the wall's
-# shared group (the honest zero before the scan, the live count
-# after), the timeline's inclusion (the union's shared arm beside the
-# member's own sync stream), the read-only detail (callerRole
+# shared group (the creation scan's live count, no manual trigger
+# anywhere), the timeline's inclusion (the union's shared arm beside
+# the member's own sync stream), the read-only detail (callerRole
 # viewer), the per-user favorite, the timeline-exclusion toggle with
 # its retraction and re-include (the member's own arm, then the
 # OWNER's own arm over the same album), and the people surface's
@@ -260,6 +263,12 @@ mirror_port="8443"
 # before either source mode is prepared: the offline mirror boots the
 # check exactly like the upstream mode does.
 export LUMEMOR_UPDATE_CHECK_DISABLED=1
+# The folder live sync's cadence: the periodic directory-snapshot diff
+# that keeps every directory album's wall equal to its folder. The e2e
+# harness shortens the production 60s window so a scene observes the
+# diff inside its own bounds (the compose passthrough reads this
+# variable; an operator's own value wins).
+export LUMEMOR_FOLDER_SYNC_INTERVAL="${LUMEMOR_FOLDER_SYNC_INTERVAL:-3s}"
 
 # One timestamp for the run's unique identities (admin emails, device
 # asset ids) so reruns never collide with leftover data, and one for
@@ -903,8 +912,6 @@ grep -q '"callerRole":"owner"' "$work_dir/album_body" \
     || fail "the created album's card is not the owner's: $(cat "$work_dir/album_body")"
 grep -q '"type":"directory"' "$work_dir/album_body" \
     || fail "the created album is not the directory type: $(cat "$work_dir/album_body")"
-grep -q '"itemCount":0' "$work_dir/album_body" \
-    || fail "the created album's count is not zero: $(cat "$work_dir/album_body")"
 grep -q '"isShared":true' "$work_dir/album_body" \
     || fail "the created album's card does not carry the landed audience: $(cat "$work_dir/album_body")"
 # The write probe's honest fact: the fixture bind is
@@ -929,26 +936,41 @@ album_id="$(sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$work_
     || fail "the created album carries no id: $(cat "$work_dir/album_body")"
 echo "    the album exists ($album_id), sourced at $source_dir; the member's grant landed, the owner id answered the honest skip, the probe answered the read-only fact"
 
-echo "==> the member's wall must list the album in the shared group with the honest zero count"
-status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
-    "$base_url/api/v1/albums")" \
-    || fail "GET /api/v1/albums (member, pre-scan) request failed"
-[ "$status" = "200" ] \
-    || fail "GET /api/v1/albums (member, pre-scan) returned status $status, want 200: $(cat "$work_dir/member_wall_body")"
-grep -q "\"$album_id\"" "$work_dir/member_wall_body" \
-    || fail "the member's wall does not list the shared album: $(cat "$work_dir/member_wall_body")"
-grep -q '"callerRole":"viewer"' "$work_dir/member_wall_body" \
-    || fail "the member's wall card is not the viewer's: $(cat "$work_dir/member_wall_body")"
-grep -q '"itemCount":0' "$work_dir/member_wall_body" \
-    || fail "the member's wall card does not carry the honest zero count: $(cat "$work_dir/member_wall_body")"
-echo "    the shared card lists with the viewer role and the creation-time zero (creation references, it does not scan)"
+echo "==> the member's wall must list the album in the shared group, converged by the CREATION'S own scan"
+# The creation enqueues the album's first scan, and the run ingests the
+# source's files -- nobody presses Rescan for the membership to appear.
+# The shared card is the member's side of the same convergence (the
+# scan's album.items-changed refetches the wall).
+deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
+while :; do
+    status="$(curl -sS -o "$work_dir/member_wall_body" -b "$member_jar" -w '%{http_code}' \
+        "$base_url/api/v1/albums")" \
+        || fail "GET /api/v1/albums (member, creation scan) request failed"
+    [ "$status" = "200" ] \
+        || fail "GET /api/v1/albums (member, creation scan) returned status $status, want 200: $(cat "$work_dir/member_wall_body")"
+    grep -q "\"$album_id\"" "$work_dir/member_wall_body" \
+        || fail "the member's wall does not list the shared album: $(cat "$work_dir/member_wall_body")"
+    grep -q '"callerRole":"viewer"' "$work_dir/member_wall_body" \
+        || fail "the member's wall card is not the viewer's: $(cat "$work_dir/member_wall_body")"
+    if grep -q '"itemCount":2' "$work_dir/member_wall_body"; then
+        break
+    fi
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+        compose logs --no-color --tail 200 lumemor || true
+        fail "the member's shared card never converged onto the creation scan's two photos (${rescan_timeout_seconds}s): $(cat "$work_dir/member_wall_body")"
+    fi
+    sleep 3
+done
+echo "    the shared card lists with the viewer role and the creation scan's two photos (the album's first scan is the creation's)"
 
-echo "==> POST /api/v1/albums/{id}/rescan must return 202 with the run's id"
+echo "==> POST /api/v1/albums/{id}/rescan must return the run's id (202, or 200 joining the creation's run)"
 status="$(curl -sS -o "$work_dir/rescan_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST "$base_url/api/v1/albums/$album_id/rescan")" \
     || fail "POST /api/v1/albums/$album_id/rescan request failed"
-[ "$status" = "202" ] \
-    || fail "POST /api/v1/albums/$album_id/rescan returned status $status, want 202: $(cat "$work_dir/rescan_body")"
+case "$status" in
+    200 | 202) ;;
+    *) fail "POST /api/v1/albums/$album_id/rescan returned status $status, want 202 (a fresh run) or 200 (the in-flight one it joined): $(cat "$work_dir/rescan_body")" ;;
+esac
 grep -q '"jobRunId":"[^"]*"' "$work_dir/rescan_body" \
     || fail "POST /api/v1/albums/$album_id/rescan carries no jobRunId: $(cat "$work_dir/rescan_body")"
 echo "    the rescan run started: $(cat "$work_dir/rescan_body")"
@@ -1468,12 +1490,14 @@ rw_pref_rows="$(psql_query "SELECT count(*) FROM user_album_prefs WHERE album_id
     || fail "the exclude-armed creation landed $rw_pref_rows creator preference rows, want exactly 1 (in_timeline false)"
 echo "    the writable album exists ($rw_album_id) at $rw_mount_root: both switches rode the request, the creator's exclusion row landed, the probe answered true"
 
-echo "==> POST /api/v1/albums/{id}/rescan must return 202 and the run must reach succeeded"
+echo "==> POST /api/v1/albums/{id}/rescan must return the run's id and the run must reach succeeded"
 status="$(curl -sS -o "$work_dir/rw_rescan_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST "$base_url/api/v1/albums/$rw_album_id/rescan")" \
     || fail "POST /api/v1/albums/$rw_album_id/rescan request failed"
-[ "$status" = "202" ] \
-    || fail "POST /api/v1/albums/$rw_album_id/rescan returned status $status, want 202: $(cat "$work_dir/rw_rescan_body")"
+case "$status" in
+    200 | 202) ;;
+    *) fail "POST /api/v1/albums/$rw_album_id/rescan returned status $status, want 202 (a fresh run) or 200 (the in-flight one it joined): $(cat "$work_dir/rw_rescan_body")" ;;
+esac
 grep -q '"jobRunId":"[^"]*"' "$work_dir/rw_rescan_body" \
     || fail "POST /api/v1/albums/$rw_album_id/rescan carries no jobRunId: $(cat "$work_dir/rw_rescan_body")"
 deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
@@ -1646,8 +1670,10 @@ echo "==> POST /api/v1/albums/{id}/rescan must converge the removal album's memb
 status="$(curl -sS -o "$work_dir/removal_rescan_body" -b "$admin_jar" -w '%{http_code}' \
     -X POST "$base_url/api/v1/albums/$removal_album_id/rescan")" \
     || fail "POST /api/v1/albums/$removal_album_id/rescan request failed"
-[ "$status" = "202" ] \
-    || fail "POST /api/v1/albums/$removal_album_id/rescan returned status $status, want 202: $(cat "$work_dir/removal_rescan_body")"
+case "$status" in
+    200 | 202) ;;
+    *) fail "POST /api/v1/albums/$removal_album_id/rescan returned status $status, want 202 (a fresh run) or 200 (the in-flight one it joined): $(cat "$work_dir/removal_rescan_body")" ;;
+esac
 deadline="$(( $(date +%s) + rescan_timeout_seconds ))"
 while :; do
     status="$(curl -sS -o "$work_dir/jobs_body" -b "$admin_jar" -w '%{http_code}' \

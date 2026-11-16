@@ -57,7 +57,7 @@
 //  2. The source half through the API: the model group's download
 //     run driven to succeeded, the directory album created over the
 //     fixture with the CREATOR in the audience at create (the grant
-//     lands with the row), the rescan converging the fixture's two
+//     lands with the row), the creation's scan converging the fixture's two
 //     photos to ready members, and the curation refusal -- the
 //     owner's own add-items attempt on the directory album folds
 //     into the single-shape 404 (a source's membership is its
@@ -351,11 +351,14 @@ test.describe('the administrator scenes', () => {
 		sourceAlbumId = createBody.id ?? '';
 		expect(sourceAlbumId).not.toBe('');
 
-		// The rescan: the membership converges onto the fixture's two
-		// photos, and the scan's pipeline runs both files to ready
-		// (the models are warm).
+		// The manual rescan (the creation already enqueued the album's
+		// first scan -- a directory album is its folder's verdict): the
+		// endpoint answers 202 for a fresh run, or 200 joining the
+		// creation's run still in flight. Either way the membership
+		// converges onto the fixture's two photos, and the scan's
+		// pipeline runs both files to ready (the models are warm).
 		const rescan = await page.request.post(`/api/v1/albums/${sourceAlbumId}/rescan`);
-		expect(rescan.status()).toBe(202);
+		expect([200, 202]).toContain(rescan.status());
 		type DetailBody = {
 			itemCount?: number;
 			items?: Array<{ assetId?: string; asset?: { originalFilename?: string } }>;
