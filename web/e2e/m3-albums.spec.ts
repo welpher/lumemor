@@ -114,9 +114,10 @@
 //     is false: no dead affordance). The POST carries exactly what
 //     the dialog holds (title, rootPath, audience, inTimeline true
 //     -- and no allowAppDeletion key). The write probe
-//     answers sourceWritable false -- the creation FEEDBACK carries
-//     the read-only note and the Done affordance acknowledges it
-//     (the honest report face). The card lands, and the CREATION'S
+//     answers sourceWritable false -- the creation FEEDBACK is the
+//     toast carrying the read-only note (both sentences, one
+//     acknowledgment; the dialog closes on the landed write). The
+//     card lands, and the CREATION'S
 //     OWN SCAN converges it to the folder's two photos -- no rescan
 //     is pressed anywhere in this scene.
 //  5. The creation scan's result: the album page already holds the
@@ -164,7 +165,8 @@
 //     creator's timeline. The POST carries both switches
 //     (allowAppDeletion true, inTimeline false), the probe answers
 //     sourceWritable true -- the writable, all-landed creation closes
-//     the dialog DIRECTLY (no report face), and the card lands.
+//     the dialog DIRECTLY and the house toast confirms it. The card
+//     lands.
 // 11. The writable album's creation scan converges the seeded pair,
 //     and the edit dialog's autonomy block holds its writable shape --
 //     the deletability row rendered (checked on) beside the
@@ -535,7 +537,7 @@ test.describe('the administrator scenes', () => {
 		await expect(dialog).toHaveCount(0);
 	});
 
-	test("scene 4: the read-only album's creation carries the probe's honest report face", async ({ page }) => {
+	test("scene 4: the read-only album's creation carries the probe's honest report in the toast", async ({ page }) => {
 		await page.goto('/albums');
 		await page.getByRole('button', { name: 'New album', exact: true }).click();
 		const dialog = page.getByRole('dialog', { name: 'New album', exact: true });
@@ -593,18 +595,19 @@ test.describe('the administrator scenes', () => {
 		const createBody = (await response?.json()) as { sourceWritable?: boolean };
 		expect(createBody.sourceWritable).toBe(false);
 
-		// The report face holds the dialog: the read-only note names
-		// what the fact means (the photos cannot be deleted through
-		// the application), and the Done affordance acknowledges it.
-		// (The skipped half of the report face is empty here -- the
-		// audience was -- so the note is the face's whole content.)
-		await expect(
-			dialog.getByText(
-				'The album was created. This folder is read-only — its photos cannot be deleted through the app.'
-			)
-		).toBeVisible();
-		await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+		// The creation's confirmation is the toast (the sample's
+		// create button is the design): the read-only note rides the
+		// SAME organ -- both sentences, one acknowledgment -- and the
+		// dialog closes on the landed write. (The skipped-audience
+		// report alone still holds the dialog: a list cannot ride a
+		// toast; this story's audience was empty.)
 		await expect(dialog).toHaveCount(0);
+		await expect(
+			page.getByRole('status').filter({
+				hasText:
+					'The album was created. This folder is read-only — its photos cannot be deleted through the app.'
+			})
+		).toBeVisible();
 
 		// The SSE album.created echo converges the wall, and the
 		// creation's OWN scan converges the card: no rescan is pressed
@@ -748,7 +751,7 @@ test.describe('the administrator scenes', () => {
 		// DELETABILITY row does not render at all. The read-only
 		// source carries no row: no affordance exists for a write the
 		// application can never perform (the probe's false fact kills
-		// the row, scene 4's report face said why).
+		// the row, scene 4's toast said why).
 		const autonomy = dialog.locator('[data-testid="album-autonomy"]');
 		await expect(autonomy).toBeVisible();
 		await expect(autonomy.locator('[data-testid="album-lock-toggle"]')).toHaveCount(0);
@@ -1267,8 +1270,9 @@ test.describe('the writable source scenes', () => {
 		await expect(dialog).toHaveCount(0);
 
 		// The clean creation's confirmation is the house toast (the
-		// dialog's report face is for the honest problems alone, so the
-		// path that closes silently is the one that speaks here).
+		// skipped-audience report is for the honest problems alone --
+		// a list cannot ride a toast -- so the path that closes
+		// silently is the one that speaks here).
 		await expect(page.locator('.toasts')).toContainText('Album created.');
 
 		// The card lands, and the creation's own scan converges it to
