@@ -7,7 +7,7 @@ import { clearToasts, toasts } from '$lib/components/toast.svelte';
 
 // The unified wall: ONE rendering
 // component every photo surface composes -- the timeline, the album
-// detail, the favorites/hidden wrappers, the search browse mode. It
+// detail, the favorites/archived wrappers, the search browse mode. It
 // takes bare ITEMS (the month/day fold is its own), the row engine,
 // the ResizeObserver re-pack, PhotoTile AND the month axis live
 // inside it (the 2026-11-08 axis pin: the photo rendering and the

@@ -421,12 +421,12 @@ test('selection: the check entry raises the bar, a batch trash removes the tiles
 	const page = mountPage();
 	await settle();
 
-	// The toolbar is gone -- no hidden-view link, no
+	// The toolbar is gone -- no archived-view link, no
 	// select-mode button -- and the check affordance is the entry.
 	expect(document.body.querySelector('.timeline__toolbar')).toBeNull();
 	expect(() => buttonByText('Select')).toThrow();
 	expect(() => buttonByText('Archive')).toThrow();
-	expect(document.body.querySelector('a[href="/hidden"]')).toBeNull();
+	expect(document.body.querySelector('a[href="/archived"]')).toBeNull();
 
 	// Enter the selection through the tiles' checks and pick two (the
 	// affordance's click toggles the id; the bar rises at >=1).
