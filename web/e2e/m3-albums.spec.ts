@@ -675,13 +675,15 @@ test.describe('the administrator scenes', () => {
 		await expect(barCount).toHaveAttribute('aria-label', '2 photos');
 		await page.setViewportSize({ width: 1280, height: 720 });
 		// At the desktop width the count rides the bar as the sample
-		// draws it: the glyph BESIDE the digits on one line (the
+		// draws it: the glyph BESIDE the digits on ONE line (the
 		// retired gate blockified the count here -- the variant's
 		// display:inline beat the component's inline-flex and stacked
-		// the svg over the number; the computed style is the decisive
-		// assertion, the height the visual one).
+		// the svg over the number, a 35px-tall count). The height is
+		// the decisive check: a flex child's computed display always
+		// blockifies (inline-flex reads as flex), so the one-line
+		// geometry -- not the display value -- is what the pin can
+		// honestly assert.
 		await expect(barCount).toBeVisible();
-		expect(await barCount.evaluate((el) => getComputedStyle(el).display)).toBe('inline-flex');
 		expect(await barCount.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
 
 		// And the scan's pipeline ran to its end: the source ingest
