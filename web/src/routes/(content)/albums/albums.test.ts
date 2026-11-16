@@ -854,9 +854,12 @@ test('the create dialog surfaces the honest skipped report before closing', asyn
 
 test('a read-only source lands as a created album with the honest feedback, never a failure', async () => {
 	// The write probe's false arm: the creation SUCCEEDED (a
-	// read-only directory is a legitimate album), and the dialog
-	// holds the honest note until acknowledged -- the same report
-	// face the skipped list rides.
+	// read-only directory is a legitimate album), and the read-only
+	// fact rides the house toast -- both sentences, one
+	// acknowledgment -- while the dialog closes on the landed write
+	// (the sample's create button is the design; the held report
+	// face was the implementation's divergence). The skipped list
+	// alone still holds the report face: a list cannot ride a toast.
 	await bootWallSession('u1', 'admin');
 	const created = {
 		...summary('al-new', { title: 'Vault archive', type: 'directory' }),
@@ -886,13 +889,16 @@ test('a read-only source lands as a created album with the honest feedback, neve
 	buttonByText('Create album', dialog as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	// The write landed and the wall converged; the dialog holds the
-	// read-only fact with the Done affordance.
+	// The write landed and the wall converged; the read-only fact
+	// rides the house toast -- both sentences, one acknowledgment --
+	// and the dialog closes on the landed write.
 	expect(cards()[1]?.querySelector('.album-card__title')?.textContent).toBe('Vault archive');
-	expect(modal()?.textContent).toContain('This folder is read-only');
-	buttonByText('Done', modal() as ParentNode).dispatchEvent(new MouseEvent('click', { bubbles: true }));
-	await settle();
 	expect(modal()).toBeNull();
+	expect(toasts()).toHaveLength(1);
+	expect(toasts()[0]?.text).toBe(
+		'The album was created. This folder is read-only — its photos cannot be deleted through the app.'
+	);
+	expect(toasts()[0]?.tone).toBe('success');
 	unmount(page);
 	flushSync();
 });
