@@ -138,6 +138,8 @@
   "viewer_description_label": "Description",
   "viewer_description_empty": "No description yet.",
   "viewer_trashed_notice": "This photo is in the trash.",
+  "viewer_trashed_done": "Moved to the trash.",
+  "viewer_trashed_copies_note": "{n, plural, =1 {# more copy of this photo remains.} other {# more copies of this photo remain.}}",
   "viewer_archived_notice": "This photo is archived and out of the timeline.",
   "viewer_download": "Download the original",
   "viewer_faces_placeholder": "No people recognized in this photo.",

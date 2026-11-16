@@ -138,6 +138,8 @@
   "viewer_description_label": "描述",
   "viewer_description_empty": "还没有描述。",
   "viewer_trashed_notice": "这张照片在回收站中。",
+  "viewer_trashed_done": "已移入回收站。",
+  "viewer_trashed_copies_note": "{n, plural, other {该内容还有 # 份副本会保留。}}",
   "viewer_archived_notice": "这张照片已归档，不在时间线里。",
   "viewer_download": "下载原文件",
   "viewer_faces_placeholder": "这张照片中未识别到人物。",
