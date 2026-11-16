@@ -215,20 +215,20 @@
 	}
 
 	// The panel's editable surfaces share one curation gate: the
-	// owner of a LIVE asset (a trashed or hidden asset's faces' crop
+	// owner of a LIVE asset (a trashed or archived asset's faces' crop
 	// endpoints answer 404, and the write arms refuse the same states
 	// server-side -- the affordances never render for them).
-	const canCurate = $derived(isOwner && !detail.isTrashed && !detail.isHidden);
+	const canCurate = $derived(isOwner && !detail.isTrashed && !detail.isArchived);
 
 	/**
 	 * Whether the People section lists its faces (the chips' gate):
-	 * a trashed or hidden asset keeps its faces in the detail but
+	 * a trashed or archived asset keeps its faces in the detail but
 	 * every crop endpoint answers 404 for it, and a photo with no
 	 * faces has nothing to list -- the placeholder stands in. The
 	 * section's edit affordance (the pencil into the edit-people
 	 * panel) rides the same gate: the panel lists these very rows.
 	 */
-	const facesListed = $derived(!detail.isTrashed && !detail.isHidden && detail.faces.length > 0);
+	const facesListed = $derived(!detail.isTrashed && !detail.isArchived && detail.faces.length > 0);
 
 	/**
 	 * The chip label of one face: the caller's own label of the face's
@@ -403,12 +403,12 @@
 				{$_('viewer_trashed_notice')}
 			</p>
 		{/if}
-		{#if detail.isHidden}
+		{#if detail.isArchived}
 			<p
 				class="info__notice mt-3 py-2 px-3 font-body font-medium text-[13px] leading-[1.4] text-text-soft border border-notice rounded-control"
 				role="status"
 			>
-				{$_('viewer_hidden_notice')}
+				{$_('viewer_archived_notice')}
 			</p>
 		{/if}
 
@@ -514,8 +514,8 @@
 					</div>
 				{/if}
 			</div>
-			{#if detail.isTrashed || detail.isHidden || detail.faces.length === 0}
-				<!-- A trashed or hidden asset keeps its faces in the
+			{#if detail.isTrashed || detail.isArchived || detail.faces.length === 0}
+				<!-- A trashed or archived asset keeps its faces in the
 				     detail but every crop endpoint answers 404 for it
 				     -- the placeholder stands in rather than broken
 				     chips. -->

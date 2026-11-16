@@ -20,11 +20,14 @@ import Page from './+page.svelte';
 // localized display name for the title -- a viewer the exclusion
 // toggle alone (the departure went with the revoke endpoint it
 // rode) -- over the wall that pages the album's own timeline,
-// curating the role's action subset: a DELETE-ONLY selection exactly
-// when the server-derived `deletable` face holds (owner AND writable
-// AND the switch), a member's per-user favorite toggle alone (the
-// hide switch resolves the caller's own rows, so another account's
-// album has none to write). A
+// curating the role's action subset: the unarchive-and-delete pair
+// exactly when the server-derived `deletable` face holds (owner AND
+// writable AND the switch), a member's per-user favorite toggle
+// alone (the archive switch resolves the caller's own rows, so
+// another account's album has none to write). The album is a
+// reference container: its wall keeps archived members, and the
+// owner's unarchive button renders exactly when the checked rows
+// hold one. A
 // MEMORY id never renders here: the detail read that answers one
 // redirects to the memory's own route (its suite pins that face).
 // Every write adopts its own response or converges through the
@@ -121,6 +124,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: false,
 	isReady: true,
 	width: 4000,
@@ -426,15 +430,15 @@ test("a viewer's wall curates their own favorites: no trash, no hide on another 
 	await settle();
 
 	// The bar's subset is the per-user favorite toggle plus the
-	// clear: the trash would delete the owner's files, and the hide
-	// switch writes the owner's own row (the batch resolves it
-	// against the caller's OWNED ids, so over a shared album it
+	// clear: the trash would delete the owner's files, and the
+	// archive switch writes the owner's own row (the batch resolves
+	// it against the caller's OWNED ids, so over a shared album it
 	// lands on nothing) -- neither renders, and nothing renders
 	// disabled.
 	const bar = document.body.querySelector<HTMLElement>('.batchbar');
 	expect(bar).not.toBeNull();
 	expect(bar?.textContent).toContain('1 selected');
-	for (const label of ['Trash', 'Hide', 'Unhide', 'Restore', 'Add tag', 'Add to memory']) {
+	for (const label of ['Trash', 'Archive', 'Unarchive', 'Restore', 'Add tag', 'Add to memory']) {
 		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
 	}
 	expect(() => buttonByLabel('Favorite', bar as ParentNode)).not.toThrow();
@@ -560,7 +564,9 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 	// THE DELETABLE WALL: the derived face holds, so the wall's
 	// selection machinery is wired -- the tiles carry the hover
 	// check affordance and a selection raises the batch bar with the
-	// DELETE-ONLY action subset (no favorite, no hide, no restore).
+	// delete action (no favorite, no archive, no restore) beside the
+	// container's unarchive entry, which stays out of sight while the
+	// selection holds no archived member.
 	const check = tiles()[0]?.querySelector<HTMLElement>('.tile__check');
 	expect(check).not.toBeNull();
 	check?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -568,10 +574,58 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 	const bar = document.body.querySelector<HTMLElement>('.batchbar');
 	expect(bar).not.toBeNull();
 	expect(bar?.getAttribute('role')).toBe('toolbar');
-	for (const label of ['Favorite', 'Hide', 'Unhide', 'Restore']) {
+	for (const label of ['Favorite', 'Archive', 'Unarchive', 'Restore']) {
 		expect(() => buttonByLabel(label, bar as ParentNode), label).toThrow();
 	}
 	expect(() => buttonByLabel('Trash', bar as ParentNode)).not.toThrow();
+	unmount(page);
+	flushSync();
+});
+
+test('the container keeps an archived member, and the owner unarchives it from the album wall', async () => {
+	// An album is a reference container: the album-narrowed page
+	// carries the archived member (the server's own rule), the tile
+	// renders, and checking it raises the bar's unarchive action --
+	// the owner's unarchive entry, offered only for an archived
+	// selection.
+	detailState = { ...detailState, deletable: true, sourceWritable: true, callerRole: 'owner' };
+	const archivedItems = [
+		item('a1', '2026-11-02T10:00:00Z', { isArchived: true }),
+		item('a2', '2026-10-13T12:30:00Z')
+	];
+	const posts: Array<{ action: string; ids: string[] }> = [];
+	const fetchMock = stubFetch(
+		detailRoutes({
+			'/api/v1/assets/timeline?albumId=0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071&limit=100': () =>
+				jsonResponse(200, { items: archivedItems }),
+			'/api/v1/assets/batch': (init?: RequestInit) => {
+				posts.push(JSON.parse(String(init?.body)));
+				return jsonResponse(200, { affected: 1, missing: [] });
+			}
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	const page = mountPage();
+	await settle();
+
+	// The archived member is on the wall (the container rule).
+	expect(tiles()).toHaveLength(2);
+
+	tiles()[0]
+		?.querySelector<HTMLElement>('.tile__check')
+		?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	const bar = document.body.querySelector<HTMLElement>('.batchbar');
+	expect(bar).not.toBeNull();
+	const unarchive = buttonByLabel('Unarchive', bar as ParentNode);
+	unarchive.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	await settle();
+	expect(posts).toEqual([{ action: 'unhide', ids: ['a1'] }]);
+
+	// The container keeps the tile: unarchiving ends no album
+	// membership (the tile stays; only the archived mark changes).
+	expect(tiles()).toHaveLength(2);
+
 	unmount(page);
 	flushSync();
 });

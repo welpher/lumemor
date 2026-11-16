@@ -46,11 +46,11 @@
 //     reads "Unnamed" and whose naming entry lands the named state
 //     in place. The named list gains the person with the PHOTO
 //     count; the unnamed region loses the card.
-//  5. The detail is THIS PERSON'S PHOTOS (§7.17): the sticky 53px
-//     context bar (no shell topbar), the profile row (name, photo
-//     count, birth-date entry) and the shared wall. The photo hide
-//     flows through the wall's batch bar and back (the hidden page's
-//     unhide restores the tile and the count).
+//  5. The detail is THIS PERSON'S PHOTOS: the sticky 53px context bar
+//     (no shell topbar), the profile row (name, photo count,
+//     birth-date entry) and the shared wall. The photo archive flows
+//     through the wall's batch bar and back (the archived page's
+//     unarchive restores the tile and the count).
 //  6. The person entity's attributes: the birth date renders
 //     locale-aware through Intl (machine value in <time>), and the
 //     avatar picker (faces only, no file names, no governance) lands
@@ -392,26 +392,26 @@ test.describe('the signed-in scenes', () => {
 		// THE WALL: this person's two photos, the shared wall's tiles.
 		await expect(page.locator('.person-wall .tile')).toHaveCount(2);
 
-		// THE PHOTO HIDE (the only hide left in the people domain --
-		// the batch bar's): select the first photo, hide it through the
-		// bar, and the wall + the profile count converge.
+		// THE PHOTO ARCHIVE (the archive switch is the batch bar's):
+		// select the first photo, archive it through the bar, and the
+		// wall + the profile count converge.
 		const tile = page.locator('.person-wall .tile').first();
 		await tile.hover();
 		await tile.locator('.tile__check').click();
 		const batchBar = page.locator('.batchbar');
 		await expect(batchBar).toBeVisible();
-		await batchBar.getByRole('button', { name: 'Hide', exact: true }).click();
+		await batchBar.getByRole('button', { name: 'Archive', exact: true }).click();
 		await expect(page.locator('.person-wall .tile')).toHaveCount(1);
 		await expect(page.locator('.person-profile__count')).toHaveText('1');
 
-		// The hidden photo is restorable from the hidden page and comes
-		// back to this wall (the restored event's convergence).
-		await page.goto('/hidden');
+		// The archived photo is unarchivable from the archived page and
+		// comes back to this wall (the convergence's own rule).
+		await page.goto('/archived');
 		await expect(page.locator('.wall-page .tile')).toHaveCount(1);
-		const hiddenTile = page.locator('.wall-page .tile').first();
-		await hiddenTile.hover();
-		await hiddenTile.locator('.tile__check').click();
-		await page.locator('.batchbar').getByRole('button', { name: 'Unhide', exact: true }).click();
+		const archivedTile = page.locator('.wall-page .tile').first();
+		await archivedTile.hover();
+		await archivedTile.locator('.tile__check').click();
+		await page.locator('.batchbar').getByRole('button', { name: 'Unarchive', exact: true }).click();
 		await expect(page.locator('.wall-page .tile')).toHaveCount(0);
 
 		await page.goto('/people');

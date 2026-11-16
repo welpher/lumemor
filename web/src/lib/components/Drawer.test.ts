@@ -5,7 +5,7 @@ import { probeSession, sessionStatus } from '$lib/auth/session.svelte';
 import Drawer from './Drawer.svelte';
 
 // The drawer contract: eight content items, all live (the albums
-// wall's entry live since the albums surface; the hidden view's
+// wall's entry live since the albums surface; the archived view's
 // entry moved here from the timeline's toolbar; the memories wall's
 // entry went live with the memory route), the admin panel's
 // role-gated entry (the identity seam: an admin's session renders
@@ -76,14 +76,14 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	const panel = document.body.querySelector<HTMLElement>('nav.drawer__panel');
 	expect(panel?.getAttribute('aria-label')).toBe('Navigation');
 
-	// The route-table order, all eight visible -- the hidden
+	// The route-table order, all eight visible -- the archived
 	// view's entry moved here from the timeline's toolbar and
 	// sits with the other list views (favorites/trash). The settings
 	// entry is gone: the account dropdown is its only
 	// home. The leading icons add a whitespace text node
 	// before each label, so the text assertions trim.
 	const labels = [...document.body.querySelectorAll('.drawer__item')].map((element) => element.textContent?.trim());
-	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Hidden', 'Trash']);
+	expect(labels).toEqual(['Timeline', 'Albums', 'People', 'Places', 'Memories', 'Favorites', 'Archive', 'Trash']);
 
 	// Every item LEADS with its icon: the svg is the item's
 	// first element child, decorative (aria-hidden), and the text
@@ -101,7 +101,7 @@ test('closed renders nothing; open renders the eight content items in IA order',
 	expect(iconClasses.size).toBe(8);
 
 	// The live links: the timeline, the albums wall, the people,
-	// the places grid, the memories wall, favorites, hidden and
+	// the places grid, the memories wall, favorites, archived and
 	// trash routes -- and NO /settings door (the account dropdown
 	// owns it alone).
 	const links = [...document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')].map((link) =>
@@ -114,7 +114,7 @@ test('closed renders nothing; open renders the eight content items in IA order',
 		'/places',
 		'/memories',
 		'/favorites',
-		'/hidden',
+		'/archived',
 		'/trash'
 	]);
 	expect(document.body.querySelector('a.drawer__item[href="/settings"]')).toBeNull();
@@ -160,7 +160,7 @@ test('an admin session renders the admin panel entry below the content list', as
 		'Places',
 		'Memories',
 		'Favorites',
-		'Hidden',
+		'Archive',
 		'Trash',
 		'Admin panel'
 	]);

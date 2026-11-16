@@ -692,6 +692,7 @@ test('a ?memory= deep link opens the playback overlay over the wall', async () =
 								createdAt: '2026-09-10T12:00:00Z',
 								takenAtSource: 'exif',
 								isTrashed: false,
+								isArchived: false,
 								isFavorite: false,
 								isReady: true,
 								width: 4000,

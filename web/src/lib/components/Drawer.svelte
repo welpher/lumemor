@@ -3,7 +3,7 @@
 	// hamburger opens it; Escape and a click outside close it). It
 	// carries the content sections in route-table order (the
 	// albums wall's entry live since the albums surface; the places
-	// grid's entry live since the places surface), plus the hidden
+	// grid's entry live since the places surface), plus the archived
 	// view's entry, which moved here from the timeline's toolbar --
 	// it sits with the other list views (favorites/trash).
 	// The list is the eight content sections and NOTHING else:
@@ -31,7 +31,7 @@
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import Star from '@lucide/svelte/icons/star';
-	import EyeOff from '@lucide/svelte/icons/eye-off';
+	import Archive from '@lucide/svelte/icons/archive';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Shield from '@lucide/svelte/icons/shield';
 	import type { Component } from 'svelte';
@@ -53,7 +53,7 @@
 		{ labelKey: 'nav_places', href: '/places', disabled: false, icon: MapPin },
 		{ labelKey: 'nav_memories', href: '/memories', disabled: false, icon: Sparkles },
 		{ labelKey: 'nav_favorites', href: '/favorites', disabled: false, icon: Star },
-		{ labelKey: 'hidden_title', href: '/hidden', disabled: false, icon: EyeOff },
+		{ labelKey: 'nav_archived', href: '/archived', disabled: false, icon: Archive },
 		{ labelKey: 'nav_trash', href: '/trash', disabled: false, icon: Trash2 }
 	];
 

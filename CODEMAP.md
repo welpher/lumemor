@@ -28,7 +28,7 @@ One page so you can add a feature without spelunking.
 
 - `src/lib/timeline/` — **the wall family**: `Wall.svelte` (the unified
   wall: rendering + month axis + selection flow), `FlatWall.svelte` (the
-  query-mode rank wall), `CuratedWall.svelte` (favorites/hidden wrapper),
+  query-mode rank wall), `CuratedWall.svelte` (favorites/archived wrapper),
   `PhotoTile.svelte`, `MonthScrubber.svelte`, `BatchBar.svelte`.
 - `src/lib/albums/` — the album surfaces: create/edit dialogs,
   `PathCompletion.svelte`, `AudienceField.svelte`.
@@ -51,7 +51,7 @@ One page so you can add a feature without spelunking.
 - `src/lib/i18n/` — the locale stores; `scripts/check_i18n.py` (repo root)
   enforces parity + the `NON_ERROR_KEYS` allowlist.
 - `src/routes/(content)/` — the family shell: `timeline/`, `albums/`,
-  `people/`, `places/`, `search/`, `favorites/`, `hidden/`, `trash/`,
+  `people/`, `places/`, `search/`, `favorites/`, `archived/`, `trash/`,
   `a/[id]/` (the viewer route), `settings/`.
 - `src/routes/(tool)/` — the admin shell: `admin/users`, `admin/settings`,
   `admin/models`, `admin/jobs` (the full-bleed rail layout).

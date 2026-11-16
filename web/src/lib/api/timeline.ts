@@ -27,9 +27,10 @@
 //   `loadMore()` again with the SAME cursor (idempotent position).
 // - SSE: `applyEvent` maps `asset.trashed`/`asset.deleted` to a
 //   direct removal and every other asset.* event to a convergence
-//   refetch of GET /api/v1/assets/{id} -- not live (trashed, hidden
-//   or gone) removes the tile, live patches or inserts it. The
-//   convergence is SEQUENCED by the server-monotonic event id (see
+//   refetch of GET /api/v1/assets/{id} -- trashed or archived (or
+//   gone) removes the tile from a family-flow wall; the album
+//   container keeps its archived members (see the membership rule).
+//   The convergence is SEQUENCED by the server-monotonic event id (see
 //   the converge* maps in the client): a stale detail response never
 //   applies over a newer event, and a removal supersedes any
 //   in-flight convergence so a removed tile cannot be resurrected.
@@ -42,7 +43,10 @@
 //   the pre-action snapshot when the POST fails. Success relies on
 //   SSE for convergence (hide/trash events remove what the optimism
 //   already removed; favorites are silent by contract, so the
-//   optimistic flag is the final state).
+//   optimistic flag is the final state). The archive actions (hide /
+//   unhide) keep the same optimistic arm: the family-flow walls drop
+//   the tiles, the archived wall drops the unarchived ones, and the
+//   album wall keeps its archived members (the container rule).
 //
 // The insertion rule for convergence: the loaded items are always
 // the TOP PREFIX of the keyset ordering (pagination starts from the
@@ -51,13 +55,13 @@
 // window belongs to an unloaded page and is skipped (the run walks
 // there eventually).
 //
-// THE CURATED VIEWS: the favorites and hidden walls drive this same
+// THE CURATED VIEWS: the favorites and archived walls drive this same
 // client through the `view` option -- the page shape, ordering and
 // pagination are theirs unchanged, and exactly two behaviors shift:
-// the SSE convergence's membership rule (the hidden wall keeps the
-// hidden rows, not the live ones) and the optimistic arm of the one
+// the SSE convergence's membership rule (the archived wall keeps the
+// archived rows, not the live ones) and the optimistic arm of the one
 // batch action that ends an item's membership (unfavorite on
-// favorites, unhide on hidden removes the tiles). The favorites wall
+// favorites, unhide on archived removes the tiles). The favorites wall
 // cannot evaluate its membership from the convergence detail alone
 // (favoriteness is not part of AssetDetail), so its ended
 // memberships are STICKY: the unfavorite arm parks the ids in a
@@ -66,11 +70,16 @@
 //
 // THE ALBUM WALL: the album detail's grid drives this same
 // client through the `albumId` option -- the endpoint's album narrow
-// answers the album's own live items in the timeline's exact shape
-// (keyset order, per-user favorite flags), so the grid reuses the
-// wall wholesale. The album page's own wallResetKey convergence
-// restarts the walk when an album.items-changed event lands for the
-// album.
+// answers the album's own members in the timeline's exact shape
+// (keyset order, per-user favorite flags), archived members
+// included: an album is a reference container, so the archive
+// removes an asset from every family flow but never from the album
+// that holds it. The one exception is a memory, a family-flow
+// surface of its own -- its wall drops archived members exactly like
+// the aggregate does (the convergence's container rule reads the
+// detail's albums face). The album page's own wallResetKey
+// convergence restarts the walk when an album.items-changed event
+// lands for the album.
 //
 // THE PERSON WALL: the person detail drives the same client through
 // the `clusterId` option -- the endpoint's person narrow answers one
@@ -102,7 +111,7 @@ export type BatchAction = components['schemas']['BatchRequest']['action'];
  * membership rule of the SSE convergence and the optimistic arm of
  * the batch action that ends an item's membership.
  */
-export type WallView = 'timeline' | 'favorites' | 'hidden';
+export type WallView = 'timeline' | 'favorites' | 'archived';
 
 /** The page-fetch lifecycle of the client. */
 export type TimelineStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -142,7 +151,7 @@ export type TimelineClientOptions = {
 	path?: string;
 	/**
 	 * Which wall the client serves (see WallView). The default is the
-	 * aggregate timeline; the favorites and hidden pages pass their
+	 * aggregate timeline; the favorites and archived pages pass their
 	 * own view so the convergence and the optimistic batch follow
 	 * that view's membership rule.
 	 */
@@ -332,7 +341,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		if (candidate.isTrashed !== true && candidate.isTrashed !== false) {
 			return null;
 		}
-		if (candidate.isHidden !== true && candidate.isHidden !== false) {
+		if (candidate.isArchived !== true && candidate.isArchived !== false) {
 			return null;
 		}
 		return body as AssetDetail;
@@ -424,6 +433,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			takenAt: detail.takenAt,
 			takenAtSource: detail.takenAtSource,
 			isTrashed: false,
+			isArchived: detail.isArchived,
 			isFavorite: existing?.isFavorite ?? false,
 			isReady: detail.isReady,
 			// The timeline item's dimensions are always present (the
@@ -530,7 +540,7 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 		// for their rows. The curated views keep the detail's own
 		// rule: their membership is the caller's per-user rows, never
 		// the album feed.
-		if (!narrowed && view !== 'favorites' && view !== 'hidden' && !knownIds.has(assetId)) {
+		if (!narrowed && view !== 'favorites' && view !== 'archived' && !knownIds.has(assetId)) {
 			const face = detail.albums ?? [];
 			// The map arms (a directory album at either role, a shared
 			// reference set) need the caller's pref facts; the sync arm
@@ -552,16 +562,26 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 			}
 		}
 		// The view's membership rule, decided by the detail: the
-		// timeline and favorites walls keep live (unhidden, untrashed)
-		// rows; the hidden wall keeps exactly the hidden ones (an
-		// unhidden row returns to the live views and leaves this
-		// one). A trashed row leaves every wall. The favorites wall
-		// adds one rule the detail cannot decide by itself: an id
+		// timeline and favorites walls keep live (unarchived,
+		// untrashed) rows; the archived wall keeps exactly the
+		// archived ones (an unarchived row returns to the family flows
+		// and leaves this one). A trashed row leaves every wall. The
+		// album narrow is the one container: it keeps its archived
+		// members (the archive removes an asset from the family flows,
+		// never from the album that holds it), unless the album is a
+		// memory -- a family-flow surface of its own, which drops them.
+		// The detail's albums face names the container and its type,
+		// so the rule needs no wiring from the page. The favorites
+		// wall adds one rule the detail cannot decide by itself: an id
 		// whose membership the unfavorite arm ended (the sticky set)
 		// is not a member, whatever the detail says.
+		const holdsArchived =
+			narrowed &&
+			albumId !== undefined &&
+			(detail.albums ?? []).some((ref) => ref.id === albumId && ref.type !== 'memory');
 		const member =
 			!detail.isTrashed &&
-			(view === 'hidden' ? detail.isHidden : !detail.isHidden) &&
+			(holdsArchived ? true : view === 'archived' ? detail.isArchived : !detail.isArchived) &&
 			!(view === 'favorites' && removedMembers.has(assetId));
 		if (!member) {
 			removeIds([assetId]);
@@ -591,8 +611,9 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 	/**
 	 * The convergence entry point behind every non-removal asset
 	 * event: the detail decides whether the tile leaves the wall
-	 * (trashed, hidden, gone) or returns to it (restored, unhidden,
-	 * refined), sequenced by the event id (see the maps above).
+	 * (trashed, archived, gone) or returns to it (restored,
+	 * unarchived, refined), sequenced by the event id (see the maps
+	 * above).
 	 *
 	 * THE ALBUM NARROW'S GATE: the album's wall answers the timeline
 	 * endpoint's albumId narrow, whose pages ARE the membership -- an
@@ -831,19 +852,29 @@ export function createTimelineClient(options: TimelineClientOptions = {}): Timel
 				break;
 			}
 			case 'unhide': {
-				if (view === 'hidden') {
-					// Membership removal: an unhidden asset returns to
-					// the live views and leaves this one. The SSE
+				if (view === 'archived') {
+					// Membership removal: an unarchived asset returns to
+					// the family flows and leaves this one. The SSE
 					// asset.updated event of the success converges the
 					// same way (the detail's membership rule removes
 					// the live row again -- a harmless no-op).
 					removeIds(ids);
 					break;
 				}
-				// The timeline wall: nothing visible is hidden, so the
-				// local state is already correct, and the SSE
+				// The family-flow walls: nothing visible is archived,
+				// so the local state is already correct, and the SSE
 				// convergence inserts returning items into the loaded
-				// window if they belong.
+				// window if they belong. The album wall's archived
+				// members keep their tiles (the container rule) and
+				// only drop the archived mark, so the unarchive
+				// affordance's gate follows the applied state at once.
+				const unarchived = new Set(ids);
+				store.update((state) => ({
+					...state,
+					items: state.items.map((timelineItem) =>
+						unarchived.has(timelineItem.id) ? { ...timelineItem, isArchived: false } : timelineItem
+					)
+				}));
 				break;
 			}
 			case 'restore': {

@@ -23,6 +23,7 @@ const itemBase = {
 	takenAt: '2026-10-13T12:30:00Z',
 	takenAtSource: 'exif',
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: false,
 	isReady: true,
 	width: 4032,

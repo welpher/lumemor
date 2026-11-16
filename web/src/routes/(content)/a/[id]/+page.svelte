@@ -38,13 +38,13 @@
 	//   touched the stored text (the drawer keeps the draft).
 	// - The curation actions mirror the wall's batch runner over the
 	//   local detail: the optimistic flip first (favorite flag,
-	//   hidden / trashed switches), the batch POST, a rollback from
+	//   archived / trashed switches), the batch POST, a rollback from
 	//   the pre-action snapshot on failure, and the SSE convergence
 	//   confirming the success (favorites publish no events -- the
 	//   optimistic flag is the final state, the wall runner's
 	//   reasoning). The action bar surfaces the favorite and the
 	//   trash/restore pair; the runner stays the total mirror of the
-	//   batch API (hide / unhide included), ready for any surface
+	//   batch API (the archive pair included), ready for any surface
 	//   that offers them.
 	// - The video's playability is decided by the play-stream probe,
 	//   not the detail's isReady (a stale detail or a missed event
@@ -152,7 +152,7 @@
 	// The caller's ownership of the open asset (the identity seam):
 	// the session's userId against the asset's owner. A viewer -- the
 	// owner's share grants them the read -- sees the drawer without its
-	// owner-only write affordances (the description edit, the hide /
+	// owner-only write affordances (the description edit, the archive /
 	// trash curation, the permanent delete); the favorite stays for
 	// everyone (per-user state) and the face chips stay (their assign
 	// dialog carries the per-user label write a sharee holds too).
@@ -294,7 +294,7 @@
 	});
 
 	// The person events converge the drawer's face chips: a label,
-	// hidden, merge or face-move write that touches one of the open
+	// archived, merge or face-move write that touches one of the open
 	// asset's faces (their clusters or their ids) refetches the
 	// detail, whose faces array IS the chips' truth. Foreign sessions'
 	// events refetch the same answer and move nothing the server does
@@ -1064,7 +1064,7 @@
 		// The optimistic mirror of the wall's batch runner, over the
 		// local detail copy.
 		const favoriteBefore = favorite;
-		const hiddenBefore = current.isHidden;
+		const archivedBefore = current.isArchived;
 		const trashedBefore = current.isTrashed;
 		switch (action) {
 			case 'favorite':
@@ -1074,10 +1074,10 @@
 				favorite = false;
 				break;
 			case 'hide':
-				detail = { ...current, isHidden: true };
+				detail = { ...current, isArchived: true };
 				break;
 			case 'unhide':
-				detail = { ...current, isHidden: false };
+				detail = { ...current, isArchived: false };
 				break;
 			case 'trash':
 				detail = { ...current, isTrashed: true };
@@ -1097,7 +1097,7 @@
 		// Roll back from the pre-action snapshot.
 		favorite = favoriteBefore;
 		if (detail !== null && detail.id === current.id) {
-			detail = { ...detail, isHidden: hiddenBefore, isTrashed: trashedBefore };
+			detail = { ...detail, isArchived: archivedBefore, isTrashed: trashedBefore };
 		}
 		actionErrorKey = outcome.errorKey;
 		return false;

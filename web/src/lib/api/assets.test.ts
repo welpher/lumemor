@@ -33,7 +33,7 @@ const detailBody = {
 	takenAtSource: 'exif',
 	takenAtZone: '+08:00',
 	isTrashed: false,
-	isHidden: false,
+	isArchived: false,
 	description: 'Sunset over the lake.',
 	isReady: true,
 	width: 4032,
@@ -269,22 +269,26 @@ test('the patch maps validation, session and network failures', async () => {
 	expect(
 		await patchAsset(
 			'a1',
-			{ isHidden: true },
+			{ isArchived: true },
 			{ fetcher: vi.fn(async () => jsonResponse(400, { code: 'VALIDATION_FAILED' })) }
 		)
 	).toEqual({ ok: false, errorKey: 'validation_failed' });
 	expect(
 		await patchAsset(
 			'a1',
-			{ isHidden: true },
+			{ isArchived: true },
 			{ fetcher: vi.fn(async () => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' })) }
 		)
 	).toEqual({ ok: false, errorKey: 'session_expired' });
 	expect(
-		await patchAsset('a1', { isHidden: true }, { fetcher: vi.fn(async () => Promise.reject(new Error('offline'))) })
+		await patchAsset(
+			'a1',
+			{ isArchived: true },
+			{ fetcher: vi.fn(async () => Promise.reject(new Error('offline'))) }
+		)
 	).toEqual({ ok: false, errorKey: 'internal' });
 	expect(
-		await patchAsset('a1', { isHidden: true }, { fetcher: vi.fn(async () => jsonResponse(200, 'not an object')) })
+		await patchAsset('a1', { isArchived: true }, { fetcher: vi.fn(async () => jsonResponse(200, 'not an object')) })
 	).toEqual({ ok: false, errorKey: 'internal' });
 });
 

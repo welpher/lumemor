@@ -179,7 +179,7 @@ function detailFrom(body: unknown): AssetDetail | null {
 	if (candidate.isTrashed !== true && candidate.isTrashed !== false) {
 		return null;
 	}
-	if (candidate.isHidden !== true && candidate.isHidden !== false) {
+	if (candidate.isArchived !== true && candidate.isArchived !== false) {
 		return null;
 	}
 	// The faces array is part of the fixed shape: absent, null or a
@@ -309,7 +309,7 @@ export async function fetchAssetDetail(id: string, options: AssetDetailOptions =
 }
 
 /**
- * PATCH /api/v1/assets/{id}: edit the description and/or the hidden
+ * PATCH /api/v1/assets/{id}: edit the description and/or the archive
  * switch. The response is the full detail after the edit (the
  * idempotent no-op answers it too), so the caller adopts it as the
  * fresh state -- no refetch. The `locale` option rides the response's
@@ -471,7 +471,7 @@ export type FaceCreateResult = { ok: true; faceId: string; thumbnail: string } |
  * (per-mille units) becomes a face row of the asset; the response
  * carries its identity and crop URL, which the assign flow (the move
  * or the from-face creation) takes from here. A 404 covers the whole
- * refusal family (unknown, foreign, trashed, hidden or component
+ * refusal family (unknown, foreign, trashed, archived, or component
  * asset -- indistinguishable by design); a 400 is a malformed box.
  */
 export async function createFace(

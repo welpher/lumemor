@@ -294,7 +294,7 @@
 <div class="timeline__gutter pe-[72px]">
 	<section class="timeline px-2" aria-busy={$timeline.status === 'loading'}>
 		<!-- No toolbar: the timeline's header carries nothing but
-	     what the top bar already owns (upload, search). The hidden
+	     what the top bar already owns (upload, search). The archived
 	     view's entry moved to the navigation drawer; the selection
 	     entry is the tiles' check affordance (hover/keyboard-focus
 	     revealed on every tile, the first click enters the

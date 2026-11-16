@@ -40,6 +40,7 @@ const itemDefaults = {
 	createdAt: '2026-10-29T09:12:00Z',
 	takenAtSource: 'exif' as const,
 	isTrashed: false,
+	isArchived: false,
 	isFavorite: true,
 	isReady: true,
 	width: 4000,
