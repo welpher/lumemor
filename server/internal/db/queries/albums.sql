@@ -700,13 +700,17 @@ WHERE ai.asset_id = sqlc.arg('asset_id');
 -- on its share row -- so another account's sync album (nothing can
 -- share one) and every unshared foreign album stay invisible, and
 -- the same asset answers different arrays for the owner and a
--- sharee. Ordered with the sync card first (the wall's pinned-card
+-- sharee. source_writable rides along so the photo-detail faces can
+-- gate the destructive affordances on the source's own writability
+-- (a read-only directory's photos are the scan's verdict alone).
+-- Ordered with the sync card first (the wall's pinned-card
 -- discipline), then by title case-insensitively with the album id
 -- as the tiebreak. The caller must have proven the asset
 -- caller-visible first; the array carries no gate of its own.
 SELECT al.id,
        al.title,
        al.type,
+       al.source_writable,
        al.owner_id = sqlc.arg('viewer') AS is_owner
 FROM albums al
 LEFT JOIN album_shares sh

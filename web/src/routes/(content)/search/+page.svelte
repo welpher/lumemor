@@ -350,11 +350,17 @@
 			<!-- The count idiom (glyph + digits; the wording is the
 			     accessible name): it follows the query, and it yields
 			     below lg -- the identity stays one bar-tall row. -->
-			<CountLabel
-				class="search-bar__count hidden lg:inline-flex font-body font-normal text-[13px] leading-[1.4] text-text-soft"
-				count={$search.items.length}
-				label={countLabel}
-			/>
+			<!-- The wrapper owns the visibility gate: the component's
+			     own base display class defeats a caller's `hidden`
+			     (the utility order), so the sample's below-lg hiding
+			     rides THIS element instead. -->
+			<span class="hidden lg:inline-flex">
+				<CountLabel
+					class="search-bar__count font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+					count={$search.items.length}
+					label={countLabel}
+				/>
+			</span>
 		</div>
 		<!-- The field's own form: the keyboard's Enter commits the
 		     query to the URL (the submit is the page's state write). -->

@@ -706,7 +706,7 @@
 					</h2>
 					{#if settled}
 						<CountLabel
-							class="memory-overlay__count hidden sm:inline font-body font-normal text-[13px] leading-[1.4] text-cream-text/70"
+							class="memory-overlay__count font-body font-normal text-[13px] leading-[1.4] text-cream-text/70"
 							{count}
 							label={$_('memories_photo_count', { values: { count } })}
 						/>
