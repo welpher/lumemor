@@ -622,6 +622,15 @@ test.describe('the administrator scenes', () => {
 		await expect(barCount).toBeVisible();
 		await expect(barCount).toHaveAttribute('aria-label', '2 photos');
 		await page.setViewportSize({ width: 1280, height: 720 });
+		// At the desktop width the count rides the bar as the sample
+		// draws it: the glyph BESIDE the digits on one line (the
+		// retired gate blockified the count here -- the variant's
+		// display:inline beat the component's inline-flex and stacked
+		// the svg over the number; the computed style is the decisive
+		// assertion, the height the visual one).
+		await expect(barCount).toBeVisible();
+		expect(await barCount.evaluate((el) => getComputedStyle(el).display)).toBe('inline-flex');
+		expect(await barCount.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(24);
 
 		// And the scan's pipeline ran to its end: the source ingest
 		// enqueued the same fan-out an upload's does, and both files

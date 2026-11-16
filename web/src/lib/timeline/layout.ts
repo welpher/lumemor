@@ -41,7 +41,7 @@
 //   (keyset), events removing (SSE convergence) and the container
 //   resizing all re-derive the same rows for the same inputs.
 //
-// THE TOKEN MIRROR: the three row-math constants below mirror the
+// THE TOKEN MIRROR: the six row-math constants below mirror the
 // wall tokens of theme.css ("The justified photo wall" section) --
 // the same discipline as the @theme/Layer 2 mirrors, because the row
 // math runs in TypeScript where CSS custom properties cannot be
