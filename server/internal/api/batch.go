@@ -51,10 +51,10 @@ const batchIDLimit = 1000
 // so no other session has anything to refresh -- the silence is the
 // documented choice, not an omission.
 var batchEventNames = map[apigen.BatchRequestAction]string{
-	apigen.Trash:   "asset.trashed",
-	apigen.Restore: "asset.restored",
-	apigen.Hide:    "asset.updated",
-	apigen.Unhide:  "asset.updated",
+	apigen.BatchRequestActionTrash:   "asset.trashed",
+	apigen.BatchRequestActionRestore: "asset.restored",
+	apigen.BatchRequestActionHide:    "asset.updated",
+	apigen.BatchRequestActionUnhide:  "asset.updated",
 }
 
 // The external lifecycle's move failures, the one error class the
@@ -256,7 +256,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 	// the changed ids. The favorites and the hide/unhide arms never
 	// move the trash lifecycle's live predicate and publish nothing
 	// album-level; a refused batch never reaches this block at all.
-	if request.Action == apigen.Trash || request.Action == apigen.Restore {
+	if request.Action == apigen.BatchRequestActionTrash || request.Action == apigen.BatchRequestActionRestore {
 		s.publishAlbumMembershipEvents(r.Context(), requester.userID, changed)
 	}
 
@@ -284,7 +284,7 @@ func (s *server) BatchAssets(w http.ResponseWriter, r *http.Request) {
 // resolutions answer the same row shape, so the handler's report
 // partitioning never branches on the action.
 func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, caller uuid.UUID, ids []uuid.UUID) ([]dbgen.ResolveBatchAssetsRow, error) {
-	if action == apigen.Favorite || action == apigen.Unfavorite {
+	if action == apigen.BatchRequestActionFavorite || action == apigen.BatchRequestActionUnfavorite {
 		rows, err := queries.ResolveVisibleAssets(ctx, dbgen.ResolveVisibleAssetsParams{
 			Ids:    pgUUIDs(ids),
 			Viewer: pgUUID(caller),
@@ -325,26 +325,26 @@ func resolveBatchTargets(ctx context.Context, queries *dbgen.Queries, action api
 // alongside the write, so a repeat trash touches no file either).
 func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, action apigen.BatchRequestAction, owner, id uuid.UUID) (bool, *batchFileMove, error) {
 	switch action {
-	case apigen.Favorite:
+	case apigen.BatchRequestActionFavorite:
 		_, err := queries.FavoriteAsset(ctx, dbgen.FavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
 		return false, nil, err
-	case apigen.Unfavorite:
+	case apigen.BatchRequestActionUnfavorite:
 		_, err := queries.UnfavoriteAsset(ctx, dbgen.UnfavoriteAssetParams{
 			UserID:  pgUUID(owner),
 			AssetID: pgUUID(id),
 		})
 		return false, nil, err
-	case apigen.Hide, apigen.Unhide:
+	case apigen.BatchRequestActionHide, apigen.BatchRequestActionUnhide:
 		rows, err := queries.SetAssetHidden(ctx, dbgen.SetAssetHiddenParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
-			Hidden:  action == apigen.Hide,
+			Hidden:  action == apigen.BatchRequestActionHide,
 		})
 		return rows > 0, nil, err
-	case apigen.Trash:
+	case apigen.BatchRequestActionTrash:
 		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
@@ -383,7 +383,7 @@ func (s *server) applyBatchAction(ctx context.Context, queries *dbgen.Queries, a
 			OwnerID: pgUUID(owner),
 		})
 		return rows > 0, nil, err
-	case apigen.Restore:
+	case apigen.BatchRequestActionRestore:
 		row, err := queries.GetAsset(ctx, dbgen.GetAssetParams{
 			ID:      pgUUID(id),
 			OwnerID: pgUUID(owner),
