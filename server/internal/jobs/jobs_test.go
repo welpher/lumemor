@@ -139,6 +139,7 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 	if err := db.SaveModelSettings(t.Context(), dbgen.New(pool), db.ModelSettings{
 		AutoDownload: true,
 		AllowedHosts: []string{"127.0.0.1"},
+		Params:       db.MlModelParamsDefault,
 	}); err != nil {
 		t.Fatalf("save the fixture model settings: %v", err)
 	}
