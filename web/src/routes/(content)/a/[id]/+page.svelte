@@ -112,6 +112,8 @@
 		listPeople,
 		listUnnamedPeople,
 		moveFace,
+		patchFaceBox,
+		type FaceBoxPatchRequest,
 		type PersonSummary,
 		type UnnamedClusterSummary
 	} from '$lib/api/people';
@@ -198,6 +200,7 @@
 		// the staged edits die with them (a staged edit belongs to a
 		// face of THIS photo).
 		editFacesOpen = false;
+		boxEditFaceId = null;
 		pickFaceId = null;
 		detachConfirmId = null;
 		faceStages = {};
@@ -342,6 +345,11 @@
 			case 'person.face_clustered':
 			case 'person.face_detached':
 				return faces.some((face) => face.id === event.faceId || face.clusterId === event.clusterId);
+			// The box rewrite names only the face: the on-photo box
+			// layer and the panel's rows re-render from the refetched
+			// faces array.
+			case 'person.face_box_updated':
+				return faces.some((face) => face.id === event.faceId);
 		}
 	}
 
@@ -572,14 +580,33 @@
 	// chips' assign flow owns the naming).
 	/**
 	 * One staged edit of the panel: the reassign target (the move the
-	 * commit will post) or the from-face creation (the new person the
-	 * commit will seed). The label is what the panel's row shows
-	 * while the edit is pending.
+	 * commit will post), the from-face creation (the new person the
+	 * commit will seed), or the adjusted box (the PATCH the commit
+	 * will post, normalized to the image -- the drag's landing). The
+	 * label is what the panel's row shows while the edit is pending
+	 * (a box stage keeps the row's own label; the marker is the
+	 * pending state).
 	 */
-	type FaceStage = { kind: 'move'; targetClusterId: string; label: string } | { kind: 'create'; label: string };
+	type FaceStage =
+		| { kind: 'move'; targetClusterId: string; label: string }
+		| { kind: 'create'; label: string }
+		| { kind: 'box'; box: FaceBoxPatchRequest };
 
 	/** Whether the edit-people panel stands in the drawer's place. */
 	let editFacesOpen = $state(false);
+	/**
+	 * The box-edit selection: the face whose box the panel's frame
+	 * button picked (null while none). The drag geometry lives in
+	 * the Viewer; the page holds the selection and the staged box.
+	 */
+	let boxEditFaceId = $state<string | null>(null);
+	/**
+	 * The panel's face crops' bust: bumped when a box commit lands,
+	 * so the rows re-request the crop the new box cuts (the crop
+	 * ETag changed under the same URL; the refetched detail alone
+	 * would re-render the same cached bytes).
+	 */
+	let faceCropTick = $state(0);
 	/** The face whose choose-person dialog is open; null while closed. */
 	let pickFaceId = $state<string | null>(null);
 	/** The face whose detach confirm is open; null while closed. */
@@ -624,9 +651,15 @@
 	 */
 	const pickPeople = $derived(editPeople.filter((entry) => entry.clusterId !== pickFace?.clusterId));
 
-	/** The panel's staged label for one face; undefined when no edit is pending on it. */
+	/** The panel's staged label for one face; undefined when no label edit is pending on it (a box stage keeps the row's own label). */
 	function stageLabelOf(face: AssetFaceSummary): string | undefined {
-		return faceStages[face.id]?.label;
+		const stage = faceStages[face.id];
+		return stage?.kind === 'box' ? undefined : stage?.label;
+	}
+
+	/** Whether a staged BOX edit is pending on one face (the row's pending marker). */
+	function stagedBoxOf(face: AssetFaceSummary): boolean {
+		return faceStages[face.id]?.kind === 'box';
 	}
 
 	/** How many faces carry a staged edit (the panel's apply gate). */
@@ -661,12 +694,36 @@
 	function startEditFaces(): void {
 		editErrorKey = '';
 		faceStages = {};
+		boxEditFaceId = null;
 		editFacesOpen = true;
 	}
 
 	/** Return from the panel to the information drawer (the back affordance, the layered Escape). */
 	function closeEditFaces(): void {
+		// The selection dies with the panel (the boxes stand down
+		// with the edit mode, the sample's own rule).
+		boxEditFaceId = null;
 		editFacesOpen = false;
+	}
+
+	/** Select one face's box on the photo: the same face re-picked clears (the row's toggle). */
+	function startBoxEdit(face: AssetFaceSummary): void {
+		boxEditFaceId = boxEditFaceId === face.id ? null : face.id;
+	}
+
+	/** Clear the box-edit selection (the selected box's Esc; the panel stays open). */
+	function clearBoxEdit(): void {
+		boxEditFaceId = null;
+	}
+
+	/**
+	 * Stage the drag's landing: the adjusted box becomes the face's
+	 * pending edit (the commit's PATCH body, normalized to the
+	 * image). Staging never writes -- the panel's check is the one
+	 * writer.
+	 */
+	function stageBox(faceId: string, box: FaceBoxPatchRequest): void {
+		faceStages[faceId] = { kind: 'box', box };
 	}
 
 	/** Open the choose-person dialog for one face (the row's reassign pencil). */
@@ -739,13 +796,16 @@
 
 	/**
 	 * The one-shot commit: the staged reassigns (the move loop, in
-	 * the faces' own order) then the staged creates (each seeding a
-	 * person from its face). The loop stops at the FIRST refusal --
+	 * the faces' own order), the staged creates (each seeding a
+	 * person from its face) and the staged boxes (each PATCHing its
+	 * face's adjusted box). The loop stops at the FIRST refusal --
 	 * the writes that landed stay landed (their stages dropped),
 	 * the rest stay staged for a retry, and the failure renders
 	 * beside the apply button. The full commit returns to the
-	 * information drawer with the count echo; every create carries
-	 * its own echo (the new person exists from that write).
+	 * information drawer with one echo (the count when a label
+	 * change rode along, the box sentence for a box-only set);
+	 * every create carries its own echo (the new person exists from
+	 * that write).
 	 */
 	async function commitEdits(): Promise<void> {
 		const current = detail;
@@ -762,9 +822,14 @@
 		editBusy = true;
 		editErrorKey = '';
 		let committed = 0;
+		let boxCommitted = false;
 		for (const { face, stage } of entries) {
 			const outcome =
-				stage.kind === 'move' ? await moveFace(face.id, stage.targetClusterId) : await clusterFace(face.id);
+				stage.kind === 'move'
+					? await moveFace(face.id, stage.targetClusterId)
+					: stage.kind === 'box'
+						? await patchFaceBox(face.id, stage.box)
+						: await clusterFace(face.id);
 			if (!outcome.ok) {
 				editErrorKey = outcome.errorKey;
 				break;
@@ -774,11 +839,28 @@
 			if (stage.kind === 'create') {
 				toast($_('people_create_from_face_done'), 'success');
 			}
+			if (stage.kind === 'box') {
+				boxCommitted = true;
+			}
 		}
 		editBusy = false;
 		if (committed === entries.length) {
 			editFacesOpen = false;
-			toast($_('people_edits_count', { values: { count: committed } }), 'success');
+			boxEditFaceId = null;
+			if (boxCommitted) {
+				// The crops re-derive under the same URLs: the bust
+				// makes the rows re-request what the new box cuts.
+				faceCropTick += 1;
+			}
+			// One echo for the whole commit: the box sentence when
+			// the staged set was boxes alone, the count otherwise
+			// (a box rides the count as one change).
+			const boxOnly = entries.every((entry) => entry.stage.kind === 'box');
+			if (boxOnly) {
+				toast($_('face_box_updated'), 'success');
+			} else {
+				toast($_('people_edits_count', { values: { count: committed } }), 'success');
+			}
 		}
 		if (committed > 0) {
 			void refetchDetail();
@@ -1145,6 +1227,7 @@
 	onremovetag={(tagId) => void removeTag(tagId)}
 	{editFacesOpen}
 	{stageLabelOf}
+	{stagedBoxOf}
 	{editStagedCount}
 	{editBusy}
 	{editErrorKey}
@@ -1154,6 +1237,11 @@
 	ondetachface={startDetachConfirm}
 	onapplyfaces={() => void commitEdits()}
 	oncreateface={(bbox) => void drawFace(bbox)}
+	{boxEditFaceId}
+	onboxedit={startBoxEdit}
+	onboxeditclear={clearBoxEdit}
+	onboxstage={stageBox}
+	cropBust={faceCropTick}
 	onedittime={openEditTime}
 	oneditlocation={openEditLocation}
 	onopenperson={openPerson}

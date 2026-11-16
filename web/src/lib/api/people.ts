@@ -1,9 +1,10 @@
 // The people surface's data client: the three reads of the people
 // domain (the named list, the unnamed region's keyset pages, the
-// cluster detail) and the eight writes (label upsert, label delete,
+// cluster detail) and the ten writes (label upsert, label delete,
 // the person entity's birth date and avatar, the structural merge,
 // the single-face move, the from-face person creation, the
-// single-face detach), each behind the repo-wide error-code
+// single-face detach, the face-box rewrite, the person's real
+// delete), each behind the repo-wide error-code
 // convention -- every failure outcome carries the error code's i18n
 // key (the envelope code lowercased, 'internal' for a network
 // failure or an unparseable body, 'session_expired' for a 401).
@@ -54,6 +55,12 @@ export type MoveFaceResponse = components['schemas']['MoveFaceResponse'];
 /** The from-face person creation's response. */
 export type ClusterFaceResponse = components['schemas']['ClusterFaceResponse'];
 
+/** The face-box rewrite's request: the adjusted box, normalized to the image. */
+export type FaceBoxPatchRequest = components['schemas']['FaceBoxPatchRequest'];
+
+/** The face-box rewrite's response: the face's identity, its crop URL and the stored per-mille box. */
+export type FaceBoxPatchResponse = components['schemas']['FaceBoxPatchResponse'];
+
 /** The named list's outcome. */
 export type PeopleListResult = { ok: true; people: PersonSummary[] } | { ok: false; errorKey: string };
 
@@ -91,6 +98,9 @@ export type MoveResult = { ok: true; move: MoveFaceResponse } | { ok: false; err
 
 /** The from-face person creation's outcome. */
 export type ClusterFaceResult = { ok: true; cluster: ClusterFaceResponse } | { ok: false; errorKey: string };
+
+/** The face-box rewrite's outcome (the response is the stored face state). */
+export type FaceBoxResult = { ok: true; face: FaceBoxPatchResponse } | { ok: false; errorKey: string };
 
 /** The contract's default page size of the unnamed region. */
 export const UNNAMED_PAGE_LIMIT = 60;
@@ -660,4 +670,57 @@ export async function detachFace(faceId: string, fetcher: typeof fetch = globalT
 		return { ok: true };
 	}
 	return { ok: false, errorKey: await errorKeyFrom(response) };
+}
+
+/**
+ * PATCH /api/v1/faces/{faceId}: the face-box editor's write. The body
+ * carries the adjusted box normalized to the image (four required
+ * values, in frame, neither extent below 0.01); the response is the
+ * stored state -- the face's identity, its crop URL and the box in
+ * the per-mille units the crop endpoint and the on-photo layer
+ * address. The guard is the face writes' own: the face must sit on an
+ * asset the caller owns and that is live -- anything else answers the
+ * same byte-identical 404.
+ */
+export async function patchFaceBox(
+	faceId: string,
+	box: FaceBoxPatchRequest,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<FaceBoxResult> {
+	let response: Response;
+	try {
+		response = await apiFetch(
+			`/api/v1/faces/${encodeURIComponent(faceId)}`,
+			{
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(box)
+			},
+			fetcher
+		);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	if (body === null || typeof body !== 'object') {
+		return { ok: false, errorKey: 'internal' };
+	}
+	const candidate = body as Partial<FaceBoxPatchResponse>;
+	const bbox = candidate.bbox as Partial<FaceBoxPatchResponse['bbox']> | undefined;
+	if (
+		typeof candidate.faceId !== 'string' ||
+		candidate.faceId !== faceId ||
+		typeof candidate.thumbnail !== 'string' ||
+		bbox === undefined ||
+		typeof bbox.x !== 'number' ||
+		typeof bbox.y !== 'number' ||
+		typeof bbox.w !== 'number' ||
+		typeof bbox.h !== 'number'
+	) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, face: body as FaceBoxPatchResponse };
 }

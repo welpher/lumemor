@@ -56,6 +56,7 @@ const detail = {
 
 const reassignes: AssetFaceSummary[] = [];
 const detaches: AssetFaceSummary[] = [];
+const boxEdits: AssetFaceSummary[] = [];
 const applies: number[] = [];
 const closes: number[] = [];
 
@@ -67,12 +68,16 @@ function mountPanel(overrides: Record<string, unknown> = {}): ReturnType<typeof 
 		props: {
 			detail,
 			stageLabelOf: () => undefined,
+			stagedBoxOf: () => false,
 			stagedCount: 0,
 			busy: false,
 			errorKey: '',
+			boxEditFaceId: null,
+			cropBust: 0,
 			onclose: () => closes.push(closes.length),
 			onreassign: (face: AssetFaceSummary) => reassignes.push(face),
 			ondetach: (face: AssetFaceSummary) => detaches.push(face),
+			onboxedit: (face: AssetFaceSummary) => boxEdits.push(face),
 			onapply: () => applies.push(applies.length),
 			...overrides
 		}
@@ -147,23 +152,63 @@ test("one row per face, the three label states in the detail's order", () => {
 	expect(rowByName('Not grouped yet').textContent?.trim()).toBe('Not grouped yet');
 });
 
-test('the trash sits on NAMED rows alone; every row keeps the reassign pencil', () => {
+test('the trash sits on NAMED rows alone; every row keeps the reassign pencil and the box-edit arm', () => {
 	mountPanel();
 
-	// The named row: both affordances, icon-only with their labels.
+	// The named row: the three affordances, icon-only with their labels.
 	const named = rowByName('Grace');
-	expect(named.querySelectorAll('button')).toHaveLength(2);
+	expect(named.querySelectorAll('button')).toHaveLength(3);
 	expect(named.querySelector('[aria-label="Remove this face"]')).not.toBeNull();
 	expect(named.querySelector('[aria-label="Reassign this face"]')).not.toBeNull();
+	expect(named.querySelector('[aria-label="Adjust box"]')).not.toBeNull();
 
-	// The unnamed and the not-yet-grouped rows: reassign alone (no
-	// person to detach from -- the affordance is honest).
+	// The unnamed and the not-yet-grouped rows: reassign and box
+	// edit (no person to detach from -- the affordance is honest).
 	for (const text of ['Unnamed', 'Not grouped yet']) {
 		const row = rowByName(text);
-		expect(row.querySelectorAll('button')).toHaveLength(1);
+		expect(row.querySelectorAll('button')).toHaveLength(2);
 		expect(row.querySelector('[aria-label="Reassign this face"]')).not.toBeNull();
+		expect(row.querySelector('[aria-label="Adjust box"]')).not.toBeNull();
 		expect(row.querySelector('[aria-label="Remove this face"]')).toBeNull();
 	}
+});
+
+test("the box-edit arm carries the row's face; the selected row's button reads pressed", () => {
+	mountPanel();
+
+	// The unselected buttons read not-pressed.
+	const named = rowByName('Grace');
+	expect(rowButton(named, 'Adjust box').getAttribute('aria-pressed')).toBe('false');
+	clickButton(rowButton(named, 'Adjust box'));
+	expect(boxEdits.map((face) => face.id)).toEqual(['f1']);
+
+	// The selection re-renders the row: the button reads pressed.
+	while (mounted.length > 0) {
+		unmount(mounted.pop()!);
+	}
+	flushSync();
+	mountPanel({ boxEditFaceId: 'f1' });
+	expect(rowButton(rowByName('Grace'), 'Adjust box').getAttribute('aria-pressed')).toBe('true');
+});
+
+test('a staged box edit carries the pending marker beside the row label', () => {
+	mountPanel({ stagedBoxOf: (face: AssetFaceSummary) => face.id === 'f2' });
+
+	// The box stage keeps the row's own label (nothing swapped):
+	// the pending state is the marker alone.
+	const staged = rowByName('Unnamed');
+	expect(staged.dataset.staged).toBe('true');
+	expect(staged.querySelector('.faces-panel__pending')).not.toBeNull();
+	const plain = rowByName('Grace');
+	expect(plain.dataset.staged).toBe('false');
+	expect(plain.querySelector('.faces-panel__pending')).toBeNull();
+});
+
+test('the crop rows bust their URLs when a commit bumped the tick', () => {
+	mountPanel({ cropBust: 3 });
+
+	const image = rowByName('Grace').querySelector<HTMLImageElement>('img');
+	expect(image?.getAttribute('src')).toBe('/api/v1/faces/f1/thumbnail?v=3');
 });
 
 test("the staged label replaces the row's name and carries the pending dot", () => {
