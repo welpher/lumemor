@@ -90,6 +90,7 @@ const itemDefaults = {
 	height: 3000,
 	durationMs: null,
 	blurhash: 'UHL6aAof00WBWB00ayWB00',
+	contentCopies: 0,
 	livePhotoVideoId: null
 };
 
@@ -112,6 +113,9 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		description: 'Original caption.',
 		exif: {},
 		takenAtZone: '+08:00',
+		// The twin count of the delete toast: the default fixture is a
+		// lone copy, and the dual-home scenes override it.
+		contentCopies: 0,
 		location: null,
 		path: null,
 		faces: [],
@@ -774,6 +778,59 @@ test('a successful favorite batch flips the bar label (per-user state, no events
 	expect(JSON.parse(String(init?.body))).toEqual({ action: 'favorite', ids: ['a2'] });
 	// The optimistic flag is the final state (favorites are silent).
 	expect(() => barButton('Unfavorite')).not.toThrow();
+	unmount(app);
+	flushSync();
+});
+
+test('the trash toast names the copies a delete leaves behind', async () => {
+	// The dual-home shape the position model produces: the photo is
+	// this uploaded copy AND a read-only directory album's mirror, so
+	// the landed delete echoes the count the detail carries.
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(
+				200,
+				detailBodyOf(sequence[1]!, {
+					contentCopies: 2,
+					albums: [
+						{ id: 'al-sync', title: 'My photos', type: 'sync', callerRole: 'owner', sourceWritable: false }
+					]
+				})
+			)
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+
+	click(barButton('Trash'));
+	await settle();
+
+	expect(toasts().map((entry) => entry.text)).toEqual(['Moved to the trash. 2 more copies of this photo remain.']);
+	unmount(app);
+	flushSync();
+});
+
+test('the trash toast is the plain sentence when no copy remains', async () => {
+	const { app } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(
+				200,
+				detailBodyOf(sequence[1]!, {
+					contentCopies: 0,
+					albums: [
+						{ id: 'al-sync', title: 'My photos', type: 'sync', callerRole: 'owner', sourceWritable: false }
+					]
+				})
+			)
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+
+	click(barButton('Trash'));
+	await settle();
+
+	expect(toasts().map((entry) => entry.text)).toEqual(['Moved to the trash.']);
 	unmount(app);
 	flushSync();
 });

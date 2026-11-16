@@ -344,6 +344,8 @@ NON_ERROR_KEYS = {
     "viewer_description_label",
     "viewer_description_empty",
     "viewer_trashed_notice",
+    "viewer_trashed_done",
+    "viewer_trashed_copies_note",
     "viewer_archived_notice",
     "viewer_download",
     "viewer_faces_placeholder",
