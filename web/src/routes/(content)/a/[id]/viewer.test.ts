@@ -119,7 +119,7 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		// The band's home album: a directory source the owner holds, so
 		// the bar's owner-only curation arms render by default (the
 		// sync-only arm has its own scene below).
-		albums: [{ id: 'al-src', title: 'Album al-src', type: 'directory', callerRole: 'owner' }],
+		albums: [{ id: 'al-src', title: 'Album al-src', type: 'directory', callerRole: 'owner', sourceWritable: true }],
 		place: null,
 		...source,
 		...overrides
@@ -841,15 +841,14 @@ test("a viewer's bar keeps the per-user favorite, never the owner-only trash; th
 	flushSync();
 });
 
-test('a photo whose only home is the sync album offers no trash; the favorite stays', async () => {
-	// The read-only source rule (the acceptance walk's finding): the
-	// sync album is the scan's verdict -- system-managed and
-	// read-only -- so its wall offers no curation, and a photo whose
-	// only home is that stream must not offer the delete here either.
-	// The per-user favorite is not a write on the collection: it
-	// stays. A trashed photo keeps its restore arm (the way back out
-	// of the state the delete made).
-	const syncOnly = [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner' }];
+test("the sync album's own photos ARE deletable; only the read-only directory's are not", async () => {
+	// The owner's settled semantics (2026-11-16): the sync card's
+	// blobs are the application's own -- its photos ARE deletable
+	// (the card itself is not, and never was). The read-only
+	// directory source is the one arm with no delete: its photo is
+	// the scan's verdict alone, the source cannot take the
+	// application's writes.
+	const syncOnly = [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true }];
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly }))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
@@ -857,9 +856,26 @@ test('a photo whose only home is the sync album offers no trash; the favorite st
 	await settle();
 
 	expect(() => barButton('Favorite')).not.toThrow();
-	expect(() => barButton('Trash')).toThrow();
+	expect(() => barButton('Trash')).not.toThrow();
 	expect(() => barButton('Restore')).toThrow();
 	unmount(app);
+	flushSync();
+
+	// The read-only directory: the only home's source cannot take
+	// writes, so no delete affordance renders -- never a grayed one.
+	const readOnlyDirectory = [
+		{ id: 'ro-1', title: 'Family vault', type: 'directory', callerRole: 'owner', sourceWritable: false }
+	];
+	const { app: vault } = mountViewer('a2', [
+		get('/api/v1/assets/a2?locale=en', () =>
+			jsonResponse(200, detailBodyOf(sequence[1]!, { albums: readOnlyDirectory }))
+		),
+		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
+	]);
+	await settle();
+	expect(() => barButton('Favorite')).not.toThrow();
+	expect(() => barButton('Trash')).toThrow();
+	unmount(vault);
 	flushSync();
 
 	// The same photo in the trash: the restore arm renders (the
@@ -1681,9 +1697,9 @@ test("the drawer's browsable rows deep-link: albums, tags, named faces; the plac
 		exif: { cameraMake: 'Apple', cameraModel: 'iPhone 15' },
 		tags: [{ id: 't1', name: 'Beach' }],
 		albums: [
-			{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner' },
-			{ id: 'mem-1', title: 'Paris trip', type: 'memory', callerRole: 'owner' },
-			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner' }
+			{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner', sourceWritable: true },
+			{ id: 'mem-1', title: 'Paris trip', type: 'memory', callerRole: 'owner', sourceWritable: true },
+			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true }
 		],
 		place: { placeId: 2988507, name: 'Paris' },
 		location: { lat: 48.8584, lon: 2.2945 },

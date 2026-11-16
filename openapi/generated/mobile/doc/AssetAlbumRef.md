@@ -9,6 +9,7 @@ import 'package:lumemor_api/api.dart';
 Name | Type | Description | Notes
 ------------ | ------------- | ------------- | -------------
 **id** | **String** | Identifier of the album (the detail face's deep link). | 
+**sourceWritable** | **bool** | Whether the album's source directory can take the application's writes. False only for a directory album whose creation-time write probe answered no -- every other type (sync, memory, a writable directory) is true. The photo-detail faces read this to gate the destructive affordances: a photo housed only in a read-only source is the scan's verdict alone and offers no delete.  | 
 **title** | **String** | The album's display title (the sync card's internal label). | 
 **type** | **String** | The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's).  | 
 **callerRole** | **String** | The caller's relation to this album: `owner` items are the caller's own (the sync stream's entry is always one), `viewer` items the albums shared to them.  | 
