@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -81,6 +82,13 @@ func (w *ModelDownloadWorker) Timeout(job *river.Job[ModelDownloadArgs]) time.Du
 // deployment's environment fallback answers only when no mirror is
 // configured in the admin face -- the same rewrite either way, owned
 // by the surface that edits it.
+//
+// The mirror's OWN host joins the gate either way: the rewrite sends
+// the pinned hostnames at it, so a mirror the list refuses would
+// fail on its own first hop and silently fall back to the real
+// internet (the source chain's host validation, 32699df, walks the
+// REWRITTEN urls) -- the settings save's auto-join discipline,
+// applied to the deployment's environment mirror too.
 func (w *ModelDownloadWorker) downloadTransport(ctx context.Context) (mirror string, allowed []string) {
 	queries := dbgen.New(w.pool)
 	settings, err := db.ModelSettingsOf(ctx, queries)
@@ -93,7 +101,33 @@ func (w *ModelDownloadWorker) downloadTransport(ctx context.Context) (mirror str
 	if settings.MirrorBaseUrl != "" {
 		mirror = settings.MirrorBaseUrl
 	}
-	return mirror, settings.AllowedHosts
+	allowed = settings.AllowedHosts
+	if host := mirrorHostOf(mirror); host != "" && !ml.HostAllowed(allowed, host) {
+		allowed = append(allowed, host)
+	}
+	return mirror, allowed
+}
+
+// mirrorHostOf answers the host a mirror string names: a bare host,
+// a host:port pair (the deployment's env form -- a scheme-less parse
+// would misread the port as the scheme, so the authority form rides
+// the // prefix), or a full http(s) URL. The empty string for
+// anything that names no host.
+func mirrorHostOf(mirror string) string {
+	if mirror == "" {
+		return ""
+	}
+	hostOf := func(raw string) string {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		return parsed.Hostname()
+	}
+	if host := hostOf(mirror); host != "" {
+		return host
+	}
+	return hostOf("//" + mirror)
 }
 
 // Work executes one model download attempt: the row flips to running
