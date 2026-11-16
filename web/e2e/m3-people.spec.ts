@@ -82,7 +82,7 @@
 // scene replays it. Each scene navigates explicitly to its starting
 // route, so a failure report names the exact scene that broke.
 
-import { readFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
@@ -117,6 +117,16 @@ const PHOTO_A1_NAME = 'IMG_M3B_0001.jpg';
 const PHOTO_A2_NAME = 'IMG_M3B_0002.jpg';
 const PHOTO_B1_NAME = 'IMG_M3B_0003.jpg';
 const PHOTO_B2_NAME = 'IMG_M3B_0004.jpg';
+
+// The position-model scene's source tree (E42): a directory album
+// over a folder holding a byte-identical copy of the first portrait,
+// mounted read-only by the compose file. The scan lands the photo's
+// OWN position row, whose pipeline detects the same face a second
+// time -- and the people domain must still show the person's photos
+// once (the library's display dedup).
+const TWIN_SOURCE_DIR = '/mnt/e2e-source/e42-people';
+const TWIN_HOST_DIR = path.join(specDir, 'fixtures/m3-source/e42-people');
+const TWIN_PHOTO_NAME = 'IMG_E42_TWIN.jpg';
 
 // The two story names, and the third person the edit-people story
 // creates from one face (named so the reassign target is pickable).
@@ -665,5 +675,91 @@ test.describe('the signed-in scenes', () => {
 		await rename.getByRole('button', { name: 'Save name', exact: true }).click();
 		await expect(rename).toHaveCount(0);
 		await expect(page.locator('.person-profile__name')).toHaveText(PERSON_A);
+	});
+
+	test('scene 11: a dual-home twin adds no second photo to the person', async ({ page }) => {
+		test.setTimeout(CLUSTER_TIMEOUT_MS + 120_000);
+
+		// The person's honest count before the twin exists (the state
+		// the earlier scenes left the same-person cluster in).
+		type PersonSummary = { clusterId: string; photoCount: number };
+		const before = await page.request.get('/api/v1/people');
+		expect(before.status()).toBe(200);
+		const beforePerson = ((await before.json()) as PersonSummary[]).find(
+			(person) => person.clusterId === samePersonClusterId
+		);
+		expect(beforePerson?.photoCount).toBeTruthy();
+		const photoCountBefore = beforePerson?.photoCount ?? 0;
+
+		// The source tree: a directory album over a folder holding one
+		// of the uploaded portraits byte for byte -- the dual home the
+		// position model makes representable (an uploaded copy plus a
+		// source copy of one content).
+		await rm(TWIN_HOST_DIR, { recursive: true, force: true });
+		await mkdir(TWIN_HOST_DIR, { recursive: true });
+		await copyFile(PORTRAIT_A1, path.join(TWIN_HOST_DIR, TWIN_PHOTO_NAME));
+
+		const created = await page.request.post('/api/v1/albums', {
+			data: { title: 'Twin source', rootPath: TWIN_SOURCE_DIR, inTimeline: true }
+		});
+		expect(created.status()).toBe(201);
+		const albumId = ((await created.json()) as { id?: string }).id ?? '';
+		expect(albumId).not.toBe('');
+
+		// The scan's own row, and its pipeline: the twin's detail
+		// carries at least one face once the detection ran.
+		let twinId = '';
+		await expect
+			.poll(
+				async () => {
+					const response = await page.request.get(
+						`/api/v1/assets/timeline?albumId=${encodeURIComponent(albumId)}`
+					);
+					expect(response.status()).toBe(200);
+					const body = (await response.json()) as { items?: Array<{ id?: string }> };
+					twinId = body.items?.[0]?.id ?? '';
+					return twinId;
+				},
+				{ timeout: CLUSTER_TIMEOUT_MS, intervals: [1000, 2000, 5000] }
+			)
+			.not.toBe('');
+		await expect
+			.poll(
+				async () => {
+					const response = await page.request.get(`/api/v1/assets/${encodeURIComponent(twinId)}?locale=en`);
+					expect(response.status()).toBe(200);
+					const body = (await response.json()) as { faces?: unknown[] };
+					return (body.faces ?? []).length;
+				},
+				{ timeout: CLUSTER_TIMEOUT_MS, intervals: [1000, 2000, 5000] }
+			)
+			.toBeGreaterThan(0);
+
+		// The people domain lists the library: the twin's face rows
+		// exist (the detection ran above) but never enter the
+		// person's count or grid -- the same photo is one photo.
+		await expect
+			.poll(
+				async () => {
+					const response = await page.request.get('/api/v1/people');
+					expect(response.status()).toBe(200);
+					const person = ((await response.json()) as PersonSummary[]).find(
+						(entry) => entry.clusterId === samePersonClusterId
+					);
+					return person?.photoCount ?? 0;
+				},
+				{ timeout: 30_000, intervals: [500, 1000, 2000] }
+			)
+			.toBe(photoCountBefore);
+
+		// The person's page: the wall is the same photos (no tile of
+		// the twin).
+		await page.goto(`/people/${samePersonClusterId}`);
+		await expect(page.locator('.person-profile__name')).toBeVisible({ timeout: 60_000 });
+		await expect(page.getByRole('link', { name: TWIN_PHOTO_NAME, exact: true })).toHaveCount(0);
+
+		// The scene's own residue leaves (the fixture tree stays the
+		// README alone; a later run's re-seed is a clean copy).
+		await rm(TWIN_HOST_DIR, { recursive: true, force: true });
 	});
 });
