@@ -17355,9 +17355,10 @@ components:
         asset surface -- is a client bug and answers 400), and only
         the fields the request carries update; the rest keep their
         values. A present `coverAssetIds` must carry 0 or exactly the
-        card's frame count of distinct ids, every one a live member of
-        the album itself. The write publishes one `album.updated`
-        event whatever fields changed.
+        card's frame count of distinct ids, every one a renderable
+        member of the album itself (an archived member is renderable
+        on an album and refused on a memory). The write publishes one
+        `album.updated` event whatever fields changed.
       minProperties: 1
       properties:
         title:
@@ -17383,9 +17384,11 @@ components:
             set is the picker's un-saveable state, never a stored
             one). Repeated ids answer 400 too -- a cover is a set,
             and one frame cannot fill two cells. Every id must be a
-            LIVE member of THIS album (the membership row exists and
-            the asset is not trashed, not archived, not a Live Photo
-            component row); otherwise the answer is 400 with the
+            RENDERABLE member of THIS album (the membership row exists
+            and the asset is not trashed, is not a Live Photo
+            component row, and on a memory album is not archived --
+            an album's archived members render and may pin); otherwise
+            the answer is 400 with the
             message key `album_cover_not_member` and a `count` of the
             refused frames. Absent (or JSON null, which decodes as
             absent) leaves the pin unchanged.
