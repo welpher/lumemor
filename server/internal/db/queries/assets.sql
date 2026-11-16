@@ -32,10 +32,30 @@ RETURNING *;
 -- The three-state lookup behind the upload idempotency: the row of
 -- this owner and checksum, live first. After a unique violation the
 -- caller reads the row's deleted_at to answer duplicate (NULL) or
--- trashed (set).
+-- trashed (set). The lookup walks the FULL content domain -- every
+-- storage kind: a directory album's position row carries the same
+-- content identity, and an upload of bytes the owner's folders
+-- already hold is the same duplicate (the upload direction never
+-- creates a second row). The ordering picks the representative the
+-- answer names: the live row before any trashed one, the uploaded
+-- blob before a source position row, and the earliest ingest last --
+-- so a live blob answers when both kinds are live.
 SELECT * FROM assets
 WHERE owner_id = $1 AND checksum = $2
-ORDER BY deleted_at NULLS FIRST
+ORDER BY deleted_at NULLS FIRST, (storage_kind = 'blob') DESC, created_at, id
+LIMIT 1;
+
+-- name: GetBlobAssetByOwnerChecksum :one
+-- The blob-domain content lookup: the same three-state read, narrowed
+-- to the uploaded rows. The motion extraction's reuse is its caller
+-- and the narrowing is the whole point -- the stored motion a still
+-- reuses must be a row the library keeps as bytes of ours, never a
+-- source file the family owns (marking an external row as the still's
+-- component would turn the family's own file into a derivative of a
+-- pair and delete it with the pair).
+SELECT * FROM assets
+WHERE owner_id = $1 AND checksum = $2 AND storage_kind = 'blob'
+ORDER BY deleted_at NULLS FIRST, created_at, id
 LIMIT 1;
 
 -- name: GetAssetByDeviceId :one
@@ -94,6 +114,15 @@ WHERE a.id = sqlc.arg('id')
 -- description and is_hidden ride along: the PATCH response reuses
 -- this read after its writes, so it serves the same shape the GET
 -- endpoint serves, applied values included.
+--
+-- content_copies is the twin count the delete dialog's note speaks of:
+-- how many OTHER live rows of the same owner carry the same content.
+-- A directory album mirrors its folder, so one photo can be an
+-- uploaded copy and a source copy at once; the viewer's delete toast
+-- says how many copies remain. The count is owner-scoped (it names no
+-- row, and every row it counts is the asset owner's own) and excludes
+-- the row itself, so 0 means the only live copy. The probe rides
+-- assets_owner_checksum_idx.
 SELECT a.id,
        a.owner_id,
        a.media_kind,
@@ -130,7 +159,15 @@ SELECT a.id,
        e.tz_offset,
        p.id AS place_id,
        pn.name AS locale_name,
-       p.name AS canonical_name
+       p.name AS canonical_name,
+       (
+           SELECT count(*)
+           FROM assets c
+           WHERE c.owner_id = a.owner_id
+             AND c.checksum = a.checksum
+             AND c.id <> a.id
+             AND c.deleted_at IS NULL
+       )::bigint AS content_copies
 FROM assets a
 LEFT JOIN exif e ON e.asset_id = a.id
 LEFT JOIN places p ON p.id = a.place_id
