@@ -43,18 +43,23 @@
 </script>
 
 <div class="admin flex min-h-full items-stretch">
-	<!-- The rail is its own scroll region: `self-start` keeps the row's
-	     stretch from making it as tall as the content column (a sticky
-	     element with zero travel scrolls away with the page -- the
-	     reported bug), the viewport cap minus the top bar's 53px (the
-	     36px control + its 2x8px padding + the border) bounds it to the
-	     scrollport, and its own overflow-y keeps the menu independent
-	     of the body's scrolling -- the menu scrolls alone, never with
-	     the right column. -->
+	<!-- The rail is its own scroll region in two layers: the OUTER nav
+	     stretches to the row's full height (the background and the
+	     dividing border span the column edge to edge), and the INNER
+	     pin carries the menu -- sticky top-0 with `self-start` (a
+	     stretched sticky element has zero travel and scrolls away --
+	     the reported bug), capped at the scrollport (the top bar's
+	     53px: the 36px control + its 2x8px padding + the border) and
+	     scrolling on its own overflow when the menu ever grows past
+	     it. The menu never moves with the body's scrolling; the
+	     rail's face never leaves. -->
 	<nav
-		class="admin-nav sticky top-0 self-start flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border max-h-[calc(100dvh-53px)] overflow-y-auto"
+		class="admin-nav flex flex-col w-[200px] shrink-0 bg-card border-r border-border"
 		aria-label={$_('admin_nav_label')}
 	>
+		<div
+			class="admin-nav__pin sticky top-0 self-start w-full max-h-[calc(100dvh-53px)] overflow-y-auto flex flex-col gap-2 py-3 px-2"
+		>
 		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
 			{#each items as item (item.labelKey)}
 				<li>
@@ -88,11 +93,12 @@
 				</li>
 			{/each}
 		</ul>
-		<p
-			class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint"
-		>
-			{$_('nav_coming_later')}
-		</p>
+			<p
+				class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint"
+			>
+				{$_('nav_coming_later')}
+			</p>
+		</div>
 	</nav>
 	<div class="admin-body flex-1 min-w-0 px-6 pt-4 pb-12">
 		{@render children()}
