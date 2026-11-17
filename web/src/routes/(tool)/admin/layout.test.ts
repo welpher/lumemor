@@ -40,8 +40,6 @@ test('the rail is a flush full-height track: border-r, no capsule chrome, no gap
 	expect(row?.className).not.toContain('gap-');
 
 	const rail = document.body.querySelector<HTMLElement>('.admin-nav');
-	expect(rail?.className).toContain('sticky');
-	expect(rail?.className).toContain('top-0');
 	expect(rail?.className).toContain('border-r');
 	// The capsule chrome is dead: no outer border (beyond the
 	// border-r), no radius, no shadow, no top offset. (The rail's
@@ -52,6 +50,21 @@ test('the rail is a flush full-height track: border-r, no capsule chrome, no gap
 	expect(rail?.className).not.toContain('shadow-card');
 	// The 200px proportion is unchanged.
 	expect(rail?.className).toContain('w-[200px]');
+	// The rail's FACE spans the column: the outer nav takes the row's
+	// stretch (no self-start) so its background and border-r reach the
+	// content column's full height.
+	expect(rail?.className).not.toContain('self-start');
+	expect(rail?.className).not.toContain('sticky');
+
+	// The menu pins on the INNER layer: sticky + self-start (a
+	// stretched sticky element has zero travel and scrolls away), the
+	// viewport cap, and its own overflow so the menu scrolls alone.
+	const pin = rail?.querySelector<HTMLElement>('.admin-nav__pin');
+	expect(pin?.className).toContain('sticky');
+	expect(pin?.className).toContain('top-0');
+	expect(pin?.className).toContain('self-start');
+	expect(pin?.className).toContain('max-h-[calc(100dvh-53px)]');
+	expect(pin?.className).toContain('overflow-y-auto');
 
 	unmount(app);
 	flushSync();

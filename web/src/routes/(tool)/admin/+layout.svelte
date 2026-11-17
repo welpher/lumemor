@@ -60,39 +60,39 @@
 		<div
 			class="admin-nav__pin sticky top-0 self-start w-full max-h-[calc(100dvh-53px)] overflow-y-auto flex flex-col gap-2 py-3 px-2"
 		>
-		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
-			{#each items as item (item.labelKey)}
-				<li>
-					{#if item.disabled}
-						<!-- The future-domain placeholders: visible but inert. -->
-						<button
-							class="admin-nav__item admin-nav__item--disabled flex w-full items-center gap-2 px-3 py-[9px] font-body font-semibold text-[15px] leading-[1.4] text-text text-left rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard disabled:text-text-faint disabled:cursor-not-allowed"
-							type="button"
-							disabled
-							title={$_('nav_coming_later')}
-						>
-							<item.icon size={18} strokeWidth={2} aria-hidden="true" class="shrink-0" />
-							{$_(item.labelKey)}
-						</button>
-					{:else}
-						<a
-							class="admin-nav__item flex w-full items-center gap-2 px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
-							href={item.href}
-							class:admin-nav__item--active={page.url.pathname === item.href}
-							class:bg-accent-soft={page.url.pathname === item.href}
-							class:bg-transparent={page.url.pathname !== item.href}
-							class:text-accent-soft-text={page.url.pathname === item.href}
-							class:text-text={page.url.pathname !== item.href}
-							class:font-bold={page.url.pathname === item.href}
-							class:font-semibold={page.url.pathname !== item.href}
-						>
-							<item.icon size={18} strokeWidth={2} aria-hidden="true" class="shrink-0" />
-							{$_(item.labelKey)}
-						</a>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+			<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
+				{#each items as item (item.labelKey)}
+					<li>
+						{#if item.disabled}
+							<!-- The future-domain placeholders: visible but inert. -->
+							<button
+								class="admin-nav__item admin-nav__item--disabled flex w-full items-center gap-2 px-3 py-[9px] font-body font-semibold text-[15px] leading-[1.4] text-text text-left rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard disabled:text-text-faint disabled:cursor-not-allowed"
+								type="button"
+								disabled
+								title={$_('nav_coming_later')}
+							>
+								<item.icon size={18} strokeWidth={2} aria-hidden="true" class="shrink-0" />
+								{$_(item.labelKey)}
+							</button>
+						{:else}
+							<a
+								class="admin-nav__item flex w-full items-center gap-2 px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+								href={item.href}
+								class:admin-nav__item--active={page.url.pathname === item.href}
+								class:bg-accent-soft={page.url.pathname === item.href}
+								class:bg-transparent={page.url.pathname !== item.href}
+								class:text-accent-soft-text={page.url.pathname === item.href}
+								class:text-text={page.url.pathname !== item.href}
+								class:font-bold={page.url.pathname === item.href}
+								class:font-semibold={page.url.pathname !== item.href}
+							>
+								<item.icon size={18} strokeWidth={2} aria-hidden="true" class="shrink-0" />
+								{$_(item.labelKey)}
+							</a>
+						{/if}
+					</li>
+				{/each}
+			</ul>
 			<p
 				class="admin-nav__footnote mt-2 mx-2 pt-2.5 border-t border-border font-body font-normal text-[12px] leading-[1.4] text-text-faint"
 			>
