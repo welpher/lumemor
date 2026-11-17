@@ -43,8 +43,16 @@
 </script>
 
 <div class="admin flex min-h-full items-stretch">
+	<!-- The rail is its own scroll region: `self-start` keeps the row's
+	     stretch from making it as tall as the content column (a sticky
+	     element with zero travel scrolls away with the page -- the
+	     reported bug), the viewport cap minus the top bar's 53px (the
+	     36px control + its 2x8px padding + the border) bounds it to the
+	     scrollport, and its own overflow-y keeps the menu independent
+	     of the body's scrolling -- the menu scrolls alone, never with
+	     the right column. -->
 	<nav
-		class="admin-nav sticky top-0 flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border"
+		class="admin-nav sticky top-0 self-start flex flex-col gap-2 w-[200px] shrink-0 py-3 px-2 bg-card border-r border-border max-h-[calc(100dvh-53px)] overflow-y-auto"
 		aria-label={$_('admin_nav_label')}
 	>
 		<ul class="admin-nav__list flex flex-col gap-0.5 list-none">
