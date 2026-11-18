@@ -269,7 +269,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		s.logger.Info("upload matched an existing asset",
 			"owner_id", requester.userID, "state", state,
 			"checksum", photo.checksum, "asset_id", uuid.UUID(row.ID.Bytes))
-		s.writeJSON(w, http.StatusOK, assetResponseFrom(row, state))
+		s.writeJSON(w, http.StatusOK, existingUploadResponse(row, state))
 		return
 	}
 
@@ -314,7 +314,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("upload matched an existing asset",
 		"owner_id", requester.userID, "state", state,
 		"checksum", photo.checksum, "asset_id", uuid.UUID(asset.ID.Bytes))
-	s.writeJSON(w, http.StatusOK, assetResponseFrom(asset, state))
+	s.writeJSON(w, http.StatusOK, existingUploadResponse(asset, state))
 }
 
 // GetAssetByDeviceId implements GET /api/v1/assets/by-device-id/{id}:
@@ -419,6 +419,14 @@ func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *m
 // identity is the remaining collision the pre-check can see: a fresh
 // content under a known deviceAssetId resolves to the existing row
 // exactly as the insert's unique violation would.
+//
+// A hit on a LIVE COMPONENT row means the uploaded bytes already play
+// as some Live Photo's motion (the standalone video that was absorbed,
+// or the pair's own component resolved by its device identity). The
+// answer stays duplicate -- the content exists -- and the caller's
+// response adds the notice saying where it went (see
+// existingUploadResponse); a trashed component answers trashed with no
+// notice.
 //
 // The PAIRING VIDEO is deliberately not a lookup here. Its bytes are
 // either absent (the ordinary upload) or ALREADY the motion of a live
@@ -1073,6 +1081,37 @@ func uploadStateOf(row dbgen.Asset) apigen.AssetResponseState {
 	return apigen.Duplicate
 }
 
+// motionAlreadyStoredNotice builds the reverse direction's notice: the
+// uploaded video's bytes already play as a Live Photo's motion, so the
+// duplicate answer names that hidden component and its filename.
+func motionAlreadyStoredNotice(row dbgen.Asset) apigen.AssetNotice {
+	return apigen.AssetNotice{
+		Code:    apigen.AssetNoticeCodeLivePhotoMotionAlreadyStored,
+		AssetId: uuid.UUID(row.ID.Bytes),
+		Name:    row.OriginalFilename,
+	}
+}
+
+// existingUploadResponse maps the row an upload hit onto its 200
+// answer. A live COMPONENT row is a Live Photo's motion: the content
+// genuinely exists -- the state stays duplicate, a conflict would send
+// the user to fix what is not broken -- but the row no longer lists on
+// its own, so the answer carries the notice that says where the
+// upload's bytes already play. A trashed component keeps the plain
+// trashed answer (the client's restore/save-as dialog already explains
+// it, and an invisible row has no listing to lose), and a plain live
+// row is the ordinary duplicate with no notice.
+//
+// Both lookup paths land here -- the content checksum and the device
+// identity -- because the answer is the handler's shared exit.
+func existingUploadResponse(row dbgen.Asset, state apigen.AssetResponseState) apigen.AssetResponse {
+	if row.IsComponent && !row.DeletedAt.Valid {
+		return assetResponseWithNotices(row, state,
+			[]apigen.AssetNotice{motionAlreadyStoredNotice(row)})
+	}
+	return assetResponseFrom(row, state)
+}
+
 // assetInsertParams builds the insert parameters of one upload row.
 // The component row keeps its own file part name as the original
 // filename and carries no device identity; the photo row records the
@@ -1341,8 +1380,10 @@ func (s *server) publishAssetUploaded(row dbgen.Asset) {
 // is the caller's determination -- created for a fresh insert,
 // duplicate or trashed from the idempotency lookup -- because the row
 // alone does not know how the request reached it. Notices are absent
-// (the field is omitted): the one upload that carries them answers
-// through assetResponseWithNotices.
+// (the field is omitted): the answers that carry them go through
+// assetResponseWithNotices (the absorbed motion) or
+// existingUploadResponse (the duplicate that names a Live Photo's
+// motion).
 func assetResponseFrom(row dbgen.Asset, state apigen.AssetResponseState) apigen.AssetResponse {
 	return apigen.AssetResponse{
 		Id:               uuid.UUID(row.ID.Bytes),
