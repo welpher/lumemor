@@ -122,6 +122,7 @@
   "upload_conflict_restore": "Restore the trash copy",
   "upload_conflict_save_as": "Keep the new upload",
   "upload_motion_absorbed": "\"{name}\" now plays as this Live Photo's motion and no longer lists separately",
+  "upload_motion_already_stored": "\"{name}\" already plays as a Live Photo's motion and no longer lists separately",
   "viewer_failure_title": "This photo will not open",
   "viewer_failure_body": "It may have been deleted, or the file is gone from the disk.",
   "viewer_info_loading": "Loading the details…",

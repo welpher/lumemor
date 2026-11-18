@@ -461,6 +461,17 @@ export interface paths {
          *     answers 409 `ASSET_COMPONENT_CONFLICT`, so the user can decide
          *     about that trashed video first.
          *
+         *     The reverse direction is answered with a notice, not a
+         *     conflict: uploading a video whose bytes already play as a Live
+         *     Photo's motion hits that hidden component row through the
+         *     checksum or the device identity, and the answer is 200
+         *     `duplicate` -- the content genuinely exists -- carrying
+         *     `LIVE_PHOTO_MOTION_ALREADY_STORED` so the client can say why
+         *     the upload does not list separately. A component in the trash
+         *     keeps the ordinary `trashed` answer (the client's restore /
+         *     save-as dialog already explains it), and a plain live asset
+         *     keeps the ordinary `duplicate` with no notice.
+         *
          *     Each file is capped at the instance's per-file upload limit
          *     (2 GiB by default); a file over the limit aborts mid-stream
          *     with 413 `ASSET_TOO_LARGE`. This endpoint takes multipart
@@ -6074,17 +6085,27 @@ export interface components {
          */
         AssetNotice: {
             /**
-             * @description What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
-             *     Photo's motion bytes already existed as a live standalone
-             *     video of this owner; that row became the pair's motion
-             *     (`assetId` names it) and no longer lists as its own asset.
+             * @description What happened.
+             *
+             *     `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes
+             *     already existed as a live standalone video of this owner;
+             *     that row became the pair's motion (`assetId` names it) and
+             *     no longer lists as its own asset. Carried on a 201
+             *     `created` answer.
+             *
+             *     `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes
+             *     already play as a Live Photo's motion, so the returned
+             *     row is that hidden component (`assetId` names it) and does
+             *     not list on its own. Carried on a 200 `duplicate` answer:
+             *     the content genuinely exists, so the state stays
+             *     `duplicate` -- there is nothing for the user to fix.
              * @enum {string}
              */
-            code: "LIVE_PHOTO_MOTION_ABSORBED";
+            code: "LIVE_PHOTO_MOTION_ABSORBED" | "LIVE_PHOTO_MOTION_ALREADY_STORED";
             /**
              * Format: uuid
-             * @description The asset the notice is about: the reused row that became
-             *     the Live Photo's motion.
+             * @description The asset the notice is about: the video row that plays as
+             *     a Live Photo's motion.
              */
             assetId: string;
             /**
@@ -6104,11 +6125,13 @@ export interface components {
          *     `created` never appears there.
          *
          *     `notices` is absent or empty unless something needs telling:
-         *     the one current case is a Live Photo whose motion bytes were
-         *     reused as an existing standalone video's row. A client that
-         *     ignores it leaves the user with a video that silently stopped
-         *     listing on its own, so the obligation to surface each notice is
-         *     part of the contract, not a presentation choice.
+         *     a Live Photo whose motion bytes were reused as an existing
+         *     standalone video's row, or a standalone video whose bytes
+         *     already play as some Live Photo's motion (the returned row is
+         *     then that hidden component, still a `duplicate`). A client
+         *     that ignores it leaves the user with a video that silently
+         *     stopped listing on its own, so the obligation to surface each
+         *     notice is part of the contract, not a presentation choice.
          */
         AssetResponse: {
             /**
@@ -9640,7 +9663,10 @@ export interface operations {
              *     `state` is `duplicate` (an identical live asset) or
              *     `trashed` (an identical asset in the trash, returned with
              *     `isTrashed: true` so the client can offer restore or
-             *     save-as-new). The response body is the existing asset.
+             *     save-as-new). The response body is the existing asset. A
+             *     live asset that is a Live Photo's motion component also
+             *     carries a `notices` entry saying the bytes already play
+             *     there; the state stays `duplicate`.
              */
             200: {
                 headers: {

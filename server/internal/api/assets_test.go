@@ -537,6 +537,11 @@ func TestUploadAssetDuplicateState(t *testing.T) {
 	if duplicate.IsTrashed {
 		t.Error("retry isTrashed = true, want false")
 	}
+	// A plain live duplicate has nothing to tell: the notice is for a
+	// row that stopped listing on its own (a Live Photo's motion).
+	if duplicate.Notices != nil && len(*duplicate.Notices) != 0 {
+		t.Errorf("notices = %v, want none", *duplicate.Notices)
+	}
 
 	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != 1 {
 		t.Errorf("assets rows = %d after the retry, want 1", got)
@@ -1904,5 +1909,230 @@ func TestUploadLivePhotoIgnoresExternalMotionBytes(t *testing.T) {
 	}
 	if external.FilePath != "/mnt/source/clip.mov" {
 		t.Errorf("the external source path = %q, want it untouched", external.FilePath)
+	}
+}
+
+// absorbedMotionPair uploads a standalone video and then a Live Photo
+// whose motion bytes are that video's: the server absorbs the
+// standalone row as the pair's component and the still links to it.
+// It returns the still's row and the component's row.
+func (e *assetEnv) absorbedMotionPair(t *testing.T, video, still []byte, standaloneDevice string) (dbgen.Asset, dbgen.Asset) {
+	t.Helper()
+	standalone := e.postUpload(t, map[string]string{
+		"deviceAssetId": standaloneDevice,
+		"fileName":      "clip.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip.mov", content: video}})
+	if standalone.Code != http.StatusCreated {
+		t.Fatalf("standalone video upload status = %d, want %d (body %q)",
+			standalone.Code, http.StatusCreated, standalone.Body.String())
+	}
+	pair := e.postUpload(t, map[string]string{
+		"deviceAssetId": standaloneDevice + "-pair",
+		"fileName":      "IMG_PAIR.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_PAIR.jpg", content: still},
+		{field: "liveVideo", name: "IMG_PAIR.mov", content: video},
+	})
+	if pair.Code != http.StatusCreated {
+		t.Fatalf("live photo upload status = %d, want %d (body %q)",
+			pair.Code, http.StatusCreated, pair.Body.String())
+	}
+	component := e.assetByChecksum(t, sha256Hex(video))
+	if !component.IsComponent {
+		t.Fatalf("the motion row is_component = false, want the absorbed component")
+	}
+	return e.assetByChecksum(t, sha256Hex(still)), component
+}
+
+// TestUploadStandaloneVideoAnnouncesItsStoredMotion pins the reverse
+// direction of the motion reuse: uploading a video whose bytes already
+// play as a Live Photo's motion hits that hidden component row through
+// the content checksum. The answer stays 200 duplicate -- the content
+// genuinely exists, and a conflict would send the user to fix what is
+// not broken -- but it carries exactly one notice naming the component,
+// so the client can say why the video does not list on its own. Nothing
+// is placed, no row is added, and the component stays hidden.
+func TestUploadStandaloneVideoAnnouncesItsStoredMotion(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x44, G: 0x77, B: 0xaa, A: 0xff})
+	videoChecksum := sha256Hex(video)
+	photoRow, component := env.absorbedMotionPair(t, video, still, "device-reverse-checksum")
+	originalsBefore := env.countFiles(t, filepath.Join(env.dataDir, "originals"))
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-reverse-checksum-standalone-again",
+		"fileName":      "clip.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip.mov", content: video}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("standalone re-upload status = %d, want %d (body %q)",
+			rec.Code, http.StatusOK, rec.Body.String())
+	}
+	duplicate := decodeAsset(t, rec)
+	if duplicate.State != apigen.Duplicate {
+		t.Errorf("state = %q, want %q (the bytes exist; nothing is broken)", duplicate.State, apigen.Duplicate)
+	}
+	if duplicate.IsTrashed {
+		t.Error("isTrashed = true, want the live component's answer")
+	}
+	if duplicate.Id != uuid.UUID(component.ID.Bytes) {
+		t.Errorf("duplicate id = %s, want the component %s",
+			duplicate.Id, uuid.UUID(component.ID.Bytes))
+	}
+	if duplicate.Kind != apigen.AssetResponseKindVideo {
+		t.Errorf("kind = %q, want the video component's", duplicate.Kind)
+	}
+
+	// Exactly one notice, naming the component and its filename.
+	if duplicate.Notices == nil || len(*duplicate.Notices) != 1 {
+		t.Fatalf("notices = %v, want exactly one", duplicate.Notices)
+	}
+	notice := (*duplicate.Notices)[0]
+	if notice.Code != apigen.AssetNoticeCodeLivePhotoMotionAlreadyStored {
+		t.Errorf("notice code = %q, want %q",
+			notice.Code, apigen.AssetNoticeCodeLivePhotoMotionAlreadyStored)
+	}
+	if notice.AssetId != uuid.UUID(component.ID.Bytes) {
+		t.Errorf("notice assetId = %s, want the component %s",
+			notice.AssetId, uuid.UUID(component.ID.Bytes))
+	}
+	if notice.Name != "clip.mov" {
+		t.Errorf("notice name = %q, want the component's filename", notice.Name)
+	}
+
+	// Nothing was stored: one row still holds the video bytes, the
+	// pair is untouched, and no file landed beside the owned ones.
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", videoChecksum); got != 1 {
+		t.Errorf("rows holding the video bytes = %d, want the reused row alone", got)
+	}
+	after := env.assetRowOf(t, uuid.UUID(component.ID.Bytes))
+	if !after.IsComponent || after.DeletedAt.Valid {
+		t.Errorf("component after the re-upload = is_component %v, deleted %v, want a live hidden component",
+			after.IsComponent, after.DeletedAt.Valid)
+	}
+	if after.FilePath != component.FilePath {
+		t.Errorf("component file_path = %q, want its own %q", after.FilePath, component.FilePath)
+	}
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != originalsBefore {
+		t.Errorf("originals files = %d, want the %d already stored", got, originalsBefore)
+	}
+	if stillRow := env.assetRowOf(t, uuid.UUID(photoRow.ID.Bytes)); stillRow.DeletedAt.Valid {
+		t.Error("the pair's still is trashed, want it untouched")
+	}
+	env.requireStagingEmpty(t)
+}
+
+// TestUploadStandaloneVideoAnnouncesStoredMotionByDeviceIdentity pins
+// the other lookup path: an upload whose content is new but whose
+// deviceAssetId belongs to a Live Photo's absorbed motion resolves to
+// that component row, and the duplicate answer carries the same notice.
+// The distinct bytes are the point -- identical bytes would hit the
+// content checksum first, leaving the device arm unexercised.
+func TestUploadStandaloneVideoAnnouncesStoredMotionByDeviceIdentity(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x55, G: 0x88, B: 0xbb, A: 0xff})
+	_, component := env.absorbedMotionPair(t, video, still, "device-reverse-device")
+
+	// Another QuickTime container: the same header (it sniffs as a
+	// video) with a different trailing byte, so the checksum misses
+	// and only the device identity can answer.
+	other := append([]byte(nil), video...)
+	other[len(other)-1] = 0x01
+	if sha256Hex(other) == sha256Hex(video) {
+		t.Fatal("the two fixtures share a checksum, want distinct content")
+	}
+	rowsBefore := env.queryInt(t, "SELECT count(*) FROM assets")
+	originalsBefore := env.countFiles(t, filepath.Join(env.dataDir, "originals"))
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-reverse-device",
+		"fileName":      "clip-reencoded.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip-reencoded.mov", content: other}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("device-identity re-upload status = %d, want %d (body %q)",
+			rec.Code, http.StatusOK, rec.Body.String())
+	}
+	duplicate := decodeAsset(t, rec)
+	if duplicate.State != apigen.Duplicate {
+		t.Errorf("state = %q, want %q", duplicate.State, apigen.Duplicate)
+	}
+	if duplicate.Id != uuid.UUID(component.ID.Bytes) {
+		t.Errorf("duplicate id = %s, want the component %s",
+			duplicate.Id, uuid.UUID(component.ID.Bytes))
+	}
+	if duplicate.Notices == nil || len(*duplicate.Notices) != 1 {
+		t.Fatalf("notices = %v, want exactly one", duplicate.Notices)
+	}
+	notice := (*duplicate.Notices)[0]
+	if notice.Code != apigen.AssetNoticeCodeLivePhotoMotionAlreadyStored {
+		t.Errorf("notice code = %q, want %q",
+			notice.Code, apigen.AssetNoticeCodeLivePhotoMotionAlreadyStored)
+	}
+	if notice.AssetId != uuid.UUID(component.ID.Bytes) {
+		t.Errorf("notice assetId = %s, want the component %s",
+			notice.AssetId, uuid.UUID(component.ID.Bytes))
+	}
+	// The notice names the row the bytes landed in, not the new
+	// client-side name of the colliding upload.
+	if notice.Name != "clip.mov" {
+		t.Errorf("notice name = %q, want the component's filename", notice.Name)
+	}
+
+	// The device-identity answer places nothing: no row, no file.
+	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != rowsBefore {
+		t.Errorf("assets rows = %d after the answer, want the %d already stored", got, rowsBefore)
+	}
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != originalsBefore {
+		t.Errorf("originals files = %d, want the %d already stored", got, originalsBefore)
+	}
+	env.requireStagingEmpty(t)
+}
+
+// TestUploadTrashedMotionKeepsTrashedStateWithoutNotice pins the
+// trashed half: the same video re-uploaded while its pair sits in the
+// trash answers the ordinary 200 trashed -- the client's restore /
+// save-as dialog already explains that -- and adds no notice. An
+// invisible row has no listing to lose, so there is nothing extra to
+// tell.
+func TestUploadTrashedMotionKeepsTrashedStateWithoutNotice(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x66, G: 0x99, B: 0xcc, A: 0xff})
+	photoRow, component := env.absorbedMotionPair(t, video, still, "device-reverse-trashed")
+
+	// The pair moves through the trash as one asset: trashing the
+	// still stamps its component too.
+	if rows := env.softDeleteAsset(t, uuid.UUID(photoRow.ID.Bytes), env.sessionUserID(t)); rows != 2 {
+		t.Fatalf("soft delete rows = %d, want the pair (still and component)", rows)
+	}
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-reverse-trashed-again",
+		"fileName":      "clip.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip.mov", content: video}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("standalone re-upload status = %d, want %d (body %q)",
+			rec.Code, http.StatusOK, rec.Body.String())
+	}
+	trashed := decodeAsset(t, rec)
+	if trashed.State != apigen.Trashed {
+		t.Errorf("state = %q, want %q (the content sits in the trash)", trashed.State, apigen.Trashed)
+	}
+	if !trashed.IsTrashed {
+		t.Error("isTrashed = false, want true")
+	}
+	if trashed.Id != uuid.UUID(component.ID.Bytes) {
+		t.Errorf("trashed id = %s, want the component %s",
+			trashed.Id, uuid.UUID(component.ID.Bytes))
+	}
+	if trashed.Notices != nil && len(*trashed.Notices) != 0 {
+		t.Errorf("notices = %v, want none (the restore dialog explains the trash)", *trashed.Notices)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", sha256Hex(video)); got != 1 {
+		t.Errorf("rows holding the video bytes = %d, want the trashed component alone", got)
+	}
+	if after := env.assetRowOf(t, uuid.UUID(component.ID.Bytes)); !after.DeletedAt.Valid {
+		t.Error("the component is live after the answer, want it still trashed")
 	}
 }
