@@ -366,7 +366,14 @@
 	role="region"
 	aria-describedby={describedBy}
 >
-	<div class="map__canvas absolute inset-0" bind:this={container}></div>
+	<!-- The map library's own stylesheet gives its container
+	     `position: relative`. A positioned utility here (absolute
+	     inset-0) therefore loses the cascade: the element is relative,
+	     has no in-flow content of its own (the canvases it grows are
+	     absolutely positioned), and collapses to zero height -- the
+	     base tiles load fine and never draw. Size the container by
+	     height and width instead: it fills the frame either way. -->
+	<div class="map__canvas h-full w-full" bind:this={container}></div>
 
 	<!-- The pins: HTML buttons over the canvas, positioned per camera
 	     frame. The names and counts come from this instance's own read. -->
