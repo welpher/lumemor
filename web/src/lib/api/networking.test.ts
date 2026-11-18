@@ -20,18 +20,41 @@ function stub(response: () => Response | Promise<Response>) {
 }
 
 describe('getMapConfig', () => {
-	test('a configured source answers the URL', async () => {
-		const fetcher = stub(() => jsonResponse(200, { tilejsonUrl: 'https://tiles.example.net/style.json' }));
+	test('a configured pair answers both URLs', async () => {
+		const fetcher = stub(() =>
+			jsonResponse(200, {
+				tilejsonUrl: 'https://tiles.example.net/style.json',
+				darkTilejsonUrl: 'https://tiles.example.net/style-dark.json'
+			})
+		);
 		const outcome = await getMapConfig(fetcher as unknown as typeof fetch);
-		expect(outcome).toEqual({ ok: true, tilejsonUrl: 'https://tiles.example.net/style.json' });
+		expect(outcome).toEqual({
+			ok: true,
+			tilejsonUrl: 'https://tiles.example.net/style.json',
+			darkTilejsonUrl: 'https://tiles.example.net/style-dark.json'
+		});
 	});
 
 	test('null and the empty string are both the unconfigured state', async () => {
-		for (const body of [{ tilejsonUrl: null }, { tilejsonUrl: '' }]) {
+		for (const body of [
+			{ tilejsonUrl: null, darkTilejsonUrl: null },
+			{ tilejsonUrl: '', darkTilejsonUrl: '' }
+		]) {
 			const fetcher = stub(() => jsonResponse(200, body));
 			const outcome = await getMapConfig(fetcher as unknown as typeof fetch);
-			expect(outcome).toEqual({ ok: true, tilejsonUrl: null });
+			expect(outcome).toEqual({ ok: true, tilejsonUrl: null, darkTilejsonUrl: null });
 		}
+	});
+
+	test('a light-only configuration answers a null dark style', async () => {
+		const fetcher = stub(() =>
+			jsonResponse(200, { tilejsonUrl: 'https://tiles.example.net/style.json', darkTilejsonUrl: null })
+		);
+		expect(await getMapConfig(fetcher as unknown as typeof fetch)).toEqual({
+			ok: true,
+			tilejsonUrl: 'https://tiles.example.net/style.json',
+			darkTilejsonUrl: null
+		});
 	});
 
 	test('a failure maps onto the shared error keys', async () => {
@@ -39,6 +62,10 @@ describe('getMapConfig', () => {
 			[() => jsonResponse(500, { code: 'INTERNAL' }), 'internal'],
 			[() => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }), 'session_expired'],
 			[() => jsonResponse(200, { nope: true }), 'internal'],
+			// One field present, the other missing or of the wrong
+			// type: a shaped answer is all-or-nothing.
+			[() => jsonResponse(200, { tilejsonUrl: null }), 'internal'],
+			[() => jsonResponse(200, { tilejsonUrl: null, darkTilejsonUrl: 7 }), 'internal'],
 			[() => new Response('not json', { status: 200 }), 'internal']
 		];
 		for (const [respond, errorKey] of cases) {
