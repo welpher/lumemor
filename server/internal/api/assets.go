@@ -447,8 +447,13 @@ func (s *server) resolveContentLookups(r *http.Request, owner uuid.UUID, photo, 
 		if row.DeletedAt.Valid && row.StorageKind == dbgen.StorageKindExternal && !row.TrashPath.Valid {
 			// The purge path's own transaction: the row's faces
 			// re-home or dissolve before the cascade takes them, and
-			// its derivatives go with the id.
-			removed, err := s.purgeAssetRow(r, row)
+			// its derivatives go with the id. trashedOnly is true: the
+			// row is an ORPHAN MARK -- a trashed row -- and the delete
+			// proves it still is (a state that cannot be restored
+			// through the endpoints, so the guard is defense in depth,
+			// and a zero-row answer simply leaves the insert to the
+			// conflict resolution).
+			removed, err := s.purgeAssetRow(r, row, true)
 			if err != nil {
 				return dbgen.Asset{}, false, err
 			}

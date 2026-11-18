@@ -16,6 +16,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1186,6 +1188,143 @@ func TestTrashEmpty(t *testing.T) {
 	if deleted = busEventsOf(t, env.bus, "asset.deleted"); len(deleted) != 3 {
 		t.Errorf("asset.deleted events after the repeat = %d, want still 3 (the no-op stays silent)", len(deleted))
 	}
+}
+
+// purgeTestServer builds the *server the unexported purge helpers hang
+// off, over the environment's own pool, queries, storage root and bus:
+// the sweep arms' guarded delete is only directly reachable this way
+// (the endpoint re-lists the trash, so a restore between the listing
+// and the purge cannot be staged through HTTP).
+func (e *assetEnv) purgeTestServer() *server {
+	return &server{
+		pool:    e.pool,
+		queries: e.queries,
+		dataDir: e.dataDir,
+		events:  e.bus,
+		logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+}
+
+// TestTrashSweepSkipsRestoredRow pins the restore-vs-sweep race guard
+// on BOTH sweep arms' shared helper: a row the sweep listed, then the
+// user restored, must survive the purge -- row, original file and all
+// -- because the guarded delete proves the row is still in the trash.
+// The stale row is the sweep's own ListTrashedForSweep answer, and the
+// restore runs through the endpoint, so the fixture is exactly the
+// timing the bug needs: resolve, restore, purge with the stale row.
+func TestTrashSweepSkipsRestoredRow(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	taken := time.Date(2026, 6, 11, 10, 0, 0, 0, time.UTC)
+	asset := env.uploadPhotoAs(t, env.cookie, "race-restored", taken,
+		jpegColorFixture(t, color.RGBA{R: 0xc0, G: 0xc1, B: 0xc2, A: 0xff}))
+	id := uuid.UUID(asset.Id)
+	row := env.assetRowOf(t, id)
+	file := env.storedFileOf(t, row)
+	requireFileState(t, file, true)
+
+	env.softDeleteAsset(t, id, adminID)
+
+	// The sweep's candidate listing: this stale row is what the empty
+	// or the batch delete carries into its per-row purge.
+	rows, err := env.queries.ListTrashedForSweep(context.Background(), dbgen.ListTrashedForSweepParams{
+		OwnerID:    pgUUID(adminID),
+		LimitCount: trashSweepChunk,
+	})
+	if err != nil {
+		t.Fatalf("list the trash for the sweep: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("trash candidates = %d, want the fixture's one row", len(rows))
+	}
+	stale := rows[0]
+	if !stale.DeletedAt.Valid {
+		t.Fatal("the stale row carries no deletion mark, want the trashed state the sweep listed")
+	}
+
+	// The user restores the asset between the listing and the purge.
+	if rec := env.restoreAsset(t, env.cookie, id); rec.Code != http.StatusNoContent {
+		t.Fatalf("restore status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+
+	// The sweep's guarded purge of the stale row: the guard matches
+	// nothing, so the call deletes nothing.
+	sv := env.purgeTestServer()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/trash/empty", nil)
+	deleted, err := sv.purgeAssetWithPair(req, stale, true)
+	if err != nil {
+		t.Fatalf("guarded purge of a restored row: %v", err)
+	}
+	if deleted {
+		t.Fatal("the guarded purge reports the restored row deleted, want false")
+	}
+
+	// The row is still live and its original is still on disk -- the
+	// exact data loss the unguarded statement caused.
+	restored := env.assetRowOf(t, id)
+	if restored.DeletedAt.Valid {
+		t.Error("the row is trashed after the guarded purge, want it live")
+	}
+	requireFileState(t, file, true)
+
+	// The endpoint-level corroboration: the row is out of the trash
+	// view, so the whole-trash empty sweeps nothing and leaves it
+	// alone too.
+	if items := env.getTrash(t, env.cookie).Items; len(items) != 0 {
+		t.Errorf("trash after the restore holds %v, want empty", trashItemIDs(items))
+	}
+	if rec := env.emptyTrash(t, env.cookie); rec.Code != http.StatusOK {
+		t.Fatalf("empty status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	requireFileState(t, file, true)
+	if row := env.assetRowOf(t, id); row.DeletedAt.Valid {
+		t.Error("the row is trashed after the empty sweep, want it live")
+	}
+}
+
+// TestPurgeAssetRowStates pins the two deleting statements side by
+// side: the explicit delete's unconditional path destroys a LIVE row
+// and its file (its contract is "whatever its state"), while the sweep
+// arms' guarded path answers zero rows and touches nothing for the
+// same live row.
+func TestPurgeAssetRowStates(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	taken := time.Date(2026, 6, 11, 11, 0, 0, 0, time.UTC)
+	sv := env.purgeTestServer()
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/assets/x", nil)
+
+	unconditional := env.uploadPhotoAs(t, env.cookie, "purge-live", taken,
+		jpegColorFixture(t, color.RGBA{R: 0xc3, G: 0xc4, B: 0xc5, A: 0xff}))
+	unconditionalID := uuid.UUID(unconditional.Id)
+	unconditionalFile := env.storedFileOf(t, env.assetRowOf(t, unconditionalID))
+
+	deleted, err := sv.purgeAssetWithPair(req, env.assetRowOf(t, unconditionalID), false)
+	if err != nil {
+		t.Fatalf("unconditional purge of a live row: %v", err)
+	}
+	if !deleted {
+		t.Fatal("the unconditional purge reports the live row kept, want it deleted")
+	}
+	env.requireNoAssetRow(t, unconditionalID)
+	requireFileState(t, unconditionalFile, false)
+
+	guarded := env.uploadPhotoAs(t, env.cookie, "purge-guarded", taken.Add(time.Minute),
+		jpegColorFixture(t, color.RGBA{R: 0xc6, G: 0xc7, B: 0xc8, A: 0xff}))
+	guardedID := uuid.UUID(guarded.Id)
+	guardedFile := env.storedFileOf(t, env.assetRowOf(t, guardedID))
+
+	deleted, err = sv.purgeAssetWithPair(req, env.assetRowOf(t, guardedID), true)
+	if err != nil {
+		t.Fatalf("guarded purge of a live row: %v", err)
+	}
+	if deleted {
+		t.Fatal("the guarded purge reports the live row deleted, want the zero-row no-op")
+	}
+	row := env.assetRowOf(t, guardedID)
+	if row.DeletedAt.Valid {
+		t.Error("the guarded purge trashed the live row, want it untouched")
+	}
+	requireFileState(t, guardedFile, true)
 }
 
 // TestTrashBatch pins the trash view's multi-select surface: the
