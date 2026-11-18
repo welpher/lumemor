@@ -110,6 +110,13 @@
 	 * while a document loads keeps only the latest answer.
 	 */
 	let sourceGeneration = 0;
+	/**
+	 * True while the applied base layer is the stated absence because
+	 * the configured document could not be resolved. The idle handler
+	 * must not read an empty style as "tiles loaded": that would clear
+	 * the honest notice a moment after it appears.
+	 */
+	let sourceUnresolved = false;
 
 	/**
 	 * Recompute the overlay from the map's current camera: project
@@ -211,6 +218,7 @@
 		const generation = ++sourceGeneration;
 		if (url === null) {
 			appliedUrl = null;
+			sourceUnresolved = false;
 			attribution = '';
 			map?.setStyle(emptyStyle());
 			tiles = 'unconfigured';
@@ -221,6 +229,7 @@
 			return;
 		}
 		appliedUrl = url;
+		sourceUnresolved = !source.ok;
 		if (map === null) {
 			return;
 		}
@@ -264,9 +273,11 @@
 					appliedUrl = wanted;
 					if (source.ok) {
 						style = source.source.style;
+						sourceUnresolved = false;
 						attribution = source.source.attribution;
 						tiles = 'ready';
 					} else {
+						sourceUnresolved = true;
 						tiles = 'unavailable';
 					}
 				}
@@ -298,14 +309,16 @@
 			// A tile or style fetch that fails is the honest state: the
 			// notice appears, the pins stay. A later successful load
 			// clears it again (a flaky link should not leave a stale
-			// claim).
+			// claim) -- unless the DOCUMENT itself never resolved, in
+			// which case the empty style has nothing to load and the
+			// notice is the answer.
 			instance.on('error', () => {
 				if (tiles === 'ready') {
 					tiles = 'unavailable';
 				}
 			});
 			instance.on('idle', () => {
-				if (tiles === 'unavailable' && instance.areTilesLoaded()) {
+				if (tiles === 'unavailable' && !sourceUnresolved && instance.areTilesLoaded()) {
 					tiles = 'ready';
 				}
 			});
