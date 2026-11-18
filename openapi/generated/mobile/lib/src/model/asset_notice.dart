@@ -12,17 +12,17 @@ part 'asset_notice.g.dart';
 /// One thing the client MUST tell the user about a successful upload: the server made a decision the user cannot see in the response's asset fields. Notices are informational, never failures -- the upload itself succeeded. 
 ///
 /// Properties:
-/// * [code] - What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. 
-/// * [assetId] - The asset the notice is about: the reused row that became the Live Photo's motion. 
+/// * [code] - What happened.  `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. Carried on a 201 `created` answer.  `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes already play as a Live Photo's motion, so the returned row is that hidden component (`assetId` names it) and does not list on its own. Carried on a 200 `duplicate` answer: the content genuinely exists, so the state stays `duplicate` -- there is nothing for the user to fix. 
+/// * [assetId] - The asset the notice is about: the video row that plays as a Live Photo's motion. 
 /// * [name] - The affected asset's original filename, so the message can name what moved. 
 @BuiltValue()
 abstract class AssetNotice implements Built<AssetNotice, AssetNoticeBuilder> {
-  /// What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. 
+  /// What happened.  `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. Carried on a 201 `created` answer.  `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes already play as a Live Photo's motion, so the returned row is that hidden component (`assetId` names it) and does not list on its own. Carried on a 200 `duplicate` answer: the content genuinely exists, so the state stays `duplicate` -- there is nothing for the user to fix. 
   @BuiltValueField(wireName: r'code')
   AssetNoticeCodeEnum get code;
-  // enum codeEnum {  LIVE_PHOTO_MOTION_ABSORBED,  };
+  // enum codeEnum {  LIVE_PHOTO_MOTION_ABSORBED,  LIVE_PHOTO_MOTION_ALREADY_STORED,  };
 
-  /// The asset the notice is about: the reused row that became the Live Photo's motion. 
+  /// The asset the notice is about: the video row that plays as a Live Photo's motion. 
   @BuiltValueField(wireName: r'assetId')
   String get assetId;
 
@@ -142,11 +142,13 @@ class _$AssetNoticeSerializer implements PrimitiveSerializer<AssetNotice> {
 }
 
 
-/// What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. 
+/// What happened.  `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes already existed as a live standalone video of this owner; that row became the pair's motion (`assetId` names it) and no longer lists as its own asset. Carried on a 201 `created` answer.  `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes already play as a Live Photo's motion, so the returned row is that hidden component (`assetId` names it) and does not list on its own. Carried on a 200 `duplicate` answer: the content genuinely exists, so the state stays `duplicate` -- there is nothing for the user to fix. 
 class AssetNoticeCodeEnum extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'LIVE_PHOTO_MOTION_ABSORBED')
   static const AssetNoticeCodeEnum AssetNoticeCodeLivePhotoMotionAbsorbed = _$assetNoticeCodeEnum_AssetNoticeCodeLivePhotoMotionAbsorbed;
+  @BuiltValueEnumConst(wireName: r'LIVE_PHOTO_MOTION_ALREADY_STORED')
+  static const AssetNoticeCodeEnum AssetNoticeCodeLivePhotoMotionAlreadyStored = _$assetNoticeCodeEnum_AssetNoticeCodeLivePhotoMotionAlreadyStored;
 
   static Serializer<AssetNoticeCodeEnum> get serializer => _$assetNoticeCodeEnumSerializer;
 
