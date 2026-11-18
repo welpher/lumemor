@@ -58,6 +58,7 @@
 		type ImageSettings,
 		type ModelSettings,
 		type StorageSettings,
+		type TilesSettings,
 		type TranscodingSettings,
 		type UpdateCheckSettings
 	} from '$lib/api/adminSettings';
@@ -212,8 +213,10 @@
 	/** True while the manual check runs. */
 	let checking = $state(false);
 
-	// The map's tile source form.
+	// The map's tile source form: the light style and the optional
+	// dark one, saved as one document.
 	let formTilejsonUrl = $state('');
+	let formDarkTilejsonUrl = $state('');
 	let savingTiles = $state(false);
 	let tilesErrorKey = $state('');
 	let tilesSaved = $state(false);
@@ -303,7 +306,7 @@
 			}
 			adoptSettings(storage.settings, trash.settings.retentionDays, transcoding.settings);
 			adoptImageSettings(image.settings);
-			adoptNetworkingSettings(updateCheck.settings, tiles.settings.tilejsonUrl, models.settings);
+			adoptNetworkingSettings(updateCheck.settings, tiles.settings, models.settings);
 			updateState = checkState.state;
 			if (summary.ok) {
 				derivativesSummary = summary.settings;
@@ -337,13 +340,14 @@
 	/** Adopt the networking sections' read documents as their fresh state. */
 	function adoptNetworkingSettings(
 		updateCheck: UpdateCheckSettings,
-		tilejsonUrl: string,
+		tiles: TilesSettings,
 		models: ModelSettings
 	): void {
 		formUpdateCheck = { ...updateCheck };
 		updateCheckErrorKey = '';
 		updateCheckSaved = false;
-		formTilejsonUrl = tilejsonUrl;
+		formTilejsonUrl = tiles.tilejsonUrl;
+		formDarkTilejsonUrl = tiles.darkTilejsonUrl;
 		tilesErrorKey = '';
 		tilesSaved = false;
 		formModels = { ...models };
@@ -541,14 +545,27 @@
 		savingTiles = true;
 		tilesErrorKey = '';
 		tilesSaved = false;
-		const outcome = await saveTilesSettings(formTilejsonUrl.trim());
+		const outcome = await saveTilesSettings(formTilejsonUrl.trim(), formDarkTilejsonUrl.trim());
 		savingTiles = false;
 		if (outcome.ok) {
 			formTilejsonUrl = outcome.settings.tilejsonUrl;
+			formDarkTilejsonUrl = outcome.settings.darkTilejsonUrl;
 			tilesSaved = true;
 			return;
 		}
 		tilesErrorKey = outcome.errorKey;
+	}
+
+	/**
+	 * The reset is a DRAFT edit, not a save: both fields become the
+	 * unconfigured state and the existing Save persists it, so the
+	 * administrator still sees what the action did before it lands.
+	 */
+	function resetTileSources(): void {
+		formTilejsonUrl = '';
+		formDarkTilejsonUrl = '';
+		tilesErrorKey = '';
+		tilesSaved = false;
 	}
 
 	async function handleModelsSubmit(event: SubmitEvent): Promise<void> {
@@ -616,7 +633,7 @@
 			case 'image':
 				return `${$_('admin_settings_image_thumb_label')} ${formImage.tileSize} · ${formImage.previewSize} · ${formImage.format.toUpperCase()}`;
 			case 'tiles':
-				return formTilejsonUrl === ''
+				return formTilejsonUrl === '' && formDarkTilejsonUrl === ''
 					? $_('admin_settings_collapse_unconfigured')
 					: $_('admin_settings_collapse_configured');
 			case 'models':
@@ -1370,9 +1387,10 @@
 			</div>
 		</details>
 
-		<!-- The map's tile source: the browser loads it, so a LAN
-		     address is legitimate; an empty value is the shipped state
-		     and the map's stated absence. -->
+		<!-- The map's tile sources: the browser loads them, so LAN
+		     addresses are legitimate; empty values are the shipped
+		     state and the map's stated absence. The dark style is
+		     optional -- an empty one reuses the light source. -->
 		<details
 			class="settings__card group bg-card border border-border rounded-card shadow-card p-5"
 			data-testid="admin-settings-tiles"
@@ -1407,15 +1425,37 @@
 					{$_('admin_settings_tiles_note')}
 				</p>
 				<form class="settings__tiles flex flex-col gap-3.5" onsubmit={handleTilesSubmit}>
-					<Input
-						id="admin-tiles-source"
-						label={$_('admin_settings_tiles_source')}
-						type="url"
-						autocomplete="off"
-						spellcheck="false"
-						class="font-mono"
-						bind:value={formTilejsonUrl}
-					/>
+					<div class="settings__tiles-pair flex flex-col gap-3.5">
+						<Input
+							id="admin-tiles-source"
+							label={$_('admin_settings_tiles_source')}
+							type="url"
+							autocomplete="off"
+							spellcheck="false"
+							class="font-mono"
+							bind:value={formTilejsonUrl}
+						/>
+						<Input
+							id="admin-tiles-dark-source"
+							label={$_('admin_settings_tiles_dark_label')}
+							type="url"
+							autocomplete="off"
+							spellcheck="false"
+							class="font-mono"
+							placeholder="https://…/style-dark.json"
+							bind:value={formDarkTilejsonUrl}
+						/>
+						<p
+							class="settings__field-hint m-0 font-body font-normal text-[12px] leading-[1.5] text-text-faint"
+						>
+							{$_('admin_settings_tiles_dark_hint')}
+						</p>
+					</div>
+					<p
+						class="settings__tiles-recommended m-0 font-body font-normal text-[12px] leading-[1.5] text-text-faint"
+					>
+						{$_('admin_settings_tiles_recommended')}
+					</p>
 					{#if tilesSaved}
 						<p
 							class="settings__saved font-body font-normal text-[13px] leading-[1.5] text-text-soft"
@@ -1432,7 +1472,10 @@
 							{errorText(tilesErrorKey)}
 						</p>
 					{/if}
-					<div class="settings__form-actions flex justify-end mt-1">
+					<div class="settings__form-actions flex flex-wrap items-center justify-between gap-2 mt-1">
+						<Button type="button" variant="ghost" onclick={resetTileSources}
+							>{$_('admin_settings_tiles_reset')}</Button
+						>
 						<Button type="submit" disabled={savingTiles}
 							><Check size={20} aria-hidden="true" />{$_('admin_settings_tiles_save')}</Button
 						>
