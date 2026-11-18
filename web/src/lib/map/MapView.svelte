@@ -100,11 +100,13 @@
 	 */
 	let sources = $state<{ light: string | null; dark: string | null } | null>(null);
 	/**
-	 * The URL whose base layer the map currently renders (null = the
-	 * empty style). The theme effect compares against it so a switch
-	 * that resolves to the same source does not reload the tiles.
+	 * The URL whose base layer the component last asked for (null =
+	 * the empty style). Set when a switch STARTS, so the theme effect
+	 * compares against the intent rather than the last finished load:
+	 * a flip back while a document is in flight cancels it through the
+	 * generation counter instead of letting it land after the fact.
 	 */
-	let appliedUrl: string | null = null;
+	let requestedUrl: string | null = null;
 	/**
 	 * The in-flight source switch's generation: a theme flipped twice
 	 * while a document loads keeps only the latest answer.
@@ -216,8 +218,8 @@
 	 */
 	async function applySource(url: string | null): Promise<void> {
 		const generation = ++sourceGeneration;
+		requestedUrl = url;
 		if (url === null) {
-			appliedUrl = null;
 			sourceUnresolved = false;
 			attribution = '';
 			map?.setStyle(emptyStyle());
@@ -228,7 +230,6 @@
 		if (generation !== sourceGeneration) {
 			return;
 		}
-		appliedUrl = url;
 		sourceUnresolved = !source.ok;
 		if (map === null) {
 			return;
@@ -267,10 +268,10 @@
 					if (disposed) {
 						return;
 					}
-					// The applied URL is recorded even when the document
+					// The requested URL is recorded even when the document
 					// fails: the degradation is the answer for THIS source,
 					// and the theme effect must not retry it on every run.
-					appliedUrl = wanted;
+					requestedUrl = wanted;
 					if (source.ok) {
 						style = source.source.style;
 						sourceUnresolved = false;
@@ -396,7 +397,7 @@
 			return;
 		}
 		const url = tileSourceForTheme(sources.light, sources.dark, dark);
-		if (url === appliedUrl) {
+		if (url === requestedUrl) {
 			return;
 		}
 		void applySource(url);
