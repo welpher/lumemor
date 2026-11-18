@@ -426,34 +426,43 @@ func SaveUpdateCheckState(ctx context.Context, q *dbgen.Queries, state UpdateChe
 	return nil
 }
 
-// TileSettings reads the map's tile source URL. The empty string is
-// the shipped state and a real answer (no source configured), not an
-// error; a corrupt row answers the empty string with the error
-// describing it, so a broken row can never turn into a source the
-// browser loads.
-func TileSettings(ctx context.Context, q *dbgen.Queries) (string, error) {
-	raw, err := q.GetInstanceSetting(ctx, TilesSettingsKey)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil
-	}
-	if err != nil {
-		return "", fmt.Errorf("db: read instance setting %s: %w", TilesSettingsKey, err)
-	}
-	var stored struct {
-		TileJSONURL string `json:"tilejsonUrl"`
-	}
-	if err := json.Unmarshal(raw, &stored); err != nil {
-		return "", fmt.Errorf("db: instance setting %s = %s is not a JSON object", TilesSettingsKey, raw)
-	}
-	return stored.TileJSONURL, nil
+// TileSettings is the map's tile sources: the light style every
+// theme loads as its fallback, and the optional dark style the dark
+// theme loads instead. The empty string means unconfigured in both
+// cases, and an empty dark style means the dark theme reuses the
+// light one.
+type TileSettings struct {
+	TileJSONURL     string `json:"tilejsonUrl"`
+	DarkTileJSONURL string `json:"darkTilejsonUrl"`
 }
 
-// SaveTileSettings writes the tile source URL as one JSON object. The
-// caller validates the URL's shape; this leaf only writes.
-func SaveTileSettings(ctx context.Context, q *dbgen.Queries, tilejsonURL string) error {
-	value, err := json.Marshal(struct {
-		TileJSONURL string `json:"tilejsonUrl"`
-	}{TileJSONURL: tilejsonURL})
+// TileSettingsOf reads the map's tile sources. The empty strings are
+// the shipped state and a real answer (no source configured), not an
+// error; a corrupt row answers the empty strings with the error
+// describing it, so a broken row can never turn into a source the
+// browser loads. A row written before the dark field existed reads
+// its dark style as the empty string (the struct's zero value), so
+// such an instance keeps the pre-existing behavior: one source, both
+// themes.
+func TileSettingsOf(ctx context.Context, q *dbgen.Queries) (TileSettings, error) {
+	raw, err := q.GetInstanceSetting(ctx, TilesSettingsKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return TileSettings{}, nil
+	}
+	if err != nil {
+		return TileSettings{}, fmt.Errorf("db: read instance setting %s: %w", TilesSettingsKey, err)
+	}
+	var stored TileSettings
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return TileSettings{}, fmt.Errorf("db: instance setting %s = %s is not a JSON object", TilesSettingsKey, raw)
+	}
+	return stored, nil
+}
+
+// SaveTileSettings writes the tile sources as one JSON object. The
+// caller validates the URLs' shape; this leaf only writes.
+func SaveTileSettings(ctx context.Context, q *dbgen.Queries, settings TileSettings) error {
+	value, err := json.Marshal(settings)
 	if err != nil {
 		return fmt.Errorf("db: encode instance setting %s: %w", TilesSettingsKey, err)
 	}

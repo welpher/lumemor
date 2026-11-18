@@ -2919,10 +2919,10 @@ export interface paths {
         /**
          * The map's client-side tile configuration.
          * @description The configuration the places map and the viewer's location
-         *     card need before they can draw a base layer: the tile source
-         *     the administrator configured, and nothing else.
+         *     card need before they can draw a base layer: the tile
+         *     sources the administrator configured, and nothing else.
          *
-         *     THE POLYGON: the value is a URL the BROWSER loads directly
+         *     THE POLYGON: the values are URLs the BROWSER loads directly
          *     from the tile host -- the server never fetches, proxies or
          *     caches a tile, so a pan or a zoom never makes the photo
          *     server a tile CDN. What the tile host sees is the viewport,
@@ -2934,8 +2934,15 @@ export interface paths {
          *     (a public tile service's usage policy forbids carrying the
          *     traffic of an application's whole install base).
          *
-         *     `tilejsonUrl` is null when no source is configured. That is
-         *     not an error: the map renders its honest degraded state --
+         *     THE THEME PAIR: `tilejsonUrl` is the light style, always
+         *     present when a source is configured. `darkTilejsonUrl` is
+         *     the optional dark style: the client loads it in the dark
+         *     theme and follows a live theme switch. A null dark URL means
+         *     the dark theme reuses the light one -- one configured source
+         *     keeps one look.
+         *
+         *     Either field is null when no such source is configured. Null
+         *     is not an error: the map renders its honest degraded state --
          *     the pins stay, the base layer is stated as absent -- and the
          *     admin settings face is where it gets fixed. A stored value
          *     is handed back verbatim; its reachability is the browser's
@@ -4543,17 +4550,26 @@ export interface paths {
         };
         /**
          * Read the map tile source setting.
-         * @description The map's tile source, as the administrator configured it: one
-         *     URL, or the empty string when the instance has none.
+         * @description The map's tile sources, as the administrator configured them:
+         *     the light style every theme loads as its fallback, and the
+         *     optional dark style the dark theme loads instead. Either is
+         *     the empty string when the instance has none.
          *
-         *     THE SHAPE: the URL names a document the browser's map library
-         *     can build a base layer from -- a style document (the vector
-         *     case: sources, layers, sprites and glyphs) or a TileJSON
-         *     descriptor (the raster case: the tile templates and their
-         *     attribution). The map detects which of the two it received
-         *     and builds the base layer accordingly, so one field covers
-         *     both the raster and the vector-and-style forms of the
+         *     THE SHAPE: each URL names a document the browser's map
+         *     library can build a base layer from -- a style document (the
+         *     vector case: sources, layers, sprites and glyphs) or a
+         *     TileJSON descriptor (the raster case: the tile templates and
+         *     their attribution). The map detects which of the two it
+         *     received and builds the base layer accordingly, so each field
+         *     covers both the raster and the vector-and-style forms of the
          *     self-hosting ecosystem.
+         *
+         *     THE DARK STYLE IS OPTIONAL: an empty `darkTilejsonUrl` means
+         *     the dark theme reuses the light source, so a single source
+         *     keeps a single look in both themes. A configured one is
+         *     loaded by the dark theme only; the light theme always loads
+         *     `tilejsonUrl`. A row written before the field existed reads
+         *     as the empty string.
          *
          *     THE EMPTY VALUE IS THE SHIPPED DEFAULT and a real state: no
          *     source ships with the product (a public tile service's usage
@@ -4563,16 +4579,23 @@ export interface paths {
          *     usual cross-origin headers; a host that does not lands on the
          *     same stated absence.
          *
-         *     A corrupt settings row answers the empty string with the
+         *     A corrupt settings row answers the empty strings with the
          *     corruption logged server-side.
          */
         get: operations["getTilesSettings"];
         /**
          * Save the map tile source setting.
          * @description The settings save. `tilejsonUrl` is required: the empty
-         *     string clears the source (the map falls back to its stated
-         *     absence), any other value must be an absolute `http` or
-         *     `https` URL.
+         *     string clears the light source (the map falls back to its
+         *     stated absence), any other value must be an absolute `http`
+         *     or `https` URL. `darkTilejsonUrl` is the optional dark style:
+         *     omitting it or sending the empty string clears it, which
+         *     makes the dark theme reuse the light source, and any other
+         *     value must be an absolute `http` or `https` URL as well.
+         *
+         *     The save replaces both fields: it is one document, not two
+         *     partial writes. The validation is symmetric -- a bad dark URL
+         *     is refused with the field named, and nothing is written.
          *
          *     The save validates the SHAPE only. The browser is the party
          *     that loads the source, so a LAN address is legitimate here
@@ -5430,30 +5453,52 @@ export interface components {
             checkedAt: string | null;
         };
         /**
-         * @description The map tile source of `GET /admin/settings/tiles` and the
-         *     successful `PUT`: one URL, empty when the instance has none.
+         * @description The map tile sources of `GET /admin/settings/tiles` and the
+         *     successful `PUT`: the light style plus the optional dark one,
+         *     each empty when unconfigured.
          */
         TilesSettingsResponse: {
             /**
-             * @description The tile source URL: a style document (vector) or a
-             *     TileJSON descriptor (raster), loaded by the browser.
-             *     The empty string is the shipped state: no source, and
-             *     the map draws its pins over the stated absence of a
-             *     base layer.
+             * @description The light tile source URL: a style document (vector) or
+             *     a TileJSON descriptor (raster), loaded by the browser in
+             *     the light theme and in the dark theme when no dark style
+             *     is configured. The empty string is the shipped state: no
+             *     source, and the map draws its pins over the stated
+             *     absence of a base layer.
              * @example https://tiles.example.net/osm/tilejson.json
              * @example
              */
             tilejsonUrl: string;
+            /**
+             * @description The dark tile source URL, same shapes as the light one.
+             *     The empty string means the dark theme reuses
+             *     `tilejsonUrl` -- one source, one look in both themes. A
+             *     configured value is loaded by the dark theme only.
+             * @example https://tiles.example.net/osm-dark/tilejson.json
+             * @example
+             */
+            darkTilejsonUrl: string;
         };
-        /** @description Payload of `PUT /admin/settings/tiles`. */
+        /**
+         * @description Payload of `PUT /admin/settings/tiles`: both styles, one
+         *     document. The save replaces the pair wholesale.
+         */
         TilesSettingsUpdateRequest: {
             /**
-             * @description The tile source URL to save, or the empty string to
+             * @description The light tile source URL to save, or the empty string to
              *     clear it. A non-empty value must be an absolute `http`
              *     or `https` URL; a LAN address is legitimate (the browser
              *     loads the source, not the server).
              */
             tilejsonUrl: string;
+            /**
+             * @description The dark tile source URL to save. Omitting it or sending
+             *     the empty string clears it (the dark theme then reuses
+             *     the light source). A non-empty value follows the light
+             *     field's rule: an absolute `http` or `https` URL, a LAN
+             *     address included.
+             */
+            darkTilejsonUrl?: string;
         };
         /**
          * @description The model store's policy, download sources and pipeline
@@ -5552,19 +5597,30 @@ export interface components {
         };
         /**
          * @description The map's client-side configuration of `GET /map/config`:
-         *     the tile source the browser loads, or null when the instance
-         *     has none.
+         *     the light and dark tile sources the browser loads, each null
+         *     when the instance has none.
          */
         MapConfigResponse: {
             /**
-             * @description The tile source URL the browser loads directly from the
-             *     tile host (a style document or a TileJSON descriptor);
-             *     null means no source is configured and the map renders
-             *     its stated absence. The pin data never crosses the tile
-             *     line: it comes from `GET /places`.
+             * @description The light tile source URL the browser loads directly from
+             *     the tile host (a style document or a TileJSON
+             *     descriptor); null means no source is configured and the
+             *     map renders its stated absence. The dark theme falls back
+             *     to this source when `darkTilejsonUrl` is null. The pin
+             *     data never crosses the tile line: it comes from
+             *     `GET /places`.
              * @example https://tiles.example.net/planet/style.json
              */
             tilejsonUrl: string | null;
+            /**
+             * @description The dark tile source URL, loaded by the dark theme
+             *     instead of `tilejsonUrl`; null (or, equivalently, the
+             *     instance not configuring one) means the dark theme reuses
+             *     the light source. The light theme never loads it.
+             * @example https://tiles.example.net/planet/style-dark.json
+             * @example null
+             */
+            darkTilejsonUrl: string | null;
         };
         /**
          * @description The path completion answer: the pickable source directories
@@ -13178,10 +13234,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /**
-             * @description The tile source URL, or null when the instance has none
-             *     configured.
-             */
+            /** @description The tile source URLs, each null when unconfigured. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -16080,7 +16133,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description The configured tile source, or the empty string. */
+            /** @description The configured tile sources, or the empty strings. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -16137,7 +16190,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The validated setting was saved. */
+            /** @description The validated settings were saved. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -16147,9 +16200,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `tilejsonUrl` is missing or is not an absolute
-             *     `http`/`https` URL. The details name the field; nothing
-             *     was written.
+             * @description `tilejsonUrl` or `darkTilejsonUrl` is not an absolute
+             *     `http`/`https` URL (`tilejsonUrl` is also required). The
+             *     details name the field; nothing was written.
              */
             400: {
                 headers: {

@@ -10,6 +10,7 @@ import {
 	placesBounds,
 	placesFeatureCollection,
 	resolveTileSource,
+	tileSourceForTheme,
 	type PlacePoint
 } from './tiles';
 
@@ -89,6 +90,35 @@ describe('resolveTileSource', () => {
 		expect(style.version).toBe(8);
 		expect(style.layers).toEqual([]);
 		expect(style.sources).toEqual({});
+	});
+});
+
+describe('tileSourceForTheme', () => {
+	const light = 'https://tiles.example.net/bright';
+	const dark = 'https://tiles.example.net/dark';
+
+	test('a dark theme with a dark source loads it', () => {
+		expect(tileSourceForTheme(light, dark, true)).toBe(dark);
+	});
+
+	test('a light theme always loads the light source', () => {
+		expect(tileSourceForTheme(light, dark, false)).toBe(light);
+	});
+
+	test('an empty dark source makes the dark theme reuse the light one', () => {
+		expect(tileSourceForTheme(light, '', true)).toBe(light);
+		expect(tileSourceForTheme(light, null, true)).toBe(light);
+	});
+
+	test('only a dark source configured: the light theme is unconfigured, the dark one loads it', () => {
+		expect(tileSourceForTheme('', dark, false)).toBeNull();
+		expect(tileSourceForTheme(null, dark, true)).toBe(dark);
+	});
+
+	test('neither configured is the degraded state', () => {
+		expect(tileSourceForTheme('', '', true)).toBeNull();
+		expect(tileSourceForTheme(null, null, false)).toBeNull();
+		expect(tileSourceForTheme('', null, true)).toBeNull();
 	});
 });
 

@@ -162,24 +162,30 @@ func updateCheckSettingsResponse(settings db.UpdateCheckSettings) apigen.UpdateC
 }
 
 // GetTilesSettings implements GET /api/v1/admin/settings/tiles: the
-// map's tile source URL, the empty string when the instance has none.
+// map's tile source URLs, the empty strings when the instance has
+// none.
 func (s *server) GetTilesSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
 		return
 	}
-	tilejsonURL, err := db.TileSettings(r.Context(), s.queries)
+	settings, err := db.TileSettingsOf(r.Context(), s.queries)
 	if err != nil {
 		s.logger.Error("read the tile settings; answering unconfigured", "error", err)
 	}
-	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse{TilejsonUrl: tilejsonURL})
+	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse{
+		TilejsonUrl:     settings.TileJSONURL,
+		DarkTilejsonUrl: settings.DarkTileJSONURL,
+	})
 }
 
 // UpdateTilesSettings implements PUT /api/v1/admin/settings/tiles:
-// validate the URL's shape and persist it. The empty string clears
-// the source; a non-empty value must be an absolute http(s) URL. The
-// save cannot judge reachability -- the browser loads the source --
-// and it deliberately admits LAN addresses (a home tile server).
+// validate both URLs' shapes and persist the pair. The empty string
+// clears a source; a non-empty value must be an absolute http(s) URL.
+// The dark style is optional in the payload -- an omitted or empty
+// dark URL means the dark theme reuses the light source. The save
+// cannot judge reachability -- the browser loads the sources -- and
+// it deliberately admits LAN addresses (a home tile server).
 func (s *server) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
@@ -205,11 +211,26 @@ func (s *server) UpdateTilesSettings(w http.ResponseWriter, r *http.Request) {
 		s.writeValidationError(w, "tilejsonUrl must be an absolute http or https URL", []string{"tilejsonUrl"})
 		return
 	}
-	if err := db.SaveTileSettings(r.Context(), s.queries, req.TilejsonUrl); err != nil {
+	// The dark style is optional on the wire (the schema does not
+	// require it): an omitted field and an empty string both mean
+	// unconfigured, which is what an empty document save does.
+	darkTilejsonURL := ""
+	if req.DarkTilejsonUrl != nil {
+		darkTilejsonURL = *req.DarkTilejsonUrl
+	}
+	if darkTilejsonURL != "" && !validWebURL(darkTilejsonURL) {
+		s.writeValidationError(w, "darkTilejsonUrl must be an absolute http or https URL", []string{"darkTilejsonUrl"})
+		return
+	}
+	settings := db.TileSettings{TileJSONURL: req.TilejsonUrl, DarkTileJSONURL: darkTilejsonURL}
+	if err := db.SaveTileSettings(r.Context(), s.queries, settings); err != nil {
 		s.internalError(w, r, "save the tile settings", err)
 		return
 	}
-	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse(req))
+	s.writeJSON(w, http.StatusOK, apigen.TilesSettingsResponse{
+		TilejsonUrl:     settings.TileJSONURL,
+		DarkTilejsonUrl: settings.DarkTileJSONURL,
+	})
 }
 
 // GetModelSettings implements GET /api/v1/admin/settings/models: the
@@ -425,15 +446,18 @@ func normalizeMirrorBase(raw string) (string, error) {
 }
 
 // GetMapConfig implements GET /api/v1/map/config: the map's
-// client-side tile source, null when the instance has none. The read
-// is the browser's only source of the URL; the tiles themselves never
-// pass through the server.
+// client-side tile sources -- the light style and the optional dark
+// one -- each null when the instance has none. The read is the
+// browser's only source of the URLs; the tiles themselves never pass
+// through the server. The dark style follows the same rule: a
+// configured one is the dark theme's base layer, an unset one means
+// the dark theme reuses the light source.
 func (s *server) GetMapConfig(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
 		return
 	}
-	tilejsonURL, err := db.TileSettings(r.Context(), s.queries)
+	settings, err := db.TileSettingsOf(r.Context(), s.queries)
 	if err != nil {
 		// The accessor's corrupt-row answer is the unconfigured
 		// state: the map states the absence instead of loading a
@@ -441,8 +465,13 @@ func (s *server) GetMapConfig(w http.ResponseWriter, r *http.Request) {
 		s.logger.Error("read the tile settings; answering unconfigured", "error", err)
 	}
 	response := apigen.MapConfigResponse{}
-	if tilejsonURL != "" {
+	if settings.TileJSONURL != "" {
+		tilejsonURL := settings.TileJSONURL
 		response.TilejsonUrl = &tilejsonURL
+	}
+	if settings.DarkTileJSONURL != "" {
+		darkTilejsonURL := settings.DarkTileJSONURL
+		response.DarkTilejsonUrl = &darkTilejsonURL
 	}
 	s.writeJSON(w, http.StatusOK, response)
 }

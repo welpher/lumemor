@@ -12,8 +12,10 @@
 
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
 
-/** The map configuration read's outcome. */
-export type MapConfigResult = { ok: true; tilejsonUrl: string | null } | { ok: false; errorKey: string };
+/** The map configuration read's outcome: the light and dark tile
+ * source URLs, each null when the instance has none. */
+export type MapConfigResult =
+	{ ok: true; tilejsonUrl: string | null; darkTilejsonUrl: string | null } | { ok: false; errorKey: string };
 
 /** The config endpoint. */
 const MAP_CONFIG_ENDPOINT = '/api/v1/map/config';
@@ -28,9 +30,11 @@ async function errorKeyFrom(response: Response): Promise<string> {
 }
 
 /**
- * GET /api/v1/map/config: the tile source URL, or null when the
- * instance has none. Both are successful reads; only a transport or
- * shape failure is an error.
+ * GET /api/v1/map/config: the light and dark tile source URLs, each
+ * null when the instance has none. Both are successful reads; only a
+ * transport or shape failure is an error. The contract declares both
+ * fields required, and the empty string is the same unconfigured
+ * state as null.
  */
 export async function getMapConfig(fetcher: typeof fetch = globalThis.fetch): Promise<MapConfigResult> {
 	let response: Response;
@@ -48,15 +52,31 @@ export async function getMapConfig(fetcher: typeof fetch = globalThis.fetch): Pr
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
-	if (body === null || typeof body !== 'object' || !('tilejsonUrl' in body)) {
+	if (body === null || typeof body !== 'object') {
 		return { ok: false, errorKey: 'internal' };
 	}
-	const value = (body as { tilejsonUrl: unknown }).tilejsonUrl;
+	const light = tileSourceOf(body, 'tilejsonUrl');
+	const dark = tileSourceOf(body, 'darkTilejsonUrl');
+	if (light === null || dark === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, tilejsonUrl: light.value, darkTilejsonUrl: dark.value };
+}
+
+/**
+ * One source field's value: `{value}` (null when unconfigured), or
+ * null when the body carries no usable value for it.
+ */
+function tileSourceOf(body: object, key: 'tilejsonUrl' | 'darkTilejsonUrl'): { value: string | null } | null {
+	if (!(key in body)) {
+		return null;
+	}
+	const value = (body as Record<string, unknown>)[key];
 	if (value === null) {
-		return { ok: true, tilejsonUrl: null };
+		return { value: null };
 	}
 	if (typeof value !== 'string') {
-		return { ok: false, errorKey: 'internal' };
+		return null;
 	}
-	return { ok: true, tilejsonUrl: value === '' ? null : value };
+	return { value: value === '' ? null : value };
 }

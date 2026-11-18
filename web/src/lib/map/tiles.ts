@@ -39,6 +39,26 @@ export type TileSource = {
 /** The outcome of resolving the configured URL. */
 export type TileSourceResult = { ok: true; source: TileSource } | { ok: false };
 
+/**
+ * The tile source URL for one theme: the dark style when the theme is
+ * dark AND one is configured, the light style otherwise (the dark
+ * theme reuses the light source when it has none of its own). Null
+ * when neither is configured -- the map's stated absence.
+ *
+ * Both URLs use the empty string for "unconfigured" as they arrive
+ * from the config read (the read flattens the contract's null into
+ * it), so a whitespace-free comparison is all the rule needs.
+ */
+export function tileSourceForTheme(lightUrl: string | null, darkUrl: string | null, darkTheme: boolean): string | null {
+	if (darkTheme && darkUrl !== null && darkUrl !== '') {
+		return darkUrl;
+	}
+	if (lightUrl !== null && lightUrl !== '') {
+		return lightUrl;
+	}
+	return null;
+}
+
 /** The base style with no basemap: the degradation state's canvas. */
 export function emptyStyle(): StyleSpecification {
 	return { version: 8, sources: {}, layers: [] };

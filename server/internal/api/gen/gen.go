@@ -3367,14 +3367,25 @@ type LoginRequest struct {
 }
 
 // MapConfigResponse The map's client-side configuration of `GET /map/config`:
-// the tile source the browser loads, or null when the instance
-// has none.
+// the light and dark tile sources the browser loads, each null
+// when the instance has none.
 type MapConfigResponse struct {
-	// TilejsonUrl The tile source URL the browser loads directly from the
-	// tile host (a style document or a TileJSON descriptor);
-	// null means no source is configured and the map renders
-	// its stated absence. The pin data never crosses the tile
-	// line: it comes from `GET /places`.
+	// DarkTilejsonUrl The dark tile source URL, loaded by the dark theme
+	// instead of `tilejsonUrl`; null (or, equivalently, the
+	// instance not configuring one) means the dark theme reuses
+	// the light source. The light theme never loads it.
+	//
+	//
+	// Examples: https://tiles.example.net/planet/style-dark.json, null
+	DarkTilejsonUrl *string `json:"darkTilejsonUrl"`
+
+	// TilejsonUrl The light tile source URL the browser loads directly from
+	// the tile host (a style document or a TileJSON
+	// descriptor); null means no source is configured and the
+	// map renders its stated absence. The dark theme falls back
+	// to this source when `darkTilejsonUrl` is null. The pin
+	// data never crosses the tile line: it comes from
+	// `GET /places`.
 	//
 	//
 	// Examples: https://tiles.example.net/planet/style.json
@@ -4717,23 +4728,42 @@ type TagSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// TilesSettingsResponse The map tile source of `GET /admin/settings/tiles` and the
-// successful `PUT`: one URL, empty when the instance has none.
+// TilesSettingsResponse The map tile sources of `GET /admin/settings/tiles` and the
+// successful `PUT`: the light style plus the optional dark one,
+// each empty when unconfigured.
 type TilesSettingsResponse struct {
-	// TilejsonUrl The tile source URL: a style document (vector) or a
-	// TileJSON descriptor (raster), loaded by the browser.
-	// The empty string is the shipped state: no source, and
-	// the map draws its pins over the stated absence of a
-	// base layer.
+	// DarkTilejsonUrl The dark tile source URL, same shapes as the light one.
+	// The empty string means the dark theme reuses
+	// `tilejsonUrl` -- one source, one look in both themes. A
+	// configured value is loaded by the dark theme only.
+	//
+	//
+	// Examples: https://tiles.example.net/osm-dark/tilejson.json,
+	DarkTilejsonUrl string `json:"darkTilejsonUrl"`
+
+	// TilejsonUrl The light tile source URL: a style document (vector) or
+	// a TileJSON descriptor (raster), loaded by the browser in
+	// the light theme and in the dark theme when no dark style
+	// is configured. The empty string is the shipped state: no
+	// source, and the map draws its pins over the stated
+	// absence of a base layer.
 	//
 	//
 	// Examples: https://tiles.example.net/osm/tilejson.json,
 	TilejsonUrl string `json:"tilejsonUrl"`
 }
 
-// TilesSettingsUpdateRequest Payload of `PUT /admin/settings/tiles`.
+// TilesSettingsUpdateRequest Payload of `PUT /admin/settings/tiles`: both styles, one
+// document. The save replaces the pair wholesale.
 type TilesSettingsUpdateRequest struct {
-	// TilejsonUrl The tile source URL to save, or the empty string to
+	// DarkTilejsonUrl The dark tile source URL to save. Omitting it or sending
+	// the empty string clears it (the dark theme then reuses
+	// the light source). A non-empty value follows the light
+	// field's rule: an absolute `http` or `https` URL, a LAN
+	// address included.
+	DarkTilejsonUrl *string `json:"darkTilejsonUrl,omitempty"`
+
+	// TilejsonUrl The light tile source URL to save, or the empty string to
 	// clear it. A non-empty value must be an absolute `http`
 	// or `https` URL; a LAN address is legitimate (the browser
 	// loads the source, not the server).
