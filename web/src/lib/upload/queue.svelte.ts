@@ -13,12 +13,13 @@
 // single `photo` part and never sends `liveVideo` (the contract
 // marks it optional).
 //
-// A 201 answer can also carry `notices`: decisions the asset fields
-// cannot show, whose one current case is a Live Photo absorbing an
-// existing video's bytes as its motion. Each notice goes to the
-// injected `onNotice` handler -- the singleton wires it to an info
-// toast -- after the row settled, so the upload is never blocked and
-// no dialog opens.
+// An answer can also carry `notices`: decisions the asset fields
+// cannot show. There are two: a 201 whose Live Photo absorbed an
+// existing video's bytes as its motion, and a 200 duplicate whose
+// bytes already play as a Live Photo's motion (the returned row is
+// that hidden component). Each notice goes to the injected `onNotice`
+// handler -- the singleton wires it to an info toast -- after the row
+// settled, so the upload is never blocked and no dialog opens.
 //
 // ARCHITECTURE
 //
@@ -124,9 +125,10 @@ export type UploadQueueDeps = {
 	/**
 	 * The upload contract's notices, delivered one call per entry: the
 	 * server made a decision the asset fields cannot show (a Live Photo
-	 * absorbed an existing video as its motion). The client MUST surface
-	 * each one; it never blocks the upload. Absent in tests that do not
-	 * exercise the notification path.
+	 * absorbed an existing video as its motion, or a duplicate whose
+	 * bytes already play as a Live Photo's motion). The client MUST
+	 * surface each one; it never blocks the upload. Absent in tests
+	 * that do not exercise the notification path.
 	 */
 	onNotice?: (notice: UploadNotice) => void;
 };
@@ -397,12 +399,13 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 				progress: 1,
 				asset: body as UploadAsset
 			});
-			// A 201 can carry notices: decisions the asset fields cannot
-			// show (a Live Photo absorbed an existing video as its
-			// motion). Each one reaches the user through the injected
-			// handler; the upload itself is already settled, so this
-			// never blocks, fails or re-opens the row.
-			if (status === 201 && Array.isArray(asset.notices) && deps.onNotice !== undefined) {
+			// A settled success can carry notices: decisions the asset
+			// fields cannot show (a Live Photo absorbed an existing
+			// video as its motion; a duplicate's bytes already play as
+			// a Live Photo's motion). Each one reaches the user through
+			// the injected handler; the upload itself is already
+			// settled, so this never blocks, fails or re-opens the row.
+			if (Array.isArray(asset.notices) && deps.onNotice !== undefined) {
 				for (const notice of asset.notices) {
 					deps.onNotice(notice);
 				}
@@ -570,12 +573,16 @@ const singleton = createUploadQueue({
 	timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
 	onUnauthorized: forceLogout,
 	fetcher: globalThis.fetch,
-	// The absorbed-motion notice: an info toast, never a dialog and
-	// never a blocked upload -- the upload already succeeded, and the
-	// user only needs to know where that video went.
+	// Notices: info toasts, never a dialog and never a blocked upload
+	// -- the upload already succeeded, and the user only needs to know
+	// where those bytes went.
 	onNotice: (notice) => {
 		if (notice.code === 'LIVE_PHOTO_MOTION_ABSORBED') {
 			toast(get(_)('upload_motion_absorbed', { values: { name: notice.name } }), 'info');
+			return;
+		}
+		if (notice.code === 'LIVE_PHOTO_MOTION_ALREADY_STORED') {
+			toast(get(_)('upload_motion_already_stored', { values: { name: notice.name } }), 'info');
 		}
 	}
 });
