@@ -1003,7 +1003,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	cancel()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/assets", nil).WithContext(ctx)
 
-	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID)}, nil)
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID)}, nil, nil)
 
 	if len(recorder.metadataIDs) != 1 || recorder.metadataIDs[0] != assetID {
 		t.Fatalf("metadata enqueues = %v, want exactly [%s]", recorder.metadataIDs, assetID)
@@ -1025,7 +1025,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	// disconnect-safe context: its counter counts three jobs.
 	videoRecorder := &recordingEnqueuer{}
 	s.jobs = videoRecorder
-	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID), MediaKind: dbgen.MediaKindVideo}, nil)
+	s.enqueueAssetJobs(req, dbgen.Asset{ID: pgUUID(assetID), MediaKind: dbgen.MediaKindVideo}, nil, nil)
 	if len(videoRecorder.transcodeIDs) != 1 || videoRecorder.transcodeIDs[0] != assetID {
 		t.Errorf("video transcode enqueues = %v, want exactly [%s]", videoRecorder.transcodeIDs, assetID)
 	}
@@ -1047,7 +1047,7 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	s.enqueueAssetJobs(req, dbgen.Asset{
 		ID:               pgUUID(assetID),
 		LivePhotoVideoID: pgUUID(componentID),
-	}, &sealedUpload{format: storage.UploadFormat{Video: true}})
+	}, &sealedUpload{format: storage.UploadFormat{Video: true}}, nil)
 	if len(liveRecorder.metadataIDs) != 2 {
 		t.Errorf("live photo metadata enqueues = %v, want one per row (photo and component)", liveRecorder.metadataIDs)
 	}
@@ -1077,10 +1077,31 @@ func TestEnqueueAssetJobsSurvivesClientDisconnect(t *testing.T) {
 	s.enqueueAssetJobs(req, dbgen.Asset{
 		ID:               pgUUID(assetID),
 		LivePhotoVideoID: pgUUID(componentID),
-	}, &sealedUpload{})
+	}, &sealedUpload{}, nil)
 	if len(imagePartRecorder.transcodeIDs) != 0 {
 		t.Errorf("image-family component transcode enqueues = %v, want none (no job can run for it)",
 			imagePartRecorder.transcodeIDs)
+	}
+
+	// An ABSORBED motion gets nothing: the reused row already ran its
+	// whole pipeline, so the upload's queue is the photo's jobs alone
+	// -- no component metadata, no component transcode.
+	absorbedRow := dbgen.Asset{ID: pgUUID(componentID)}
+	absorbedRecorder := &recordingEnqueuer{}
+	s.jobs = absorbedRecorder
+	s.enqueueAssetJobs(req, dbgen.Asset{
+		ID:               pgUUID(assetID),
+		LivePhotoVideoID: pgUUID(componentID),
+	}, &sealedUpload{format: storage.UploadFormat{Video: true}}, &absorbedRow)
+	if len(absorbedRecorder.metadataIDs) != 1 || absorbedRecorder.metadataIDs[0] != assetID {
+		t.Errorf("absorbed motion metadata enqueues = %v, want the photo alone", absorbedRecorder.metadataIDs)
+	}
+	if absorbedRecorder.thumbnailID != assetID {
+		t.Errorf("absorbed motion thumbnail enqueue id = %s, want the photo %s", absorbedRecorder.thumbnailID, assetID)
+	}
+	if len(absorbedRecorder.transcodeIDs) != 0 {
+		t.Errorf("absorbed motion transcode enqueues = %v, want none (its pipeline already ran)",
+			absorbedRecorder.transcodeIDs)
 	}
 }
 
@@ -1652,5 +1673,236 @@ func TestSettleAmbiguousCommit(t *testing.T) {
 	_, _, err = sv.settleAmbiguousCommit(context.Background(), owner, strings.Repeat("0", 64), commitErr)
 	if !errors.Is(err, commitErr) {
 		t.Errorf("settle with no row error = %v, want the original commit error", err)
+	}
+}
+
+// TestUploadLivePhotoAbsorbsStandaloneVideo pins the motion reuse: a
+// Live Photo whose video bytes are already a LIVE standalone video of
+// the same owner does not store a second copy. The part is not placed,
+// no second row appears, the existing row becomes the pair's component
+// (the same hide write the extraction reuse and the identifier pairing
+// apply), the still commits with 201 created, and the response carries
+// exactly one notice naming the reused row -- the standalone video
+// stopped listing, and the user has to be told.
+func TestUploadLivePhotoAbsorbsStandaloneVideo(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x11, G: 0x44, B: 0x77, A: 0xff})
+	videoChecksum := sha256Hex(video)
+
+	standalone := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-absorb-standalone",
+		"fileName":      "clip.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip.mov", content: video}})
+	if standalone.Code != http.StatusCreated {
+		t.Fatalf("standalone video upload status = %d, want %d (body %q)",
+			standalone.Code, http.StatusCreated, standalone.Body.String())
+	}
+	standaloneRow := env.assetByChecksum(t, videoChecksum)
+	if standaloneRow.MediaKind != dbgen.MediaKindVideo || standaloneRow.IsComponent {
+		t.Fatalf("standalone row = kind %q component %v, want a live video",
+			standaloneRow.MediaKind, standaloneRow.IsComponent)
+	}
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-absorb-pair",
+		"fileName":      "IMG_ABSORB.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_ABSORB.jpg", content: still},
+		{field: "liveVideo", name: "IMG_ABSORB.mov", content: video},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("live photo upload status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	created := decodeAsset(t, rec)
+	if created.State != apigen.Created {
+		t.Errorf("state = %q, want %q (the still landed)", created.State, apigen.Created)
+	}
+	if created.Kind != apigen.AssetResponseKindImage {
+		t.Errorf("response kind = %q, want the still's image", created.Kind)
+	}
+
+	// The notice: exactly one, naming the absorbed row and its name.
+	if created.Notices == nil || len(*created.Notices) != 1 {
+		t.Fatalf("notices = %v, want exactly one", created.Notices)
+	}
+	notice := (*created.Notices)[0]
+	if notice.Code != apigen.AssetNoticeCodeLivePhotoMotionAbsorbed {
+		t.Errorf("notice code = %q, want %q", notice.Code, apigen.AssetNoticeCodeLivePhotoMotionAbsorbed)
+	}
+	if notice.AssetId != uuid.UUID(standaloneRow.ID.Bytes) {
+		t.Errorf("notice assetId = %s, want the absorbed row %s", notice.AssetId, uuid.UUID(standaloneRow.ID.Bytes))
+	}
+	if notice.Name != "clip.mov" {
+		t.Errorf("notice name = %q, want the absorbed row's filename", notice.Name)
+	}
+
+	// The still row exists and links to the absorbed motion.
+	photoRow := env.assetByChecksum(t, sha256Hex(still))
+	if !photoRow.LivePhotoVideoID.Valid || photoRow.LivePhotoVideoID != standaloneRow.ID {
+		t.Fatalf("the still links to %v, want the absorbed row", photoRow.LivePhotoVideoID)
+	}
+	env.requireUploadedFileStored(t, photoRow, still)
+
+	// The absorbed row is now the pair's component, and its bytes
+	// stayed exactly where they were: one row holds those video bytes,
+	// one physical file (the standalone upload's), no second copy.
+	absorbed := env.assetRowOf(t, uuid.UUID(standaloneRow.ID.Bytes))
+	if !absorbed.IsComponent {
+		t.Error("the absorbed row is_component = false, want true")
+	}
+	if absorbed.FilePath != standaloneRow.FilePath {
+		t.Errorf("the absorbed row's file_path moved to %q, want its own %q", absorbed.FilePath, standaloneRow.FilePath)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", videoChecksum); got != 1 {
+		t.Errorf("rows holding the video bytes = %d, want 1 (the reused row)", got)
+	}
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != 2 {
+		t.Errorf("originals files = %d, want the still plus the standalone video's one copy", got)
+	}
+
+	// No second EXIF placeholder: the absorbed row's sidecar is its own
+	// upload's (refined long ago), so only the still's row is new.
+	if got := env.queryInt(t, "SELECT count(*) FROM exif WHERE asset_id IN ($1, $2)",
+		photoRow.ID, absorbed.ID); got != 2 {
+		t.Errorf("exif rows = %d, want one per row (the still's fresh sidecar and the absorbed row's own)", got)
+	}
+}
+
+// TestUploadLivePhotoTrashedMotionConflicts pins the other half of the
+// motion decision: the same bytes held ONLY by a trashed row are not
+// reusable (an invisible motion cannot be the pair's) and must not be
+// duplicated either, so the upload answers 409
+// ASSET_COMPONENT_CONFLICT, stores nothing, and leaves the trashed row
+// exactly as it was. A duplicate or trashed answer naming the video row
+// would silently lose the still instead.
+func TestUploadLivePhotoTrashedMotionConflicts(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x22, G: 0x55, B: 0x88, A: 0xff})
+	videoChecksum := sha256Hex(video)
+
+	standalone := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-conflict-standalone",
+		"fileName":      "clip.mov",
+	}, []assetUploadFile{{field: "photo", name: "clip.mov", content: video}})
+	if standalone.Code != http.StatusCreated {
+		t.Fatalf("standalone video upload status = %d, want %d (body %q)",
+			standalone.Code, http.StatusCreated, standalone.Body.String())
+	}
+	standaloneRow := env.assetByChecksum(t, videoChecksum)
+	if rows := env.softDeleteAsset(t, uuid.UUID(standaloneRow.ID.Bytes), adminID); rows != 1 {
+		t.Fatalf("soft delete rows = %d, want the video trashed", rows)
+	}
+	trashedBefore := env.assetRowOf(t, uuid.UUID(standaloneRow.ID.Bytes))
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-conflict-pair",
+		"fileName":      "IMG_CONFLICT.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_CONFLICT.jpg", content: still},
+		{field: "liveVideo", name: "IMG_CONFLICT.mov", content: video},
+	})
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("live photo upload status = %d, want %d (body %q)", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	code, _ := decodeError(t, rec)
+	if code.Code != apigen.ASSETCOMPONENTCONFLICT {
+		t.Errorf("conflict code = %q, want %q", code.Code, apigen.ASSETCOMPONENTCONFLICT)
+	}
+
+	// Nothing was stored: no still row, no second video row, no placed
+	// original beside the standalone upload's one file.
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", sha256Hex(still)); got != 0 {
+		t.Errorf("still rows = %d, want 0 (the conflict stored nothing)", got)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets WHERE checksum = $1", videoChecksum); got != 1 {
+		t.Errorf("video rows = %d, want the trashed one alone", got)
+	}
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != 1 {
+		t.Errorf("originals files = %d, want the standalone upload's file alone", got)
+	}
+
+	// The trashed row is untouched: still trashed, still a standalone
+	// video, its bytes still its own.
+	after := env.assetRowOf(t, uuid.UUID(standaloneRow.ID.Bytes))
+	if !after.DeletedAt.Valid {
+		t.Error("the trashed row is live after the conflict, want it untouched")
+	}
+	if after.IsComponent {
+		t.Error("the trashed row became a component, want it untouched")
+	}
+	if after.FilePath != trashedBefore.FilePath || after.Checksum != trashedBefore.Checksum {
+		t.Errorf("the trashed row changed to %q/%q, want it untouched", after.FilePath, after.Checksum)
+	}
+}
+
+// TestUploadLivePhotoIgnoresExternalMotionBytes pins the blob-domain
+// narrowing of the reuse: an EXTERNAL row carrying the same checksum is
+// the family's own source file, never a motion this server may hide as
+// a component (that would put the family's file under the pair's
+// delete). The Live Photo stores its own video row instead, and no
+// notice claims anything was absorbed.
+func TestUploadLivePhotoIgnoresExternalMotionBytes(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	ownerID := env.sessionUserID(t)
+	video := movFixture()
+	still := jpegColorFixture(t, color.RGBA{R: 0x33, G: 0x66, B: 0x99, A: 0xff})
+	videoChecksum := sha256Hex(video)
+
+	env.exec(t, `INSERT INTO assets (
+			id, owner_id, storage_kind, file_path, checksum, original_filename,
+			file_size, mime_type, media_kind, width, height, taken_at,
+			taken_at_source, pending_jobs
+		) VALUES ($1, $2, 'external', $3, $4, 'clip.mov', $5, 'video/quicktime',
+			'video', 0, 0, now(), 'file', 0)`,
+		pgUUID(uuid.Must(uuid.NewV7())), pgUUID(ownerID),
+		"/mnt/source/clip.mov", videoChecksum, int64(len(video)))
+
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-external-motion",
+		"fileName":      "IMG_EXTERNAL.jpg",
+	}, []assetUploadFile{
+		{field: "photo", name: "IMG_EXTERNAL.jpg", content: still},
+		{field: "liveVideo", name: "IMG_EXTERNAL.mov", content: video},
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("live photo upload status = %d, want %d (body %q)", rec.Code, http.StatusCreated, rec.Body.String())
+	}
+	created := decodeAsset(t, rec)
+	if created.Notices != nil && len(*created.Notices) != 0 {
+		t.Errorf("notices = %v, want none (nothing was absorbed)", *created.Notices)
+	}
+
+	// The pair's own blob row landed, and the external row stayed a
+	// live standalone source (never hidden, never a component).
+	blobRow, err := env.queries.GetBlobAssetByOwnerChecksum(context.Background(), dbgen.GetBlobAssetByOwnerChecksumParams{
+		OwnerID:  pgUUID(ownerID),
+		Checksum: videoChecksum,
+	})
+	if err != nil {
+		t.Fatalf("load the pair's video row: %v", err)
+	}
+	if !blobRow.IsComponent {
+		t.Error("the pair's video row is_component = false, want true")
+	}
+	if blobRow.PendingJobs != 1 {
+		t.Errorf("the pair's video row pending_jobs = %d, want 1 (its own transcode)", blobRow.PendingJobs)
+	}
+	externalID, err := uuid.Parse(env.queryText(t,
+		"SELECT id::text FROM assets WHERE owner_id = $1 AND storage_kind = 'external'", pgUUID(ownerID)))
+	if err != nil {
+		t.Fatalf("parse the external row id: %v", err)
+	}
+	external := env.assetRowOf(t, externalID)
+	if external.IsComponent {
+		t.Error("the external source row became a component, want the family's file untouched")
+	}
+	if external.DeletedAt.Valid {
+		t.Error("the external source row is trashed, want it untouched")
+	}
+	if external.FilePath != "/mnt/source/clip.mov" {
+		t.Errorf("the external source path = %q, want it untouched", external.FilePath)
 	}
 }
