@@ -19,17 +19,20 @@
 //  1. Signing in lands on the timeline; the session is saved for the
 //     later scenes.
 //  2. Admin settings: the three cards render; the release check shows
-//     the disabled face with the running version; the tile source is
-//     empty (the shipped state) and is saved through the form.
+//     the disabled face with the running version; the light and dark
+//     tile sources are empty (the shipped state) and are saved
+//     through the form.
 //  3. The GPS fixture uploads through the asset API and its pipeline
 //     completes (the place resolution needs the metadata job).
 //  4. The places map tab: the stubbed source draws, the city pin shows
 //     its count, and the click opens the place panel in place (the
 //     place domain's own face; the pin no longer navigates).
-//  5. A source that fails: the map states the missing base layer and
+//  5. The theme switch: the light theme loads the light source, the
+//     dark theme loads the dark one, and the pin survives the swap.
+//  6. A source that fails: the map states the missing base layer and
 //     keeps the pin.
-//  6. No source at all: the same promise, worded for the configuration.
-//  7. The viewer's location card: the asset's own coordinates, the
+//  7. No source at all: the same promise, worded for the configuration.
+//  8. The viewer's location card: the asset's own coordinates, the
 //     mini map over them, and the point's marker on it.
 
 import { readFile } from 'node:fs/promises';
@@ -55,9 +58,14 @@ const PHOTO_GPS = path.join(repoRoot, 'server/internal/jobs/testdata/gps-beijing
 const PHOTO_GPS_NAME = 'IMG_E5_GPS.jpg';
 
 // The stubbed tile host. `.invalid` never resolves, so a leaked
-// request fails loudly instead of reaching a real tile service.
+// request fails loudly instead of reaching a real tile service. Two
+// distinguishable sources: the light style and its dark twin, each
+// with its own attribution and tile path -- the theme switch's proof.
 const TILE_HOST = 'https://tiles.e5-e2e.invalid';
 const TILE_SOURCE = `${TILE_HOST}/tilejson.json`;
+const TILE_DARK_SOURCE = `${TILE_HOST}/dark/tilejson.json`;
+const LIGHT_ATTRIBUTION = 'Test tiles';
+const DARK_ATTRIBUTION = 'Test dark tiles';
 // The failing source: the same host, a path the stub answers 500 for.
 const BROKEN_SOURCE = `${TILE_HOST}/broken/tilejson.json`;
 
@@ -80,10 +88,10 @@ test.beforeAll(async ({ playwright }) => {
 });
 
 /**
- * Stub the tile host: the TileJSON descriptor for the working source,
- * a 500 for the broken one, and the fixture PNG for every tile image.
- * Cross-origin headers ride the descriptor answer (the page fetches it
- * through fetch(), which enforces them).
+ * Stub the tile host: the TileJSON descriptors for the light and dark
+ * sources, a 500 for the broken one, and the fixture PNG for every
+ * tile image. Cross-origin headers ride each descriptor answer (the
+ * page fetches it through fetch(), which enforces them).
  */
 async function stubTiles(page: Page): Promise<void> {
 	await page.route(`${TILE_HOST}/**`, async (route) => {
@@ -92,7 +100,13 @@ async function stubTiles(page: Page): Promise<void> {
 			await route.fulfill({ status: 500, body: 'broken' });
 			return;
 		}
-		if (url.pathname === '/tilejson.json') {
+		const descriptor =
+			url.pathname === '/tilejson.json'
+				? { path: '/tiles', attribution: LIGHT_ATTRIBUTION }
+				: url.pathname === '/dark/tilejson.json'
+					? { path: '/dark/tiles', attribution: DARK_ATTRIBUTION }
+					: null;
+		if (descriptor !== null) {
 			await route.fulfill({
 				status: 200,
 				headers: {
@@ -101,11 +115,11 @@ async function stubTiles(page: Page): Promise<void> {
 				},
 				body: JSON.stringify({
 					tilejson: '3.0.0',
-					tiles: [`${TILE_HOST}/tiles/{z}/{x}/{y}.png`],
+					tiles: [`${TILE_HOST}${descriptor.path}/{z}/{x}/{y}.png`],
 					tileSize: 256,
 					minzoom: 0,
 					maxzoom: 14,
-					attribution: 'Test tiles'
+					attribution: descriptor.attribution
 				})
 			});
 			return;
@@ -114,9 +128,33 @@ async function stubTiles(page: Page): Promise<void> {
 	});
 }
 
-/** Save the tile source through the admin API (the settings' own write). */
-async function setTileSource(page: Page, tilejsonUrl: string): Promise<void> {
-	const response = await page.request.put('/api/v1/admin/settings/tiles', { data: { tilejsonUrl } });
+/**
+ * The pin's box once the initial camera fit has settled. The first
+ * frame draws the overlay at the pre-fit projection, so a measurement
+ * taken then would read as a camera move the theme switch never made.
+ */
+async function settledPinBox(page: Page): Promise<{ x: number; y: number }> {
+	let previous = '';
+	for (let attempt = 0; attempt < 50; attempt++) {
+		const box = await page.locator('.map__pin').boundingBox();
+		const key = box === null ? '' : `${box.x.toFixed(1)},${box.y.toFixed(1)}`;
+		if (key !== '' && key === previous) {
+			return { x: box!.x, y: box!.y };
+		}
+		previous = key;
+		await page.waitForTimeout(100);
+	}
+	throw new Error('the pin never settled');
+}
+
+/**
+ * Save the tile sources through the admin API (the settings' own
+ * write): the light style and, when given, the dark one.
+ */
+async function setTileSource(page: Page, tilejsonUrl: string, darkTilejsonUrl = ''): Promise<void> {
+	const response = await page.request.put('/api/v1/admin/settings/tiles', {
+		data: { tilejsonUrl, darkTilejsonUrl }
+	});
 	expect(response.status()).toBe(200);
 }
 
@@ -135,7 +173,9 @@ test('scene 1: the administrator signs in and lands on the timeline', async ({ p
 test.describe('the signed-in scenes', () => {
 	test.use({ storageState: adminStatePath });
 
-	test('scene 2: the admin settings render the three networking cards and save the tile source', async ({ page }) => {
+	test('scene 2: the admin settings render the three networking cards and save both tile sources', async ({
+		page
+	}) => {
 		await page.goto('/admin/settings');
 
 		// The settings page is the collapsed index (E33): each card's
@@ -158,19 +198,36 @@ test.describe('the signed-in scenes', () => {
 		// version is compared, no photo leaves the instance.
 		await expect(updateCard).toContainText('no photo');
 
-		// The tile source card: the shipped state is empty, and the
-		// privacy boundary is stated where the switch lives.
+		// The tile source card: the shipped state is empty in both
+		// fields, and the privacy boundary is stated where the switch
+		// lives.
 		const tilesCard = page.getByTestId('admin-settings-tiles');
 		await expect(tilesCard).toBeVisible();
 		const sourceField = page.locator('#admin-tiles-source');
+		const darkSourceField = page.locator('#admin-tiles-dark-source');
 		await expect(sourceField).toHaveValue('');
+		await expect(darkSourceField).toHaveValue('');
 		await expect(tilesCard).toContainText('never fetches or proxies a tile');
+		// The dark field names its fallback, and the recommended
+		// sources ride beneath the pair (copy, not a bundled default).
+		await expect(tilesCard).toContainText('Dark style (optional)');
+		await expect(tilesCard).toContainText('Leave empty to reuse the light source in dark mode.');
+		await expect(tilesCard).toContainText('Recommended sources: OpenFreeMap');
 
-		// Saving the stubbed source through the form (the admin's own
-		// path, not the API seeding the later scenes use).
+		// Saving both sources through the form (the admin's own path,
+		// not the API seeding the later scenes use).
 		await sourceField.fill(TILE_SOURCE);
+		await darkSourceField.fill(TILE_DARK_SOURCE);
 		await tilesCard.getByRole('button', { name: 'Save' }).click();
 		await expect(tilesCard).toContainText('The map picks it up on its next load');
+
+		// The persisted pair reads back into both fields.
+		const saved = await page.request.get('/api/v1/admin/settings/tiles');
+		expect(saved.status()).toBe(200);
+		expect(await saved.json()).toMatchObject({
+			tilejsonUrl: TILE_SOURCE,
+			darkTilejsonUrl: TILE_DARK_SOURCE
+		});
 
 		// The model download policy card: the automatic fill is on by
 		// default, and the copy names the one case it covers.
@@ -265,7 +322,37 @@ test.describe('the signed-in scenes', () => {
 		await expect(panel).toHaveCount(0);
 	});
 
-	test('scene 5: a source that fails states the missing base layer and keeps the pin', async ({ page }) => {
+	test('scene 5: the theme switch moves the base layer and keeps the pin', async ({ page }) => {
+		await stubTiles(page);
+		await setTileSource(page, TILE_SOURCE, TILE_DARK_SOURCE);
+		await page.goto('/places?mode=map');
+
+		// The light theme loads the light source.
+		const attribution = page.locator('.places__map-attribution');
+		await expect(attribution).toContainText(LIGHT_ATTRIBUTION);
+		await expect(page.locator('.map__pin')).toHaveCount(1);
+		await expect(page.locator('[data-map-state]')).toHaveCount(0);
+
+		// The system theme flips to dark: the base layer is swapped in
+		// place (no reload, the pin stays a DOM marker), and the
+		// untouched camera keeps the pin where it was.
+		const pinBefore = await settledPinBox(page);
+		await page.emulateMedia({ colorScheme: 'dark' });
+		await expect(attribution).toContainText(DARK_ATTRIBUTION);
+		await expect(page.locator('.map__pin')).toHaveCount(1);
+		await expect(page.locator('.map__pin-name')).toHaveText('Beijing');
+		await expect(page.locator('[data-map-state]')).toHaveCount(0);
+		const pinAfter = await settledPinBox(page);
+		expect(pinAfter.x).toBeCloseTo(pinBefore.x, 0);
+		expect(pinAfter.y).toBeCloseTo(pinBefore.y, 0);
+
+		// Back to light: the light source returns.
+		await page.emulateMedia({ colorScheme: 'light' });
+		await expect(attribution).toContainText(LIGHT_ATTRIBUTION);
+		await expect(page.locator('.map__pin')).toHaveCount(1);
+	});
+
+	test('scene 6: a source that fails states the missing base layer and keeps the pin', async ({ page }) => {
 		await stubTiles(page);
 		await setTileSource(page, BROKEN_SOURCE);
 		await page.goto('/places?mode=map');
@@ -279,7 +366,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.map__pin')).toHaveCount(1);
 	});
 
-	test('scene 6: no source configured states it and keeps the pin', async ({ page }) => {
+	test('scene 7: no source configured states it and keeps the pin', async ({ page }) => {
 		await stubTiles(page);
 		await setTileSource(page, '');
 		await page.goto('/places?mode=map');
@@ -295,7 +382,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.place-card')).toHaveCount(1);
 	});
 
-	test('scene 7: the viewer location card carries the coordinates and the mini map', async ({ page }) => {
+	test('scene 8: the viewer location card carries the coordinates and the mini map', async ({ page }) => {
 		await stubTiles(page);
 		await setTileSource(page, TILE_SOURCE);
 

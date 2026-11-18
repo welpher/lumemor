@@ -52,8 +52,8 @@ function updateCheckSettingsBody(overrides: Record<string, unknown> = {}): Recor
 	};
 }
 
-function tilesSettingsBody(tilejsonUrl = ''): Record<string, unknown> {
-	return { tilejsonUrl };
+function tilesSettingsBody(tilejsonUrl = '', darkTilejsonUrl = ''): Record<string, unknown> {
+	return { tilejsonUrl, darkTilejsonUrl };
 }
 
 function modelSettingsBody(autoDownload = true): Record<string, unknown> {
@@ -631,12 +631,18 @@ test('a check switched off renders its own quiet face, not a verdict', async () 
 	expect(document.body.querySelector('[data-testid="update-check-now"]')?.hasAttribute('disabled')).toBe(true);
 });
 
-test('the tile source and the model policy save their own bodies', async () => {
+test('the tile sources and the model policy save their own bodies', async () => {
 	const fetchMock = stubFetch(
 		defaultReads({
 			'/api/v1/admin/settings/tiles': (init?: RequestInit) =>
 				init?.method === 'PUT'
-					? jsonResponse(200, tilesSettingsBody('https://tiles.example.net/osm/tilejson.json'))
+					? jsonResponse(
+							200,
+							tilesSettingsBody(
+								'https://tiles.example.net/osm/tilejson.json',
+								'https://tiles.example.net/osm-dark/tilejson.json'
+							)
+						)
 					: jsonResponse(200, tilesSettingsBody()),
 			'/api/v1/admin/settings/models': (init?: RequestInit) =>
 				init?.method === 'PUT'
@@ -650,14 +656,21 @@ test('the tile source and the model policy save their own bodies', async () => {
 
 	// The shipped state: no source configured, the automatic policy on.
 	const tilesField = document.body.querySelector<HTMLInputElement>('#admin-tiles-source');
+	const darkField = document.body.querySelector<HTMLInputElement>('#admin-tiles-dark-source');
 	expect(tilesField?.value).toBe('');
+	expect(darkField?.value).toBe('');
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="models-auto-download"]')?.checked).toBe(true);
-	// The boundary copy rides both cards.
+	// The boundary copy rides both cards, and the map card names the
+	// dark field's fallback and the recommended sources.
 	expect(document.body.textContent).toContain('never fetches or proxies a tile');
+	expect(document.body.textContent).toContain('Leave empty to reuse the light source in dark mode.');
+	expect(document.body.textContent).toContain('Recommended sources: OpenFreeMap');
 	expect(document.body.textContent).toContain('a wiped model store');
 
 	tilesField!.value = 'https://tiles.example.net/osm/tilejson.json';
 	tilesField!.dispatchEvent(new Event('input', { bubbles: true }));
+	darkField!.value = 'https://tiles.example.net/osm-dark/tilejson.json';
+	darkField!.dispatchEvent(new Event('input', { bubbles: true }));
 	submitFormBy('admin-settings-tiles');
 	await settle();
 
@@ -666,7 +679,8 @@ test('the tile source and the model policy save their own bodies', async () => {
 			String(call[0]).endsWith('/admin/settings/tiles') && (call[1] as RequestInit | undefined)?.method === 'PUT'
 	);
 	expect(JSON.parse(String((tilesPut?.[1] as RequestInit).body))).toEqual({
-		tilejsonUrl: 'https://tiles.example.net/osm/tilejson.json'
+		tilejsonUrl: 'https://tiles.example.net/osm/tilejson.json',
+		darkTilejsonUrl: 'https://tiles.example.net/osm-dark/tilejson.json'
 	});
 	expect(document.body.textContent).toContain('The map picks it up on its next load');
 
@@ -686,6 +700,90 @@ test('the tile source and the model policy save their own bodies', async () => {
 		mirrorBaseUrl: '',
 		params: { faceDetectMinScore: 0.6, faceRecognizeThreshold: 0.55 }
 	});
+});
+
+test('the map card reads both sources, and the reset clears the drafts without saving', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/admin/settings/tiles': (init?: RequestInit) =>
+				init?.method === 'PUT'
+					? jsonResponse(200, tilesSettingsBody())
+					: jsonResponse(
+							200,
+							tilesSettingsBody(
+								'https://tiles.example.net/osm/tilejson.json',
+								'https://tiles.example.net/osm-dark/tilejson.json'
+							)
+						)
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The read's pair lands in the two fields.
+	const tilesField = document.body.querySelector<HTMLInputElement>('#admin-tiles-source');
+	const darkField = document.body.querySelector<HTMLInputElement>('#admin-tiles-dark-source');
+	expect(tilesField?.value).toBe('https://tiles.example.net/osm/tilejson.json');
+	expect(darkField?.value).toBe('https://tiles.example.net/osm-dark/tilejson.json');
+
+	// The reset is a DRAFT edit: both fields empty, and no write yet.
+	const reset = Array.from(
+		document.body.querySelectorAll<HTMLButtonElement>('[data-testid="admin-settings-tiles"] button')
+	).find((button) => button.textContent?.trim() === 'Reset to unconfigured');
+	expect(reset).toBeTruthy();
+	reset!.click();
+	await tick();
+	expect(tilesField?.value).toBe('');
+	expect(darkField?.value).toBe('');
+	const putsBefore = fetchMock.mock.calls.filter(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/tiles') && (call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(putsBefore).toHaveLength(0);
+
+	// The existing Save persists the cleared pair.
+	submitFormBy('admin-settings-tiles');
+	await settle();
+	const tilesPut = fetchMock.mock.calls.find(
+		(call) =>
+			String(call[0]).endsWith('/admin/settings/tiles') && (call[1] as RequestInit | undefined)?.method === 'PUT'
+	);
+	expect(JSON.parse(String((tilesPut?.[1] as RequestInit).body))).toEqual({
+		tilejsonUrl: '',
+		darkTilejsonUrl: ''
+	});
+	expect(document.body.textContent).toContain('The map picks it up on its next load');
+});
+
+test('a refused dark URL maps onto the shared error table', async () => {
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/settings/tiles': (init?: RequestInit) =>
+					init?.method === 'PUT'
+						? jsonResponse(400, {
+								code: 'VALIDATION_FAILED',
+								message: 'darkTilejsonUrl must be an absolute http or https URL',
+								details: { fields: ['darkTilejsonUrl'] }
+							})
+						: jsonResponse(200, tilesSettingsBody())
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	const darkField = document.body.querySelector<HTMLInputElement>('#admin-tiles-dark-source');
+	darkField!.value = 'nonsense';
+	darkField!.dispatchEvent(new Event('input', { bubbles: true }));
+	submitFormBy('admin-settings-tiles');
+	await settle();
+
+	const card = document.body.querySelector<HTMLElement>('[data-testid="admin-settings-tiles"]');
+	expect(card?.querySelector('.settings__error')?.textContent).toContain('Please check your entries and try again.');
+	expect(card?.textContent).not.toContain('The map picks it up on its next load');
 });
 
 // THE COLLAPSE AND THE IMAGE CARD (E33): the settings page is an

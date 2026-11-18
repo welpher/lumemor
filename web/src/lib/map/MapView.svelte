@@ -3,11 +3,13 @@
 	import { onMount } from 'svelte';
 	import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 	import { getMapConfig } from '$lib/api/mapConfig';
+	import { isDarkTheme } from '$lib/theme/theme.svelte';
 	import {
 		clusterPins,
 		emptyStyle,
 		placesBounds,
 		resolveTileSource,
+		tileSourceForTheme,
 		type PinMarker,
 		type PlacePoint
 	} from '$lib/map/tiles';
@@ -91,6 +93,32 @@
 	let ready = $state(false);
 	/** The container observer (the 70/30 squeeze's canvas resize). */
 	let resizeObserver: ResizeObserver | undefined;
+	/**
+	 * The configured URLs, once the read lands: the light style and
+	 * the optional dark one (null when unconfigured). The theme
+	 * effect reads this to pick a source on a live switch.
+	 */
+	let sources = $state<{ light: string | null; dark: string | null } | null>(null);
+	/**
+	 * The URL whose base layer the component last asked for (null =
+	 * the empty style). Set when a switch STARTS, so the theme effect
+	 * compares against the intent rather than the last finished load:
+	 * a flip back while a document is in flight cancels it through the
+	 * generation counter instead of letting it land after the fact.
+	 */
+	let requestedUrl: string | null = null;
+	/**
+	 * The in-flight source switch's generation: a theme flipped twice
+	 * while a document loads keeps only the latest answer.
+	 */
+	let sourceGeneration = 0;
+	/**
+	 * True while the applied base layer is the stated absence because
+	 * the configured document could not be resolved. The idle handler
+	 * must not read an empty style as "tiles loaded": that would clear
+	 * the honest notice a moment after it appears.
+	 */
+	let sourceUnresolved = false;
 
 	/**
 	 * Recompute the overlay from the map's current camera: project
@@ -181,6 +209,42 @@
 	// panned).
 	let framedKey = '';
 
+	/**
+	 * Swap the base layer in place: resolve the URL (null = the empty
+	 * style, the stated absence) and set it on the live map. The
+	 * camera is not part of the style -- the library keeps the center,
+	 * zoom and bearing across a setStyle -- and the pins are DOM
+	 * markers outside the style, so a switch moves neither.
+	 */
+	async function applySource(url: string | null): Promise<void> {
+		const generation = ++sourceGeneration;
+		requestedUrl = url;
+		if (url === null) {
+			sourceUnresolved = false;
+			attribution = '';
+			map?.setStyle(emptyStyle());
+			tiles = 'unconfigured';
+			return;
+		}
+		const source = await resolveTileSource(url);
+		if (generation !== sourceGeneration) {
+			return;
+		}
+		sourceUnresolved = !source.ok;
+		if (map === null) {
+			return;
+		}
+		if (source.ok) {
+			map.setStyle(source.source.style);
+			attribution = source.source.attribution;
+			tiles = 'ready';
+			return;
+		}
+		map.setStyle(emptyStyle());
+		attribution = '';
+		tiles = 'unavailable';
+	}
+
 	// The instance: the config read, the source resolution, the lazy
 	// library load, then the pins. One mount, one instance: the maps
 	// are page-level surfaces, not widgets that come and go.
@@ -194,19 +258,29 @@
 			let style: StyleSpecification = emptyStyle();
 			if (!config.ok) {
 				tiles = 'unavailable';
-			} else if (config.tilejsonUrl === null) {
-				tiles = 'unconfigured';
 			} else {
-				const source = await resolveTileSource(config.tilejsonUrl);
-				if (disposed) {
-					return;
-				}
-				if (source.ok) {
-					style = source.source.style;
-					attribution = source.source.attribution;
-					tiles = 'ready';
+				sources = { light: config.tilejsonUrl, dark: config.darkTilejsonUrl };
+				const wanted = tileSourceForTheme(config.tilejsonUrl, config.darkTilejsonUrl, isDarkTheme());
+				if (wanted === null) {
+					tiles = 'unconfigured';
 				} else {
-					tiles = 'unavailable';
+					const source = await resolveTileSource(wanted);
+					if (disposed) {
+						return;
+					}
+					// The requested URL is recorded even when the document
+					// fails: the degradation is the answer for THIS source,
+					// and the theme effect must not retry it on every run.
+					requestedUrl = wanted;
+					if (source.ok) {
+						style = source.source.style;
+						sourceUnresolved = false;
+						attribution = source.source.attribution;
+						tiles = 'ready';
+					} else {
+						sourceUnresolved = true;
+						tiles = 'unavailable';
+					}
 				}
 			}
 			if (container === undefined) {
@@ -236,14 +310,16 @@
 			// A tile or style fetch that fails is the honest state: the
 			// notice appears, the pins stay. A later successful load
 			// clears it again (a flaky link should not leave a stale
-			// claim).
+			// claim) -- unless the DOCUMENT itself never resolved, in
+			// which case the empty style has nothing to load and the
+			// notice is the answer.
 			instance.on('error', () => {
 				if (tiles === 'ready') {
 					tiles = 'unavailable';
 				}
 			});
 			instance.on('idle', () => {
-				if (tiles === 'unavailable' && instance.areTilesLoaded()) {
+				if (tiles === 'unavailable' && !sourceUnresolved && instance.areTilesLoaded()) {
 					tiles = 'ready';
 				}
 			});
@@ -309,6 +385,24 @@
 		}
 	});
 
+	// The theme switch: a light/dark flip re-picks the source and
+	// swaps the base layer in place. No page reload: the pins are DOM
+	// markers and the camera is not part of the style, so both
+	// survive the swap. A switch that resolves to the source already
+	// loaded (a light-only configuration, or a theme with no dark
+	// style of its own) does nothing.
+	$effect(() => {
+		const dark = isDarkTheme();
+		if (!ready || sources === null) {
+			return;
+		}
+		const url = tileSourceForTheme(sources.light, sources.dark, dark);
+		if (url === requestedUrl) {
+			return;
+		}
+		void applySource(url);
+	});
+
 	// The view framing: a selection move re-frames the camera around
 	// that marker's places; clearing it returns to every pin. The key
 	// comparison keeps a pan or a convergence from re-framing under
@@ -367,6 +461,11 @@
 	is gone, the pins stay, and the notice says which part is missing.
 	The empty base style is a real style with no layers, so the library
 	never has to invent anything.
+
+	THE THEME PAIR: the administrator may configure a dark style beside
+	the light one. A live theme switch re-picks the source and swaps the
+	base layer through setStyle -- no reload, and the pins (DOM markers
+	outside the style) and the camera survive it.
 
 	The library is loaded lazily: the wall pages never pay for it, and
 	the two map surfaces (the places tab and the viewer's location card)

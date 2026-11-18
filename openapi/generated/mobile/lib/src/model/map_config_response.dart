@@ -8,15 +8,20 @@ import 'package:built_value/serializer.dart';
 
 part 'map_config_response.g.dart';
 
-/// The map's client-side configuration of `GET /map/config`: the tile source the browser loads, or null when the instance has none. 
+/// The map's client-side configuration of `GET /map/config`: the light and dark tile sources the browser loads, each null when the instance has none. 
 ///
 /// Properties:
-/// * [tilejsonUrl] - The tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The pin data never crosses the tile line: it comes from `GET /places`. 
+/// * [tilejsonUrl] - The light tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The dark theme falls back to this source when `darkTilejsonUrl` is null. The pin data never crosses the tile line: it comes from `GET /places`. 
+/// * [darkTilejsonUrl] - The dark tile source URL, loaded by the dark theme instead of `tilejsonUrl`; null (or, equivalently, the instance not configuring one) means the dark theme reuses the light source. The light theme never loads it. 
 @BuiltValue()
 abstract class MapConfigResponse implements Built<MapConfigResponse, MapConfigResponseBuilder> {
-  /// The tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The pin data never crosses the tile line: it comes from `GET /places`. 
+  /// The light tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The dark theme falls back to this source when `darkTilejsonUrl` is null. The pin data never crosses the tile line: it comes from `GET /places`. 
   @BuiltValueField(wireName: r'tilejsonUrl')
   String? get tilejsonUrl;
+
+  /// The dark tile source URL, loaded by the dark theme instead of `tilejsonUrl`; null (or, equivalently, the instance not configuring one) means the dark theme reuses the light source. The light theme never loads it. 
+  @BuiltValueField(wireName: r'darkTilejsonUrl')
+  String? get darkTilejsonUrl;
 
   MapConfigResponse._();
 
@@ -44,6 +49,11 @@ class _$MapConfigResponseSerializer implements PrimitiveSerializer<MapConfigResp
     yield r'tilejsonUrl';
     yield object.tilejsonUrl == null ? null : serializers.serialize(
       object.tilejsonUrl,
+      specifiedType: const FullType.nullable(String),
+    );
+    yield r'darkTilejsonUrl';
+    yield object.darkTilejsonUrl == null ? null : serializers.serialize(
+      object.darkTilejsonUrl,
       specifiedType: const FullType.nullable(String),
     );
   }
@@ -76,6 +86,14 @@ class _$MapConfigResponseSerializer implements PrimitiveSerializer<MapConfigResp
           ) as String?;
           if (valueDes == null) continue;
           result.tilejsonUrl = valueDes;
+          break;
+        case r'darkTilejsonUrl':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.darkTilejsonUrl = valueDes;
           break;
         default:
           unhandled.add(key);
