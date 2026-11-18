@@ -243,6 +243,14 @@ test.describe('the signed-in scenes', () => {
 		await expect(pin).toHaveAttribute('aria-label', /1 photo/);
 		await expect(pin.locator('.map__pin-name')).toHaveText('Beijing');
 
+		// The point is the NUMBER alone (no icon: a map point already
+		// says "photos here"), and its size reads the count -- one
+		// photo is the ladder's smallest rung, 26px. Both are the
+		// design's pins, not decoration.
+		await expect(pin.locator('svg')).toHaveCount(0);
+		const pillBox = await pin.locator('.map__pin-pill').boundingBox();
+		expect(Math.round(pillBox?.height ?? 0)).toBe(26);
+
 		// The pin click opens the place panel IN PLACE: the page never
 		// navigates, and the panel's wall carries the city's photo.
 		await pin.click();
