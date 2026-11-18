@@ -1045,6 +1045,17 @@ paths:
           the trash; that asset is returned (with `isTrashed: true`)
           so the client can offer the user restore or save-as-new.
 
+        A Live Photo's motion bytes are content, not a second copy:
+        when the `liveVideo` part's checksum already names a LIVE video
+        of the same owner, the server reuses that row as the pair's
+        motion instead of storing the bytes again. The upload still
+        answers 201 `created` for the photo, and the answer's
+        `notices` says what happened so the client can tell the user
+        (the client MUST surface them). Motion bytes that exist only
+        in the trash are never reused and never duplicated: the upload
+        answers 409 `ASSET_COMPONENT_CONFLICT`, so the user can decide
+        about that trashed video first.
+
         Each file is capped at the instance's per-file upload limit
         (2 GiB by default); a file over the limit aborts mid-stream
         with 413 `ASSET_TOO_LARGE`. This endpoint takes multipart
@@ -1140,6 +1151,27 @@ paths:
                     createdAt: '2026-10-29T09:12:00Z'
                     takenAt: '2026-10-13T12:30:00Z'
                     isTrashed: false
+                motionAbsorbed:
+                  summary: |
+                    A Live Photo whose motion bytes already existed as
+                    a live standalone video: the pair reused that row,
+                    and the notice tells the user where it went.
+                  value:
+                    id: 0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71
+                    ownerId: 0192f2a1-3b4c-7d8e-9f0a-1b2c3d4e5f60
+                    kind: image
+                    originalFilename: IMG_1235.jpg
+                    fileSize: 4821933
+                    mimeType: image/jpeg
+                    checksum: 1b4f0e2b7c3d4a5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6
+                    state: created
+                    createdAt: '2026-10-29T09:14:00Z'
+                    takenAt: '2026-10-13T12:31:00Z'
+                    isTrashed: false
+                    notices:
+                      - code: LIVE_PHOTO_MOTION_ABSORBED
+                        assetId: 0192f4b2-6c7d-7e8f-9a0b-1c2d3e4f5a60
+                        name: IMG_1235.mov
         '200':
           description: |
             The upload hit the owner-scoped checksum idempotency:
@@ -1221,6 +1253,23 @@ paths:
                   value:
                     code: AUTH_INVALID_CREDENTIALS
                     message: authentication required
+        '409':
+          description: |
+            A Live Photo's motion bytes sit in the caller's trash: the
+            same video was trashed earlier, and the upload will neither
+            reuse an invisible asset nor silently store a duplicate of
+            its bytes. Nothing was stored; the client asks the user to
+            restore or remove the trashed video and upload the Live
+            Photo again. No other upload outcome answers 409.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                componentConflict:
+                  value:
+                    code: ASSET_COMPONENT_CONFLICT
+                    message: the live photo motion bytes are in the trash
         '413':
           description: |
             One of the uploaded files exceeds the instance's per-file
@@ -14997,6 +15046,40 @@ components:
           type: string
           format: date-time
           description: Creation time (RFC 3339 UTC).
+    AssetNotice:
+      type: object
+      description: |
+        One thing the client MUST tell the user about a successful
+        upload: the server made a decision the user cannot see in the
+        response's asset fields. Notices are informational, never
+        failures -- the upload itself succeeded.
+      required:
+        - code
+        - assetId
+        - name
+      properties:
+        code:
+          type: string
+          description: |
+            What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
+            Photo's motion bytes already existed as a live standalone
+            video of this owner; that row became the pair's motion
+            (`assetId` names it) and no longer lists as its own asset.
+          enum:
+            - LIVE_PHOTO_MOTION_ABSORBED
+          x-enum-varnames:
+            - AssetNoticeCodeLivePhotoMotionAbsorbed
+        assetId:
+          type: string
+          format: uuid
+          description: |
+            The asset the notice is about: the reused row that became
+            the Live Photo's motion.
+        name:
+          type: string
+          description: |
+            The affected asset's original filename, so the message can
+            name what moved.
     AssetResponse:
       type: object
       description: |
@@ -15008,6 +15091,13 @@ components:
         save-as-new). The idempotency lookup mirrors the same states:
         it reports what a re-upload of the content would yield, so
         `created` never appears there.
+
+        `notices` is absent or empty unless something needs telling:
+        the one current case is a Live Photo whose motion bytes were
+        reused as an existing standalone video's row. A client that
+        ignores it leaves the user with a video that silently stopped
+        listing on its own, so the obligation to surface each notice is
+        part of the contract, not a presentation choice.
       required:
         - id
         - ownerId
@@ -15086,6 +15176,17 @@ components:
             True when the asset sits in the trash; `state: trashed`
             responses carry it as true so clients can offer the
             restore or save-as-new decision.
+        notices:
+          type: array
+          description: |
+            What the client must tell the user about this upload.
+            Absent or empty when there is nothing to say; the array is
+            informational, never a failure list. Present on a 201
+            `created` answer today (a Live Photo motion absorbed into
+            an existing video); the client surfaces each entry to the
+            user without blocking the upload.
+          items:
+            $ref: '#/components/schemas/AssetNotice'
     AssetDetail:
       type: object
       description: |
@@ -18629,6 +18730,7 @@ components:
             - TAG_NAME_TAKEN
             - ASSET_TRASH_MOVE_FAILED
             - ASSET_RESTORE_MOVE_FAILED
+            - ASSET_COMPONENT_CONFLICT
             - REBUILD_NOT_RUNNING
             - JOB_NOT_CANCELLABLE
             - JOB_RUN_NOT_FOUND

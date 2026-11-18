@@ -260,6 +260,21 @@ func (e AssetDetailTakenAtSource) Valid() bool {
 	}
 }
 
+// Defines values for AssetNoticeCode.
+const (
+	AssetNoticeCodeLivePhotoMotionAbsorbed AssetNoticeCode = "LIVE_PHOTO_MOTION_ABSORBED"
+)
+
+// Valid indicates whether the value is a known member of the AssetNoticeCode enum.
+func (e AssetNoticeCode) Valid() bool {
+	switch e {
+	case AssetNoticeCodeLivePhotoMotionAbsorbed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AssetResponseKind.
 const (
 	AssetResponseKindImage AssetResponseKind = "image"
@@ -411,6 +426,7 @@ const (
 	ALBUMPATHNOTDIRECTORY  ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
 	ALBUMPATHNOTFOUND      ErrorCode = "ALBUM_PATH_NOT_FOUND"
 	ALBUMPATHNOTREADABLE   ErrorCode = "ALBUM_PATH_NOT_READABLE"
+	ASSETCOMPONENTCONFLICT ErrorCode = "ASSET_COMPONENT_CONFLICT"
 	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
 	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
 	ASSETRESTOREMOVEFAILED ErrorCode = "ASSET_RESTORE_MOVE_FAILED"
@@ -455,6 +471,8 @@ func (e ErrorCode) Valid() bool {
 	case ALBUMPATHNOTFOUND:
 		return true
 	case ALBUMPATHNOTREADABLE:
+		return true
+	case ASSETCOMPONENTCONFLICT:
 		return true
 	case ASSETNOTFOUND:
 		return true
@@ -2499,6 +2517,32 @@ type AssetFaceSummary struct {
 	Thumbnail string `json:"thumbnail"`
 }
 
+// AssetNotice One thing the client MUST tell the user about a successful
+// upload: the server made a decision the user cannot see in the
+// response's asset fields. Notices are informational, never
+// failures -- the upload itself succeeded.
+type AssetNotice struct {
+	// AssetId The asset the notice is about: the reused row that became
+	// the Live Photo's motion.
+	AssetId openapi_types.UUID `json:"assetId"`
+
+	// Code What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
+	// Photo's motion bytes already existed as a live standalone
+	// video of this owner; that row became the pair's motion
+	// (`assetId` names it) and no longer lists as its own asset.
+	Code AssetNoticeCode `json:"code"`
+
+	// Name The affected asset's original filename, so the message can
+	// name what moved.
+	Name string `json:"name"`
+}
+
+// AssetNoticeCode What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
+// Photo's motion bytes already existed as a live standalone
+// video of this owner; that row became the pair's motion
+// (`assetId` names it) and no longer lists as its own asset.
+type AssetNoticeCode string
+
 // AssetPatch The partial edit of one asset: every field is optional, at
 // least one must be present (a body that carries none -- null
 // values count as absent -- is a client bug and answers 400),
@@ -2589,6 +2633,13 @@ type AssetPlaceRef struct {
 // save-as-new). The idempotency lookup mirrors the same states:
 // it reports what a re-upload of the content would yield, so
 // `created` never appears there.
+//
+// `notices` is absent or empty unless something needs telling:
+// the one current case is a Live Photo whose motion bytes were
+// reused as an existing standalone video's row. A client that
+// ignores it leaves the user with a video that silently stopped
+// listing on its own, so the obligation to surface each notice is
+// part of the contract, not a presentation choice.
 type AssetResponse struct {
 	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
 	// owner-scoped idempotency key of the upload.
@@ -2616,6 +2667,14 @@ type AssetResponse struct {
 	// MimeType Canonical content type of the stored format, for example
 	// `image/jpeg` or `video/quicktime`.
 	MimeType string `json:"mimeType"`
+
+	// Notices What the client must tell the user about this upload.
+	// Absent or empty when there is nothing to say; the array is
+	// informational, never a failure list. Present on a 201
+	// `created` answer today (a Live Photo motion absorbed into
+	// an existing video); the client surfaces each entry to the
+	// user without blocking the upload.
+	Notices *[]AssetNotice `json:"notices,omitempty"`
 
 	// OriginalFilename The file name the asset was uploaded with: the client-side
 	// `fileName` of the photo (the component video keeps its own

@@ -35,6 +35,7 @@ doc/AssetAlbumRef.md
 doc/AssetCoordinates.md
 doc/AssetDetail.md
 doc/AssetFaceSummary.md
+doc/AssetNotice.md
 doc/AssetPatch.md
 doc/AssetPlaceRef.md
 doc/AssetResponse.md
@@ -224,6 +225,7 @@ lib/src/model/asset_album_ref.dart
 lib/src/model/asset_coordinates.dart
 lib/src/model/asset_detail.dart
 lib/src/model/asset_face_summary.dart
+lib/src/model/asset_notice.dart
 lib/src/model/asset_patch.dart
 lib/src/model/asset_place_ref.dart
 lib/src/model/asset_response.dart
@@ -389,6 +391,7 @@ test/asset_album_ref_test.dart
 test/asset_coordinates_test.dart
 test/asset_detail_test.dart
 test/asset_face_summary_test.dart
+test/asset_notice_test.dart
 test/asset_patch_test.dart
 test/asset_place_ref_test.dart
 test/asset_response_test.dart
