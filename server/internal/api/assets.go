@@ -125,6 +125,13 @@ type sealedUpload struct {
 // reaches its terminal state without staging anything; a request
 // rejected only after a file part legitimately sealed discards its
 // staged files and leaves no residue at all.
+//
+// A Live Photo's motion bytes are decided before they are placed: the
+// same bytes held by a live blob row are ABSORBED (that row becomes
+// the pair's motion, nothing is stored twice, and the response's
+// notices say so), while bytes held only by a trashed row answer 409
+// ASSET_COMPONENT_CONFLICT. Neither outcome is a duplicate -- a
+// duplicate answer would name the video row and lose the still.
 func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -251,7 +258,7 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 	// -- answers through the same three-state lookup the insert's
 	// conflict path uses, with the sealed files discarded and nothing
 	// placed, so a true duplicate never reaches the collision loop.
-	row, state, found, err := s.lookupExistingUpload(r, requester.userID, form, photo, liveVideo)
+	row, state, found, err := s.lookupExistingUpload(r, requester.userID, form, photo)
 	if err != nil {
 		discardUpload(photo, liveVideo)
 		s.internalError(w, r, "lookup existing upload", err)
@@ -266,8 +273,17 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	asset, state, err := s.insertUpload(r, requester.userID, form, photo, liveVideo)
+	asset, state, absorbedMotion, err := s.insertUpload(r, requester.userID, form, photo, liveVideo)
 	if err != nil {
+		if errors.Is(err, errAssetComponentConflict) {
+			// The Live Photo's motion bytes sit in the trash: nothing
+			// was stored (the transaction rolled back and the placed
+			// files went), and the answer asks for a decision instead
+			// of a silent reuse or a silent duplicate.
+			s.writeError(w, http.StatusConflict, apigen.ASSETCOMPONENTCONFLICT,
+				"the live photo motion bytes are in the trash", nil)
+			return
+		}
 		s.internalError(w, r, "insert upload", err)
 		return
 	}
@@ -279,8 +295,19 @@ func (s *server) UploadAsset(w http.ResponseWriter, r *http.Request) {
 		// not-ready, so a failure here is logged, not failed -- the
 		// upload itself succeeded, and failing the response would not
 		// undo the commit.
-		s.enqueueAssetJobs(r, asset, liveVideo)
+		s.enqueueAssetJobs(r, asset, liveVideo, absorbedMotion)
 		s.publishAssetUploaded(asset)
+		if absorbedMotion != nil {
+			// The reuse is invisible in the asset fields -- a
+			// standalone video just stopped listing -- so the response
+			// carries the notice the client must surface.
+			s.logger.Info("upload absorbed an existing video as the live photo motion",
+				"owner_id", requester.userID, "asset_id", uuid.UUID(asset.ID.Bytes),
+				"motion_id", uuid.UUID(absorbedMotion.ID.Bytes))
+			s.writeJSON(w, http.StatusCreated, assetResponseWithNotices(asset, state,
+				[]apigen.AssetNotice{motionAbsorbedNotice(*absorbedMotion)}))
+			return
+		}
 		s.writeJSON(w, http.StatusCreated, assetResponseFrom(asset, state))
 		return
 	}
@@ -378,11 +405,10 @@ func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *m
 }
 
 // lookupExistingUpload answers the upload idempotency BEFORE any
-// placement: the owner+checksum lookups of both parts over the FULL
-// content domain (live and trashed rows of every storage kind, in the
-// photo-then-video order the conflict resolution walks), then the
-// device identity. A hit means the upload is a duplicate or a trashed
-// re-upload -- the caller discards the sealed files and answers
+// placement: the owner+checksum lookup of the PHOTO over the FULL
+// content domain (live and trashed rows of every storage kind), then
+// the device identity. A hit means the upload is a duplicate or a
+// trashed re-upload -- the caller discards the sealed files and answers
 // through the same three-state mapping the insert's conflict path
 // produces, so the early answer and the race answer agree -- with one
 // exception the position model added: a directory source's ORPHAN
@@ -393,8 +419,18 @@ func (s *server) receiveFilePart(w http.ResponseWriter, r *http.Request, part *m
 // identity is the remaining collision the pre-check can see: a fresh
 // content under a known deviceAssetId resolves to the existing row
 // exactly as the insert's unique violation would.
-func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, bool, error) {
-	created, found, err := s.resolveContentLookups(r, owner, photo, video)
+//
+// The PAIRING VIDEO is deliberately not a lookup here. Its bytes are
+// either absent (the ordinary upload) or ALREADY the motion of a live
+// row, which is a reuse decision insertUpload takes by itself; a
+// checksum hit on the video therefore never means "this upload is a
+// duplicate" -- it would report the video's row as the answer to a
+// photo upload and strand the still. The pre-check walks the photo
+// alone, and the video's two real outcomes (absorb a live row, or the
+// 409 of trashed motion bytes) are decided against the blob domain in
+// insertUpload.
+func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, bool, error) {
+	created, found, err := s.resolveContentLookups(r, owner, photo)
 	if err != nil || found {
 		return created, uploadStateOf(created), found, err
 	}
@@ -412,56 +448,60 @@ func (s *server) lookupExistingUpload(r *http.Request, owner uuid.UUID, form upl
 	return dbgen.Asset{}, "", false, nil
 }
 
-// resolveContentLookups walks the content lookups of both parts and
-// answers the first row that still claims the content. A live row (of
-// whichever storage kind) and a trashed row whose bytes the server
-// holds (a blob in place, a source file moved into the trash area)
-// both claim it: the caller answers duplicate or trashed through the
-// same three-state mapping the race path uses. An orphan-marked
-// source row does not claim it: the file it referenced is gone from
-// its folder, the row is dead, and nothing can restore it -- so the
-// upload removes the dead row here and answers "no existing content",
-// letting the placement and the fresh insert run. The removal is
-// guarded in the statement itself (only an orphan mark of this owner
-// matches), so a concurrent upload that already replaced it leaves
-// this one to the insert's own conflict resolution.
-func (s *server) resolveContentLookups(r *http.Request, owner uuid.UUID, photo, video *sealedUpload) (dbgen.Asset, bool, error) {
-	lookups := []dbgen.GetAssetByOwnerChecksumParams{{
+// resolveContentLookups walks the PHOTO's content lookup and answers
+// the row that still claims the content. A live row (of whichever
+// storage kind) and a trashed row whose bytes the server holds (a blob
+// in place, a source file moved into the trash area) both claim it: the
+// caller answers duplicate or trashed through the same three-state
+// mapping the race path uses. An orphan-marked source row does not
+// claim it: the file it referenced is gone from its folder, the row is
+// dead, and nothing can restore it -- so the upload removes the dead
+// row here and answers "no existing content", letting the placement and
+// the fresh insert run. The removal is guarded in the statement itself
+// (only an orphan mark of this owner matches), so a concurrent upload
+// that already replaced it leaves this one to the insert's own conflict
+// resolution.
+//
+// THE PAIRING VIDEO'S CHECKSUM IS NOT WALKED. A video-checksum hit is
+// always a row of somebody else's upload -- if the same Live Photo had
+// been uploaded before, the PHOTO's checksum would have hit first --
+// so treating the hit as the upload's content would answer the video
+// row as this upload's result and never store the still. The motion
+// bytes have their own semantics instead: a live blob row is REUSED as
+// the pair's motion (absorbed, with a notice), and a trashed one is a
+// 409 conflict. insertUpload owns both decisions.
+func (s *server) resolveContentLookups(r *http.Request, owner uuid.UUID, photo *sealedUpload) (dbgen.Asset, bool, error) {
+	lookup := dbgen.GetAssetByOwnerChecksumParams{
 		OwnerID:  pgUUID(owner),
 		Checksum: photo.checksum,
-	}}
-	if video != nil {
-		lookups = append(lookups, dbgen.GetAssetByOwnerChecksumParams{
-			OwnerID:  pgUUID(owner),
-			Checksum: video.checksum,
-		})
 	}
-	for _, lookup := range lookups {
-		row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
-		if errors.Is(err, pgx.ErrNoRows) {
-			continue
-		}
+	row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return dbgen.Asset{}, false, nil
+	}
+	if err != nil {
+		return dbgen.Asset{}, false, err
+	}
+	if row.DeletedAt.Valid && row.StorageKind == dbgen.StorageKindExternal && !row.TrashPath.Valid {
+		// The purge path's own transaction: the row's faces re-home or
+		// dissolve before the cascade takes them, and its derivatives
+		// go with the id. trashedOnly is true: the row is an ORPHAN
+		// MARK -- a trashed row -- and the delete proves it still is
+		// (a state that cannot be restored through the endpoints, so
+		// the guard is defense in depth, and a zero-row answer simply
+		// leaves the insert to the conflict resolution).
+		removed, err := s.purgeAssetRow(r, row, true)
 		if err != nil {
 			return dbgen.Asset{}, false, err
 		}
-		if row.DeletedAt.Valid && row.StorageKind == dbgen.StorageKindExternal && !row.TrashPath.Valid {
-			// The purge path's own transaction: the row's faces
-			// re-home or dissolve before the cascade takes them, and
-			// its derivatives go with the id.
-			removed, err := s.purgeAssetRow(r, row)
-			if err != nil {
-				return dbgen.Asset{}, false, err
-			}
-			if removed {
-				s.logger.Info("upload replaced a vanished source row",
-					"owner_id", owner, "checksum", lookup.Checksum,
-					"asset_id", uuid.UUID(row.ID.Bytes))
-			}
-			continue
+		if removed {
+			s.logger.Info("upload replaced a vanished source row",
+				"owner_id", owner, "checksum", lookup.Checksum,
+				"asset_id", uuid.UUID(row.ID.Bytes))
 		}
-		return row, true, nil
+		return dbgen.Asset{}, false, nil
 	}
-	return dbgen.Asset{}, false, nil
+	return row, true, nil
 }
 
 // discardUpload cleans the sealed files of a request that will never
@@ -604,7 +644,33 @@ func wallInZone(wall time.Time, zone *time.Location) time.Time {
 // files the loser never got to reference are discarded, and the
 // conflict resolves through the lookup into the duplicate or trashed
 // state, carried as a normal outcome.
-func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, error) {
+//
+// A COMMIT error is the one outcome that does NOT discard: the commit
+// may have landed while its acknowledgement was lost, so the placed
+// files stay (see settleAmbiguousCommit; the boot orphan sweep
+// reclaims a true leak). Every earlier failure -- validation, an
+// insert, the album wiring -- is a certain rollback, and those paths
+// discard as before.
+//
+// THE MOTION BYTES ARE DECIDED BEFORE THEY ARE PLACED. A Live Photo's
+// video part is content the library may already hold: when a LIVE blob
+// row of the same owner carries the same checksum, that row IS the
+// motion (the reuse semantics the motion extraction and the identifier
+// pairing already established), so the part is never placed, no second
+// row is inserted, the existing row is marked as a component inside the
+// transaction, and the response carries a notice -- a standalone video
+// that silently stops listing would be a lost asset to its owner. A
+// trashed row with those bytes is not reusable (an invisible motion
+// cannot be the pair's) and must not be duplicated either: the insert
+// then collides with the blob unique index and the caller answers 409
+// ASSET_COMPONENT_CONFLICT. An EXTERNAL row never participates -- the
+// lookup is the blob domain's, because marking a family's own source
+// file as a derived component would put it under the pair's delete.
+//
+// The return value's third element is the ABSORBED row (nil when the
+// motion was this upload's own): the caller skips that row's pipeline
+// jobs -- it already ran them -- and builds the response notice.
+func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, *dbgen.Asset, error) {
 	ctx := r.Context()
 
 	// The template the paths render from: the instance setting,
@@ -619,16 +685,32 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	photoID, err := uuid.NewV7()
 	if err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 	var videoID pgtype.UUID
+	var absorbedMotion *dbgen.Asset
 	if video != nil {
-		id, err := uuid.NewV7()
+		absorbed, err := s.absorbableMotion(ctx, owner, video.checksum)
 		if err != nil {
 			discardUpload(photo, video)
-			return dbgen.Asset{}, "", err
+			return dbgen.Asset{}, "", nil, err
 		}
-		videoID = pgUUID(id)
+		if absorbed != nil {
+			// The motion already exists as a live standalone video:
+			// this upload reuses it, so the part is never placed and
+			// its sealed file goes now -- before any row work, so no
+			// failure path can forget it.
+			absorbedMotion = absorbed
+			videoID = absorbed.ID
+			video.receiver.Discard()
+		} else {
+			id, err := uuid.NewV7()
+			if err != nil {
+				discardUpload(photo, video)
+				return dbgen.Asset{}, "", nil, err
+			}
+			videoID = pgUUID(id)
+		}
 	}
 
 	// The still's capture context drives BOTH parts' renders: the
@@ -656,9 +738,9 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	}
 	if photo.relPath, err = placeSealedPart(photo.receiver, template, owner, photoVars); err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", fmt.Errorf("place photo: %w", err)
+		return dbgen.Asset{}, "", nil, fmt.Errorf("place photo: %w", err)
 	}
-	if video != nil {
+	if video != nil && absorbedMotion == nil {
 		videoVars := storage.RenderVars{
 			Filename: video.partName,
 			Ext:      video.ext,
@@ -668,7 +750,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		}
 		if video.relPath, err = placeSealedPart(video.receiver, template, owner, videoVars); err != nil {
 			discardUpload(photo, video)
-			return dbgen.Asset{}, "", fmt.Errorf("place live photo video: %w", err)
+			return dbgen.Asset{}, "", nil, fmt.Errorf("place live photo video: %w", err)
 		}
 	}
 
@@ -683,7 +765,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 	// The rollback is a no-op after a successful commit; the context
 	// is captured while the request is still live.
@@ -691,27 +773,40 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	queries := dbgen.New(tx)
 
 	// The Live Photo video is a component row: no device identity of
-	// its own, never in the timeline, linked from the photo row.
+	// its own, never in the timeline, linked from the photo row. An
+	// ABSORBED motion skips the insert (its row exists) and the EXIF
+	// placeholder (its sidecar was refined long ago): only the hide
+	// write runs, the same mark the extraction reuse applies. Its
+	// pipeline must not be re-enqueued, so the caller only starts the
+	// photo's jobs.
 	if video != nil {
-		videoRow, err := queries.CreateAsset(ctx, assetInsertParams(uuid.UUID(videoID.Bytes), owner, form, *video, rowTakenAt, pgtype.UUID{}, true))
-		if err != nil {
-			// Release the transaction's connection before the lookup
-			// resolves the conflict through the pool; the deferred
-			// rollback afterwards is a no-op.
-			_ = tx.Rollback(ctx)
-			// The rows never commit: the files this request placed are
-			// orphans nothing else can reference (the placement's link
-			// proved each path did not exist before), so they go.
-			discardUpload(photo, video)
-			return s.resolveUploadConflict(r, owner, form, photo, video, err)
-		}
-		videoID = videoRow.ID
-		if err := queries.CreateExifPlaceholder(ctx, dbgen.CreateExifPlaceholderParams{
-			AssetID: videoRow.ID,
-			Exif:    uploadExifPlaceholder(form),
-		}); err != nil {
-			discardUpload(photo, video)
-			return dbgen.Asset{}, "", err
+		if absorbedMotion != nil {
+			if err := queries.MarkAssetAsComponent(ctx, absorbedMotion.ID); err != nil {
+				discardUpload(photo, video)
+				return dbgen.Asset{}, "", nil, fmt.Errorf("mark the reused motion as a component: %w", err)
+			}
+		} else {
+			videoRow, err := queries.CreateAsset(ctx, assetInsertParams(uuid.UUID(videoID.Bytes), owner, form, *video, rowTakenAt, pgtype.UUID{}, true))
+			if err != nil {
+				// Release the transaction's connection before the
+				// error path answers; the deferred rollback afterwards
+				// is a no-op.
+				_ = tx.Rollback(ctx)
+				// The rows never commit: the files this request placed
+				// are orphans nothing else can reference (the
+				// placement's link proved each path did not exist
+				// before), so they go.
+				discardUpload(photo, video)
+				return s.resolveMotionInsertConflict(owner, err)
+			}
+			videoID = videoRow.ID
+			if err := queries.CreateExifPlaceholder(ctx, dbgen.CreateExifPlaceholderParams{
+				AssetID: videoRow.ID,
+				Exif:    uploadExifPlaceholder(form),
+			}); err != nil {
+				discardUpload(photo, video)
+				return dbgen.Asset{}, "", nil, err
+			}
 		}
 	}
 
@@ -720,14 +815,15 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		// Same as above: the lookup needs a pool connection.
 		_ = tx.Rollback(ctx)
 		discardUpload(photo, video)
-		return s.resolveUploadConflict(r, owner, form, photo, video, err)
+		row, state, err := s.resolveUploadConflict(r, owner, form, photo, err)
+		return row, state, nil, err
 	}
 	if err := queries.CreateExifPlaceholder(ctx, dbgen.CreateExifPlaceholderParams{
 		AssetID: photoRow.ID,
 		Exif:    uploadExifPlaceholder(form),
 	}); err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 
 	// The photo lands in the owner's sync album -- the core stream the
@@ -747,7 +843,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	syncAlbumID, err := uuid.NewV7()
 	if err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 	albumID, err := queries.EnsureSyncAlbum(ctx, dbgen.EnsureSyncAlbumParams{
 		ID:      pgUUID(syncAlbumID),
@@ -755,7 +851,7 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	})
 	if err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 	if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
 		AlbumID: albumID,
@@ -763,69 +859,112 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 		AddedBy: pgUUID(owner),
 	}); err != nil {
 		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		return dbgen.Asset{}, "", nil, err
 	}
 	if videoID.Valid {
+		// An absorbed motion already holds this membership: the insert
+		// is the set union (ON CONFLICT DO NOTHING), so the reuse adds
+		// nothing and changes nothing there.
 		if err := queries.AddAssetToAlbum(ctx, dbgen.AddAssetToAlbumParams{
 			AlbumID: albumID,
 			AssetID: videoID,
 			AddedBy: pgUUID(owner),
 		}); err != nil {
 			discardUpload(photo, video)
-			return dbgen.Asset{}, "", err
+			return dbgen.Asset{}, "", nil, err
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		// The commit failed: the rows did not land, so the placed
-		// files are orphans this request owns -- remove them.
-		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		// A COMMIT ERROR IS NOT PROOF THE ROWS DID NOT LAND. The commit
+		// can be durable server-side while the client sees an error --
+		// the connection reset, a proxy cut the reply, the context was
+		// cancelled, the database restarted inside the reply window.
+		// The placed files therefore STAY: a leak is reclaimable by the
+		// boot orphan sweep, a deleted original behind a committed row
+		// is not. settleAmbiguousCommit only decides what to ANSWER.
+		row, state, err := s.settleAmbiguousCommit(ctx, owner, photo.checksum, err)
+		// The absorbed motion, when there was one, committed in the same
+		// transaction: a durable commit carried it too, so the notice
+		// still applies to the created answer.
+		return row, state, absorbedMotion, err
 	}
-	return photoRow, apigen.Created, nil
+	return photoRow, apigen.Created, absorbedMotion, nil
 }
 
-// resolveUploadConflict turns a failed CreateAsset into the upload
-// idempotency outcome. A violation of one of the upload uniqueness
-// indexes is resolved through the lookup -- outside the rolled-back
-// transaction, straight from the pool, where the row the insert
-// collided with is committed and visible: the loser of a concurrent
-// insert waits on the winner's index entry, so it observes the winner
-// committed or not at all. The lookup walks the photo's checksum
-// first, then (for a Live Photo whose video collided with a
-// standalone asset) the video's checksum, then the device identity;
-// the first hit decides duplicate (the row is live) or trashed (it is
-// not). Any other insert error stays an internal error.
-func (s *server) resolveUploadConflict(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload, insertErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
-	var pgErr *pgconn.PgError
-	if !errors.As(insertErr, &pgErr) || pgErr.Code != uniqueViolation ||
-		!uploadUniquenessConstraints[pgErr.ConstraintName] {
+// commitProbeTimeout bounds the read-only probe that answers an
+// ambiguous commit. It is short because it only decides the response;
+// a probe that cannot finish answers the original commit error.
+const commitProbeTimeout = 5 * time.Second
+
+// settleAmbiguousCommit answers a failed transaction commit without
+// touching the placed originals. The only question it settles is what
+// the response says: a read-only probe over the owner+checksum, on a
+// DETACHED context (the request's cancellation is exactly one of the
+// ways a commit fails, so the probe cannot ride it; WithoutCancel keeps
+// the values and sheds the cancellation, and a short timeout bounds
+// it), finds the row when the commit was durable. Present -> the upload
+// DID land: answer the row as created. Absent or a probe error -> the
+// original commit error stands.
+//
+// THE PROBE NEVER AUTHORIZES DELETION. There is a window between the
+// probe and the commit's own outcome in which the transaction lands
+// after the probe found nothing, so "not found" says nothing about the
+// files; they stay on disk for the orphan sweep either way. Adding a
+// discard call to the absent branch would reintroduce exactly the loss
+// this helper exists to prevent.
+func (s *server) settleAmbiguousCommit(ctx context.Context, owner uuid.UUID, checksum string, commitErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitProbeTimeout)
+	defer cancel()
+
+	row, err := s.queries.GetAssetByOwnerChecksum(probeCtx, dbgen.GetAssetByOwnerChecksumParams{
+		OwnerID:  pgUUID(owner),
+		Checksum: checksum,
+	})
+	if err == nil {
+		s.logger.Warn("the upload commit reported an error but landed; answering created",
+			"owner_id", owner, "checksum", checksum,
+			"asset_id", uuid.UUID(row.ID.Bytes), "error", commitErr)
+		return row, apigen.Created, nil
+	}
+	return dbgen.Asset{}, "", commitErr
+}
+
+// resolveUploadConflict turns a failed PHOTO-row CreateAsset into the
+// upload idempotency outcome. A violation of one of the upload
+// uniqueness indexes is resolved through the lookup -- outside the
+// rolled-back transaction, straight from the pool, where the row the
+// insert collided with is committed and visible: the loser of a
+// concurrent insert waits on the winner's index entry, so it observes
+// the winner committed or not at all. The lookup walks the photo's
+// checksum, then the device identity; the first hit decides duplicate
+// (the row is live) or trashed (it is not). Any other insert error
+// stays an internal error.
+//
+// The PAIRING VIDEO's collisions never reach this function:
+// insertUpload decides the motion bytes before placing them (a live
+// row is absorbed, a trashed one is the 409 conflict), so a video-row
+// insert violation is its own answer, not a copy of the photo's.
+func (s *server) resolveUploadConflict(r *http.Request, owner uuid.UUID, form uploadForm, photo *sealedUpload, insertErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
+	pgErr, ok := uploadUniqueViolation(insertErr)
+	if !ok {
 		return dbgen.Asset{}, "", insertErr
 	}
 
-	lookups := []dbgen.GetAssetByOwnerChecksumParams{{
+	row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), dbgen.GetAssetByOwnerChecksumParams{
 		OwnerID:  pgUUID(owner),
 		Checksum: photo.checksum,
-	}}
-	if video != nil {
-		lookups = append(lookups, dbgen.GetAssetByOwnerChecksumParams{
-			OwnerID:  pgUUID(owner),
-			Checksum: video.checksum,
-		})
+	})
+	if err == nil {
+		return row, uploadStateOf(row), nil
 	}
-	for _, lookup := range lookups {
-		row, err := s.queries.GetAssetByOwnerChecksum(r.Context(), lookup)
-		if err == nil {
-			return row, uploadStateOf(row), nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return dbgen.Asset{}, "", err
-		}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return dbgen.Asset{}, "", err
 	}
 
 	// The device identity is the remaining key that can have collided
 	// (same deviceAssetId, drifted content).
-	row, err := s.queries.GetAssetByDeviceId(r.Context(), dbgen.GetAssetByDeviceIdParams{
+	row, err = s.queries.GetAssetByDeviceId(r.Context(), dbgen.GetAssetByDeviceIdParams{
 		OwnerID:       pgUUID(owner),
 		DeviceAssetID: pgtype.Text{String: form.deviceAssetID, Valid: true},
 	})
@@ -842,6 +981,88 @@ func (s *server) resolveUploadConflict(r *http.Request, owner uuid.UUID, form up
 	return dbgen.Asset{}, "", fmt.Errorf(
 		"unique violation on %s resolved to no row (owner %s, checksum %s)",
 		pgErr.ConstraintName, owner, photo.checksum)
+}
+
+// errAssetComponentConflict marks the upload whose Live Photo motion
+// bytes exist only in the trash: the pair cannot reuse an invisible
+// motion and must not silently duplicate its bytes, so the caller
+// answers 409 ASSET_COMPONENT_CONFLICT and leaves the decision to the
+// user (restore or remove the trashed video, then upload again).
+var errAssetComponentConflict = errors.New("the live photo motion bytes are in the trash")
+
+// uploadUniqueViolation reports whether err is a unique-index violation
+// of one of the upload idempotency constraints, answering the driver's
+// error for the constraint name the resolution reports.
+func uploadUniqueViolation(err error) (*pgconn.PgError, bool) {
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != uniqueViolation ||
+		!uploadUniquenessConstraints[pgErr.ConstraintName] {
+		return nil, false
+	}
+	return pgErr, true
+}
+
+// resolveMotionInsertConflict answers a failed Live Photo component-row
+// insert. The motion bytes were placed and inserted because no ABSORBED
+// row was available at the decision point; a unique violation therefore
+// means the bytes are held by a row this upload must not reuse -- the
+// trashed row the lookup looked past (or that appeared in the window) --
+// so the answer is the explicit 409, never the photo's
+// duplicate/trashed resolution and never a silent second copy. A
+// non-uniqueness error stays an internal failure.
+//
+// The one case the answer names imperfectly: a LIVE row that appeared
+// between the decision and the insert (two concurrent uploads of the
+// same bytes). The bytes are not free for this transaction either way,
+// so the conflict is still the honest shape -- and the retry the client
+// makes resolves it, because the pre-insert lookup then sees the live
+// row and absorbs it. Distinguishing the two would need a second
+// attempt at the whole row transaction for a race this instance cannot
+// meaningfully hit.
+func (s *server) resolveMotionInsertConflict(owner uuid.UUID, insertErr error) (dbgen.Asset, apigen.AssetResponseState, *dbgen.Asset, error) {
+	pgErr, ok := uploadUniqueViolation(insertErr)
+	if !ok {
+		return dbgen.Asset{}, "", nil, insertErr
+	}
+	return dbgen.Asset{}, "", nil, fmt.Errorf("%w: %s (owner %s)", errAssetComponentConflict, pgErr.ConstraintName, owner)
+}
+
+// absorbableMotion answers the LIVE blob row that already holds the
+// Live Photo's motion bytes, or nil when the part must be placed and
+// inserted as a fresh row. Only the blob domain participates: an
+// EXTERNAL row of the same checksum is the family's own source file,
+// and marking it as a pair's component would put it under the pair's
+// delete (the motion extraction's reuse pins the same narrowing). A
+// TRASHED row answers nil too: the caller then collides with the unique
+// index and answers the conflict, which is the only honest outcome for
+// bytes the user cannot see.
+func (s *server) absorbableMotion(ctx context.Context, owner uuid.UUID, checksum string) (*dbgen.Asset, error) {
+	row, err := s.queries.GetBlobAssetByOwnerChecksum(ctx, dbgen.GetBlobAssetByOwnerChecksumParams{
+		OwnerID:  pgUUID(owner),
+		Checksum: checksum,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("look up the live photo motion bytes: %w", err)
+	}
+	if row.DeletedAt.Valid {
+		// The bytes sit in the trash: not reusable, and the insert's
+		// unique index turns the attempt into the conflict answer.
+		return nil, nil
+	}
+	return &row, nil
+}
+
+// motionAbsorbedNotice builds the response notice of an absorbed
+// motion: the reused row and the original filename the message names.
+func motionAbsorbedNotice(row dbgen.Asset) apigen.AssetNotice {
+	return apigen.AssetNotice{
+		Code:    apigen.AssetNoticeCodeLivePhotoMotionAbsorbed,
+		AssetId: uuid.UUID(row.ID.Bytes),
+		Name:    row.OriginalFilename,
+	}
 }
 
 // uploadStateOf maps a looked-up row onto its response state.
@@ -1051,6 +1272,14 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // -- the enqueue therefore stays symmetric with the pending_jobs
 // initialization in assetInsertParams.
 //
+// AN ABSORBED MOTION GETS NOTHING. The reused row is a standalone
+// video that already ran its whole pipeline (its readiness, its
+// transcode, its sidecar); re-enqueueing its metadata or transcode
+// would spend work on an answered question and, worse, could re-run a
+// completion path over a row this upload never created. The photo's
+// own jobs are the upload's whole queue, so absorbedMotion (non-nil
+// exactly when a row was reused) gates every component enqueue.
+//
 // The enqueue runs after the upload transaction committed, so its
 // context must not die with the client connection: a disconnect in
 // the commit-to-enqueue window would fail the enqueue and strand the
@@ -1060,14 +1289,14 @@ func (s *server) writeValidationError(w http.ResponseWriter, message string, fie
 // on: the upload is committed and its idempotent re-upload resolves
 // as duplicate without re-enqueueing, so recovery from a lost job
 // belongs to the requeue sweep, not to the response of this request.
-func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo *sealedUpload) {
+func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo *sealedUpload, absorbedMotion *dbgen.Asset) {
 	if s.jobs == nil {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
 	assetID := uuid.UUID(asset.ID.Bytes)
 	assetIDs := []uuid.UUID{assetID}
-	if asset.LivePhotoVideoID.Valid {
+	if asset.LivePhotoVideoID.Valid && absorbedMotion == nil {
 		assetIDs = append(assetIDs, uuid.UUID(asset.LivePhotoVideoID.Bytes))
 	}
 	for _, id := range assetIDs {
@@ -1086,8 +1315,8 @@ func (s *server) enqueueAssetJobs(r *http.Request, asset dbgen.Asset, liveVideo 
 	// The Live Photo component's own transcode, when its part belongs
 	// to the video family (the format the row's media kind derived
 	// from -- the same gate assetInsertParams applied to the
-	// component's pending_jobs).
-	if liveVideo != nil && liveVideo.format.Video && asset.LivePhotoVideoID.Valid {
+	// component's pending_jobs) and this upload created the row.
+	if liveVideo != nil && liveVideo.format.Video && asset.LivePhotoVideoID.Valid && absorbedMotion == nil {
 		componentID := uuid.UUID(asset.LivePhotoVideoID.Bytes)
 		if err := s.jobs.EnqueueTranscode(ctx, componentID); err != nil {
 			s.logger.Error("enqueue transcode job", "error", err, "asset_id", componentID)
@@ -1111,7 +1340,9 @@ func (s *server) publishAssetUploaded(row dbgen.Asset) {
 // assetResponseFrom maps an asset row onto the API shape. The state
 // is the caller's determination -- created for a fresh insert,
 // duplicate or trashed from the idempotency lookup -- because the row
-// alone does not know how the request reached it.
+// alone does not know how the request reached it. Notices are absent
+// (the field is omitted): the one upload that carries them answers
+// through assetResponseWithNotices.
 func assetResponseFrom(row dbgen.Asset, state apigen.AssetResponseState) apigen.AssetResponse {
 	return apigen.AssetResponse{
 		Id:               uuid.UUID(row.ID.Bytes),
@@ -1126,4 +1357,17 @@ func assetResponseFrom(row dbgen.Asset, state apigen.AssetResponseState) apigen.
 		TakenAt:          row.TakenAt.Time.UTC(),
 		IsTrashed:        row.DeletedAt.Valid,
 	}
+}
+
+// assetResponseWithNotices is assetResponseFrom plus the things the
+// client must tell the user about this upload (the contract's notices
+// array): the asset fields alone cannot say that a standalone video
+// became this pair's motion. An empty slice leaves the field absent,
+// the same shape as the plain mapper.
+func assetResponseWithNotices(row dbgen.Asset, state apigen.AssetResponseState, notices []apigen.AssetNotice) apigen.AssetResponse {
+	response := assetResponseFrom(row, state)
+	if len(notices) > 0 {
+		response.Notices = &notices
+	}
+	return response
 }

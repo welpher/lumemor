@@ -4,6 +4,7 @@ import {
 	uploadExtensionOf,
 	UPLOAD_CONCURRENCY,
 	type UploadItem,
+	type UploadNotice,
 	type XHRLike
 } from './queue.svelte';
 
@@ -106,11 +107,13 @@ function buildQueue(): {
 	queue: ReturnType<typeof createUploadQueue>;
 	fetch: ReturnType<typeof vi.fn>;
 	unauthorized: ReturnType<typeof vi.fn>;
+	notice: ReturnType<typeof vi.fn>;
 } {
 	const xhrs: StubXHR[] = [];
 	let counter = 0;
 	const fetcherMock = jsonFetch(200, {});
 	const unauthorized = vi.fn();
+	const notice = vi.fn();
 	const queue = createUploadQueue({
 		xhrFactory: () => {
 			const xhr = new StubXHR();
@@ -120,11 +123,12 @@ function buildQueue(): {
 		generateId: () => `id-${String(++counter)}`,
 		timeZone: () => 'Asia/Shanghai',
 		onUnauthorized: unauthorized as unknown as () => void,
-		fetcher: fetcherMock as unknown as typeof fetch
+		fetcher: fetcherMock as unknown as typeof fetch,
+		onNotice: notice as unknown as (notice: UploadNotice) => void
 	});
 	// Keep the rig's XHRs reachable for the drivers below.
 	(queue as unknown as { xhrs: StubXHR[] }).xhrs = xhrs;
-	return { queue, fetch: fetcherMock, unauthorized };
+	return { queue, fetch: fetcherMock, unauthorized, notice };
 }
 
 function xhrsOf(rig: Rig): StubXHR[] {
@@ -236,6 +240,38 @@ test('a created answer waits for the SSE ready event; duplicate completes immedi
 	rig.queue.dismiss(created.id);
 	rig.queue.dismiss(dup.id);
 	expect(eventBox.listeners).toHaveLength(0);
+});
+
+test('a 201 notice reaches the injected handler without blocking the row', () => {
+	const rig = buildQueue();
+	rig.queue.enqueueFiles([photoFile('IMG_LIVE.jpg')]);
+	const xhr = xhrsOf(rig)[0] as StubXHR;
+	const notice = {
+		code: 'LIVE_PHOTO_MOTION_ABSORBED',
+		assetId: '0192f4b2-6c7d-7e8f-9a0b-1c2d3e4f5a60',
+		name: 'IMG_LIVE.mov'
+	};
+	xhr.answer(201, { ...assetBody('asset-live', 'created'), notices: [notice] });
+
+	// The notice arrives intact, one call per entry.
+	expect(rig.notice).toHaveBeenCalledTimes(1);
+	expect(rig.notice).toHaveBeenCalledWith(notice);
+
+	// The row itself settled exactly like a plain created answer:
+	// processing until the SSE ready event, no conflict dialog, no
+	// failure -- the notice is information, not a state.
+	const item = rig.queue.items()[0] as UploadItem;
+	expect(item.state).toBe('processing');
+	expect(item.errorKey).toBe('');
+	expect(rig.queue.conflictItemId()).toBeNull();
+	eventBox.emit('asset.ready', 'asset-live');
+	expect(rig.queue.items()[0]?.state).toBe('done');
+
+	// A 201 without notices hands nothing over (the ordinary upload).
+	rig.queue.enqueueFiles([photoFile('plain.jpg')]);
+	const plain = xhrsOf(rig)[1] as StubXHR;
+	plain.answer(201, assetBody('asset-plain', 'created'));
+	expect(rig.notice).toHaveBeenCalledTimes(1);
 });
 
 test('a trashed answer parks the row and its restore resolves through the batch endpoint', async () => {

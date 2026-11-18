@@ -58,6 +58,33 @@ func (q *Queries) DeleteAssetPermanently(ctx context.Context, id pgtype.UUID) (i
 	return result.RowsAffected(), nil
 }
 
+const deleteTrashedAssetPermanently = `-- name: DeleteTrashedAssetPermanently :execrows
+DELETE FROM assets
+WHERE id = $1
+  AND deleted_at IS NOT NULL
+`
+
+// The SWEEP arms' guarded permanent delete: the whole-trash empty and
+// the trash batch's delete remove a row only while it is still in the
+// trash. This is the restore-vs-sweep race guard, the mirror of
+// ExpireAsset's: a row the sweep listed and then the user RESTORED is
+// live again, so the guard matches nothing and the caller leaves both
+// the row and its file alone. The unguarded statement above would
+// delete that live row and -- its reference count now zero -- the
+// server's only copy of the bytes. The two statements exist side by
+// side deliberately: the explicit delete's contract is "destroy
+// whatever its state", the sweep's is "empty the trash", and the
+// sweep must prove the row is still trash before destroying anything.
+// A concurrently purged row matches nothing either, the same
+// set-semantics answer both callers already handle.
+func (q *Queries) DeleteTrashedAssetPermanently(ctx context.Context, id pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTrashedAssetPermanently, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const expireAsset = `-- name: ExpireAsset :execrows
 DELETE FROM assets
 WHERE id = $1

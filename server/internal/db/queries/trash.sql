@@ -275,6 +275,24 @@ WHERE id = $1
 DELETE FROM assets
 WHERE id = $1;
 
+-- name: DeleteTrashedAssetPermanently :execrows
+-- The SWEEP arms' guarded permanent delete: the whole-trash empty and
+-- the trash batch's delete remove a row only while it is still in the
+-- trash. This is the restore-vs-sweep race guard, the mirror of
+-- ExpireAsset's: a row the sweep listed and then the user RESTORED is
+-- live again, so the guard matches nothing and the caller leaves both
+-- the row and its file alone. The unguarded statement above would
+-- delete that live row and -- its reference count now zero -- the
+-- server's only copy of the bytes. The two statements exist side by
+-- side deliberately: the explicit delete's contract is "destroy
+-- whatever its state", the sweep's is "empty the trash", and the
+-- sweep must prove the row is still trash before destroying anything.
+-- A concurrently purged row matches nothing either, the same
+-- set-semantics answer both callers already handle.
+DELETE FROM assets
+WHERE id = $1
+  AND deleted_at IS NOT NULL;
+
 -- name: GetAssetByID :one
 -- The permission-decision read of the explicit delete: the full row
 -- behind an id with NO owner filter, because the caller may be the

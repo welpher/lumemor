@@ -450,6 +450,17 @@ export interface paths {
          *       the trash; that asset is returned (with `isTrashed: true`)
          *       so the client can offer the user restore or save-as-new.
          *
+         *     A Live Photo's motion bytes are content, not a second copy:
+         *     when the `liveVideo` part's checksum already names a LIVE video
+         *     of the same owner, the server reuses that row as the pair's
+         *     motion instead of storing the bytes again. The upload still
+         *     answers 201 `created` for the photo, and the answer's
+         *     `notices` says what happened so the client can tell the user
+         *     (the client MUST surface them). Motion bytes that exist only
+         *     in the trash are never reused and never duplicated: the upload
+         *     answers 409 `ASSET_COMPONENT_CONFLICT`, so the user can decide
+         *     about that trashed video first.
+         *
          *     Each file is capped at the instance's per-file upload limit
          *     (2 GiB by default); a file over the limit aborts mid-stream
          *     with 413 `ASSET_TOO_LARGE`. This endpoint takes multipart
@@ -6056,6 +6067,33 @@ export interface components {
             createdAt: string;
         };
         /**
+         * @description One thing the client MUST tell the user about a successful
+         *     upload: the server made a decision the user cannot see in the
+         *     response's asset fields. Notices are informational, never
+         *     failures -- the upload itself succeeded.
+         */
+        AssetNotice: {
+            /**
+             * @description What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
+             *     Photo's motion bytes already existed as a live standalone
+             *     video of this owner; that row became the pair's motion
+             *     (`assetId` names it) and no longer lists as its own asset.
+             * @enum {string}
+             */
+            code: "LIVE_PHOTO_MOTION_ABSORBED";
+            /**
+             * Format: uuid
+             * @description The asset the notice is about: the reused row that became
+             *     the Live Photo's motion.
+             */
+            assetId: string;
+            /**
+             * @description The affected asset's original filename, so the message can
+             *     name what moved.
+             */
+            name: string;
+        };
+        /**
          * @description One stored asset as the upload and idempotency endpoints return
          *     it. `state` discriminates the upload outcome: `created` (201, a
          *     new asset), `duplicate` (200, an identical live asset already
@@ -6064,6 +6102,13 @@ export interface components {
          *     save-as-new). The idempotency lookup mirrors the same states:
          *     it reports what a re-upload of the content would yield, so
          *     `created` never appears there.
+         *
+         *     `notices` is absent or empty unless something needs telling:
+         *     the one current case is a Live Photo whose motion bytes were
+         *     reused as an existing standalone video's row. A client that
+         *     ignores it leaves the user with a video that silently stopped
+         *     listing on its own, so the obligation to surface each notice is
+         *     part of the contract, not a presentation choice.
          */
         AssetResponse: {
             /**
@@ -6130,6 +6175,15 @@ export interface components {
              *     restore or save-as-new decision.
              */
             isTrashed: boolean;
+            /**
+             * @description What the client must tell the user about this upload.
+             *     Absent or empty when there is nothing to say; the array is
+             *     informational, never a failure list. Present on a 201
+             *     `created` answer today (a Live Photo motion absorbed into
+             *     an existing video); the client surfaces each entry to the
+             *     user without blocking the upload.
+             */
+            notices?: components["schemas"]["AssetNotice"][];
         };
         /**
          * @description One asset as the detail endpoint returns it: the upload
@@ -8919,7 +8973,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "REBUILD_NOT_RUNNING" | "JOB_NOT_CANCELLABLE" | "JOB_RUN_NOT_FOUND";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "ASSET_COMPONENT_CONFLICT" | "REBUILD_NOT_RUNNING" | "JOB_NOT_CANCELLABLE" | "JOB_RUN_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -9629,6 +9683,22 @@ export interface operations {
              *     or bearer token is absent, expired or revoked.
              */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description A Live Photo's motion bytes sit in the caller's trash: the
+             *     same video was trashed earlier, and the upload will neither
+             *     reuse an invisible asset nor silently store a duplicate of
+             *     its bytes. Nothing was stored; the client asks the user to
+             *     restore or remove the trashed video and upload the Live
+             *     Photo again. No other upload outcome answers 409.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

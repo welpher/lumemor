@@ -19,6 +19,7 @@ Name | Type | Description | Notes
 **createdAt** | [**DateTime**](DateTime.md) | When the asset record was created (RFC 3339 UTC). | 
 **takenAt** | [**DateTime**](DateTime.md) | Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; responses render the best value the server has at answer time.  | 
 **isTrashed** | **bool** | True when the asset sits in the trash; `state: trashed` responses carry it as true so clients can offer the restore or save-as-new decision.  | 
+**notices** | [**BuiltList&lt;AssetNotice&gt;**](AssetNotice.md) | What the client must tell the user about this upload. Absent or empty when there is nothing to say; the array is informational, never a failure list. Present on a 201 `created` answer today (a Live Photo motion absorbed into an existing video); the client surfaces each entry to the user without blocking the upload.  | [optional] 
 
 [[Back to Model list]](../README.md#documentation-for-models) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to README]](../README.md)
 
