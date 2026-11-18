@@ -21,6 +21,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/events"
 	"github.com/welpher/lumemor/server/internal/geodata"
 	"github.com/welpher/lumemor/server/internal/jobs"
+	"github.com/welpher/lumemor/server/internal/maintenance"
 	"github.com/welpher/lumemor/server/internal/media"
 	"github.com/welpher/lumemor/server/internal/ml"
 	"github.com/welpher/lumemor/server/internal/storage"
@@ -63,6 +64,14 @@ const (
 	// first deployment's path into the same registry the online
 	// download writes. Empty or unset = no import.
 	envModelsBundle = "LUMEMOR_MODELS_BUNDLE"
+
+	// orphanOriginalsMinAge is the age a file in originals/ must reach
+	// before the boot sweep may treat it as unreferenced leak. A boot
+	// has no uploads in flight, so the window only has to clear the
+	// mtime granularity of a previous run's last placements; an hour is
+	// generous by design, and a leaked file costs nothing until the
+	// next boot.
+	orphanOriginalsMinAge = time.Hour
 )
 
 func main() {
@@ -133,6 +142,25 @@ func run(logger *slog.Logger) error {
 	// unreachable database falls back to the wizard, whose own endpoints
 	// surface the real errors.
 	queries := dbgen.New(pool)
+
+	// The boot orphan-originals sweep: an upload whose commit outcome
+	// was ambiguous keeps its placed files (a commit error is never
+	// proof that the rows did not land), so a truly uncommitted upload
+	// leaves originals nothing references. The sweep removes those --
+	// only files no blob row names, and only past the age window, so a
+	// placement cannot be mistaken for a leak. It runs before the queue
+	// and the HTTP server start, on a quiet tree; its failure does not
+	// fail the boot, because the server is fully usable with a leaked
+	// file and the next boot retries.
+	orphans, err := maintenance.SweepOrphanOriginals(ctx, queries, cfg.DataDir,
+		orphanOriginalsMinAge, time.Now())
+	if err != nil {
+		logger.Error("orphan originals sweep failed", "error", err,
+			"scanned", orphans.Scanned, "removed", orphans.Removed)
+	} else {
+		logger.Info("orphan originals swept",
+			"scanned", orphans.Scanned, "removed", orphans.Removed)
+	}
 
 	// The event bus is the SSE activity stream's backbone and the
 	// plugin seam: handlers publish domain events (the session
