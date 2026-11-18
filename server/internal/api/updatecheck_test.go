@@ -271,7 +271,9 @@ func TestUpdateCheckSettingsValidation(t *testing.T) {
 }
 
 // TestTilesSettingsRoundTrip pins the empty default, a save, the clear
-// and the shape refusal.
+// and the shape refusal -- for both URLs. The dark style is optional
+// on the wire (an omission clears it), and the map config carries the
+// pair with null for whatever is unset.
 func TestTilesSettingsRoundTrip(t *testing.T) {
 	env := newNetworkingEnv(t, http.StatusOK, `{}`)
 
@@ -283,8 +285,13 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 	if initial["tilejsonUrl"] != "" {
 		t.Fatalf("default tilejsonUrl = %v, want the empty string", initial["tilejsonUrl"])
 	}
+	if initial["darkTilejsonUrl"] != "" {
+		t.Fatalf("default darkTilejsonUrl = %v, want the empty string", initial["darkTilejsonUrl"])
+	}
 
-	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", `{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json"}`, env.cookie); rec.Code != http.StatusOK {
+	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles",
+		`{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json","darkTilejsonUrl":"http://192.168.1.20:8080/tilejson-dark.json"}`,
+		env.cookie); rec.Code != http.StatusOK {
 		t.Fatalf("save: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 	}
 	mapConfig := env.do(t, http.MethodGet, "/api/v1/map/config", "", env.cookie)
@@ -293,21 +300,52 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 		t.Fatalf("decode the map config: %v", err)
 	}
 	if config["tilejsonUrl"] != "http://192.168.1.20:8080/tilejson.json" {
-		t.Errorf("map config = %v, want the saved source", config["tilejsonUrl"])
+		t.Errorf("map config = %v, want the saved light source", config["tilejsonUrl"])
+	}
+	if config["darkTilejsonUrl"] != "http://192.168.1.20:8080/tilejson-dark.json" {
+		t.Errorf("map config dark = %v, want the saved dark source", config["darkTilejsonUrl"])
 	}
 
-	// The clear answers the empty string and the map config null.
-	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", `{"tilejsonUrl":""}`, env.cookie); rec.Code != http.StatusOK {
+	// An omitted dark field clears it: the dark theme falls back to
+	// the light source, and the map config answers null.
+	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles",
+		`{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json"}`,
+		env.cookie); rec.Code != http.StatusOK {
+		t.Fatalf("save without the dark field: status = %d, want %d", rec.Code, http.StatusOK)
+	}
+	lightOnly := env.do(t, http.MethodGet, "/api/v1/map/config", "", env.cookie)
+	if !strings.Contains(lightOnly.Body.String(), `"darkTilejsonUrl":null`) {
+		t.Errorf("light-only map config = %q, want a null dark URL", lightOnly.Body.String())
+	}
+
+	// The clear answers the empty strings and the map config null.
+	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", `{"tilejsonUrl":"","darkTilejsonUrl":""}`, env.cookie); rec.Code != http.StatusOK {
 		t.Fatalf("clear: status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	cleared := env.do(t, http.MethodGet, "/api/v1/map/config", "", env.cookie)
 	if !strings.Contains(cleared.Body.String(), `"tilejsonUrl":null`) {
 		t.Errorf("cleared map config = %q, want null", cleared.Body.String())
 	}
+	if !strings.Contains(cleared.Body.String(), `"darkTilejsonUrl":null`) {
+		t.Errorf("cleared map config = %q, want a null dark URL", cleared.Body.String())
+	}
 
-	for _, body := range []string{`{}`, `{"tilejsonUrl":"ftp://example.net/tiles.json"}`, `{"tilejsonUrl":"nonsense"}`} {
-		if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", body, env.cookie); rec.Code != http.StatusBadRequest {
+	// Both fields refuse a non-absolute or non-http(s) value, and the
+	// refusal names the offending field.
+	for _, body := range []string{
+		`{}`,
+		`{"tilejsonUrl":"ftp://example.net/tiles.json"}`,
+		`{"tilejsonUrl":"nonsense"}`,
+		`{"tilejsonUrl":"https://tiles.example.net/osm/tilejson.json","darkTilejsonUrl":"nonsense"}`,
+		`{"tilejsonUrl":"https://tiles.example.net/osm/tilejson.json","darkTilejsonUrl":"ftp://example.net/dark.json"}`,
+	} {
+		rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", body, env.cookie)
+		if rec.Code != http.StatusBadRequest {
 			t.Errorf("PUT %s: status = %d, want %d", body, rec.Code, http.StatusBadRequest)
+			continue
+		}
+		if strings.Contains(body, "darkTilejsonUrl") && !strings.Contains(rec.Body.String(), "darkTilejsonUrl") {
+			t.Errorf("PUT %s: refusal does not name the dark field: %q", body, rec.Body.String())
 		}
 	}
 }
