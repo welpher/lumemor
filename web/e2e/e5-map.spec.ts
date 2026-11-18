@@ -226,6 +226,16 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('[data-map-state]')).toHaveCount(0);
 		await expect(page.locator('.maplibregl-canvas')).toBeVisible();
 
+		// The canvas FILLS the card: the map library's container is
+		// `position: relative`, so a positioned utility collapses it to
+		// zero height while the tiles still fetch (the bug this scene
+		// guards). A container that does not match the card is the
+		// regression, whether or not the canvas element "is visible".
+		const mapBox = await page.locator('.maplibregl-map').boundingBox();
+		const cardBox = await page.getByTestId('places-map').boundingBox();
+		expect(mapBox?.height ?? 0).toBeGreaterThan(100);
+		expect(Math.abs((mapBox?.height ?? 0) - (cardBox?.height ?? 0))).toBeLessThan(8);
+
 		// One city, one pin, its honest count in the accessible name.
 		const pin = page.locator('.map__pin');
 		await expect(pin).toHaveCount(1);
