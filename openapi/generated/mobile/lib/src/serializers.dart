@@ -45,6 +45,7 @@ import 'package:lumemor_api/src/model/asset_album_ref.dart';
 import 'package:lumemor_api/src/model/asset_coordinates.dart';
 import 'package:lumemor_api/src/model/asset_detail.dart';
 import 'package:lumemor_api/src/model/asset_face_summary.dart';
+import 'package:lumemor_api/src/model/asset_notice.dart';
 import 'package:lumemor_api/src/model/asset_patch.dart';
 import 'package:lumemor_api/src/model/asset_place_ref.dart';
 import 'package:lumemor_api/src/model/asset_response.dart';
@@ -209,6 +210,7 @@ part 'serializers.g.dart';
   AssetCoordinates,
   AssetDetail,
   AssetFaceSummary,
+  AssetNotice,
   AssetPatch,
   AssetPlaceRef,
   AssetResponse,
@@ -343,6 +345,10 @@ Serializers serializers = (_$serializers.toBuilder()
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(TimelineItem)]),
         () => ListBuilder<TimelineItem>(),
+      )
+      ..addBuilderFactory(
+        const FullType(BuiltList, [FullType(AssetNotice)]),
+        () => ListBuilder<AssetNotice>(),
       )
       ..addBuilderFactory(
         const FullType(BuiltList, [FullType(PlaceSummary)]),

@@ -73,5 +73,11 @@ void main() {
       // TODO
     });
 
+    // What the client must tell the user about this upload. Absent or empty when there is nothing to say; the array is informational, never a failure list. Present on a 201 `created` answer today (a Live Photo motion absorbed into an existing video); the client surfaces each entry to the user without blocking the upload. 
+    // BuiltList<AssetNotice> notices
+    test('to test the property `notices`', () async {
+      // TODO
+    });
+
   });
 }

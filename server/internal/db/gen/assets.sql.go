@@ -768,6 +768,41 @@ func (q *Queries) ListAssetIDsByKind(ctx context.Context, arg ListAssetIDsByKind
 	return items, nil
 }
 
+const listBlobFilePaths = `-- name: ListBlobFilePaths :many
+SELECT DISTINCT file_path
+FROM assets
+WHERE storage_kind = 'blob'
+`
+
+// The referenced-originals set of the boot orphan sweep: every stored
+// file path any blob row names, whatever its state. The sweep walks
+// the originals tree and removes a file NO row mentions -- the leak an
+// ambiguous upload commit leaves behind (the placed originals stay
+// when the commit's outcome is unknown, because a leak is
+// recoverable and a deletion is not). Trashed rows count: their file
+// waits for the trash lifecycle, not for this sweep. The external
+// rows are absent by construction -- their file_path names a family
+// folder outside the managed tree, never an originals entry.
+func (q *Queries) ListBlobFilePaths(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, listBlobFilePaths)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var file_path string
+		if err := rows.Scan(&file_path); err != nil {
+			return nil, err
+		}
+		items = append(items, file_path)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStuckAssets = `-- name: ListStuckAssets :many
 SELECT id, media_kind, is_component FROM assets
 WHERE pending_jobs > 0 AND ready_at IS NULL AND deleted_at IS NULL

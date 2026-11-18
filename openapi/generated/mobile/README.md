@@ -228,6 +228,7 @@ Class | Method | HTTP request | Description
  - [AssetCoordinates](doc/AssetCoordinates.md)
  - [AssetDetail](doc/AssetDetail.md)
  - [AssetFaceSummary](doc/AssetFaceSummary.md)
+ - [AssetNotice](doc/AssetNotice.md)
  - [AssetPatch](doc/AssetPatch.md)
  - [AssetPlaceRef](doc/AssetPlaceRef.md)
  - [AssetResponse](doc/AssetResponse.md)

@@ -67,6 +67,20 @@ WHERE owner_id = $1 AND device_asset_id = $2
 ORDER BY deleted_at NULLS FIRST
 LIMIT 1;
 
+-- name: ListBlobFilePaths :many
+-- The referenced-originals set of the boot orphan sweep: every stored
+-- file path any blob row names, whatever its state. The sweep walks
+-- the originals tree and removes a file NO row mentions -- the leak an
+-- ambiguous upload commit leaves behind (the placed originals stay
+-- when the commit's outcome is unknown, because a leak is
+-- recoverable and a deletion is not). Trashed rows count: their file
+-- waits for the trash lifecycle, not for this sweep. The external
+-- rows are absent by construction -- their file_path names a family
+-- folder outside the managed tree, never an originals entry.
+SELECT DISTINCT file_path
+FROM assets
+WHERE storage_kind = 'blob';
+
 -- name: GetAsset :one
 -- The owner-scoped row read behind the WRITE faces that gate on
 -- ownership (the attribute PATCH and the trash restore): their
