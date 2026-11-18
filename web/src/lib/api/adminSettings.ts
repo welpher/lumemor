@@ -382,7 +382,7 @@ function tilesSettingsFrom(body: unknown): TilesSettings | null {
 		return null;
 	}
 	const candidate = body as Partial<TilesSettings>;
-	if (typeof candidate.tilejsonUrl !== 'string') {
+	if (typeof candidate.tilejsonUrl !== 'string' || typeof candidate.darkTilejsonUrl !== 'string') {
 		return null;
 	}
 	return body as TilesSettings;
@@ -501,12 +501,13 @@ export function getTilesSettings(
 	return readSettings(TILES_SETTINGS_ENDPOINT, tilesSettingsFrom, fetcher);
 }
 
-/** PUT /api/v1/admin/settings/tiles: save the tile source ('' clears it). */
+/** PUT /api/v1/admin/settings/tiles: save both sources ('' clears). */
 export function saveTilesSettings(
 	tilejsonUrl: string,
+	darkTilejsonUrl: string,
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<NetworkingSettingsResult<TilesSettings>> {
-	return writeSettings(TILES_SETTINGS_ENDPOINT, { tilejsonUrl }, tilesSettingsFrom, fetcher);
+	return writeSettings(TILES_SETTINGS_ENDPOINT, { tilejsonUrl, darkTilejsonUrl }, tilesSettingsFrom, fetcher);
 }
 
 /** GET /api/v1/admin/settings/models: the model store's policy. */
