@@ -33,6 +33,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db/dbtest"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/events"
+	"github.com/welpher/lumemor/server/internal/maintenance"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -1537,4 +1538,119 @@ func (e *assetEnv) createSecondUser(t *testing.T, email string) (uuid.UUID, *htt
 		t.Fatalf("insert second user session: %v", err)
 	}
 	return userID, &http.Cookie{Name: sessionCookieName, Value: raw}
+}
+
+// TestUploadAmbiguousCommitKeepsOriginals pins the commit-error rule:
+// a commit whose outcome is unknown must never delete the placed
+// originals, because the rows may be durable. The fixture makes the
+// commit fail deterministically with a deferred constraint trigger --
+// the inserts succeed, COMMIT raises -- and asserts the file is still
+// on disk after the 500, no row exists, and the boot orphan sweep then
+// reclaims exactly that leak while keeping a referenced file.
+func TestUploadAmbiguousCommitKeepsOriginals(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+
+	// The deferred failure: every assets insert marks a commit-time
+	// error, so the transaction lands its statements and dies at the
+	// commit -- the ambiguous outcome without a dropped connection.
+	env.exec(t, `CREATE OR REPLACE FUNCTION fail_assets_commit() RETURNS trigger AS $$
+		BEGIN
+			RAISE EXCEPTION 'deferred asset insert failure (test)';
+		END;
+		$$ LANGUAGE plpgsql`)
+	env.exec(t, `CREATE CONSTRAINT TRIGGER fail_assets_commit
+		AFTER INSERT ON assets DEFERRABLE INITIALLY DEFERRED
+		FOR EACH ROW EXECUTE FUNCTION fail_assets_commit()`)
+
+	payload := jpegFixture(t)
+	rec := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-ambiguous",
+		"fileName":      "IMG_AMBIGUOUS.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_AMBIGUOUS.jpg", content: payload}})
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("upload status = %d, want %d (body %q)", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+
+	// The placed original STAYS: the commit error does not prove the
+	// rows did not land, so the bytes are kept.
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != 1 {
+		t.Fatalf("originals files = %d after the ambiguous commit, want the placed original kept", got)
+	}
+	if got := env.queryInt(t, "SELECT count(*) FROM assets"); got != 0 {
+		t.Errorf("assets rows = %d after the rolled-back commit, want 0", got)
+	}
+
+	// The leak is what the boot sweep exists for: no row names the
+	// file, so an age-free sweep removes it.
+	result, err := maintenance.SweepOrphanOriginals(context.Background(), env.queries, env.dataDir, 0, time.Now())
+	if err != nil {
+		t.Fatalf("sweep orphan originals: %v", err)
+	}
+	if result.Removed != 1 {
+		t.Errorf("sweep removed = %d, want the leaked original", result.Removed)
+	}
+	if got := env.countFiles(t, filepath.Join(env.dataDir, "originals")); got != 0 {
+		t.Errorf("originals files = %d after the sweep, want the leak reclaimed", got)
+	}
+
+	// The sweep's other half: a committed upload's file is referenced
+	// and survives the same age-free sweep.
+	env.exec(t, `DROP TRIGGER fail_assets_commit ON assets`)
+	env.exec(t, `DROP FUNCTION fail_assets_commit()`)
+	created := env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-ambiguous-2",
+		"fileName":      "IMG_KEPT.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_KEPT.jpg", content: jpegFixture(t)}})
+	if created.Code != http.StatusCreated {
+		t.Fatalf("follow-up upload status = %d, want %d (body %q)", created.Code, http.StatusCreated, created.Body.String())
+	}
+	row := env.assetByChecksum(t, sha256Hex(jpegFixture(t)))
+	result, err = maintenance.SweepOrphanOriginals(context.Background(), env.queries, env.dataDir, 0, time.Now())
+	if err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+	if result.Removed != 0 {
+		t.Errorf("second sweep removed = %d, want the referenced original kept", result.Removed)
+	}
+	env.requireUploadedFileStored(t, row, jpegFixture(t))
+}
+
+// TestSettleAmbiguousCommit pins the helper's two answers: a row the
+// owner holds for the checksum means the commit landed (the upload is
+// answered created), and an absent row returns the original commit
+// error. The probe runs on a detached context, so the request's own
+// cancellation -- one of the ways a commit fails -- cannot blind it.
+func TestSettleAmbiguousCommit(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	payload := jpegFixture(t)
+	created := decodeAsset(t, env.postUpload(t, map[string]string{
+		"deviceAssetId": "device-settle",
+		"fileName":      "IMG_SETTLE.jpg",
+	}, []assetUploadFile{{field: "photo", name: "IMG_SETTLE.jpg", content: payload}}))
+	checksum := sha256Hex(payload)
+	owner := env.sessionUserID(t)
+	commitErr := errors.New("write tcp: connection reset by peer")
+	sv := env.purgeTestServer()
+
+	// The client is gone: the request context is already cancelled.
+	dead, cancel := context.WithCancel(context.Background())
+	cancel()
+	row, state, err := sv.settleAmbiguousCommit(dead, owner, checksum, commitErr)
+	if err != nil {
+		t.Fatalf("settle with the row present: %v", err)
+	}
+	if state != apigen.Created {
+		t.Errorf("state = %q, want %q (the commit landed)", state, apigen.Created)
+	}
+	if uuid.UUID(row.ID.Bytes) != uuid.UUID(created.Id) {
+		t.Errorf("settled row = %s, want the uploaded asset %s", uuid.UUID(row.ID.Bytes), created.Id)
+	}
+
+	// Nothing landed for a checksum the owner does not hold: the
+	// original error stands (the caller reports the failure; the
+	// placed files are not its to delete either way).
+	_, _, err = sv.settleAmbiguousCommit(context.Background(), owner, strings.Repeat("0", 64), commitErr)
+	if !errors.Is(err, commitErr) {
+		t.Errorf("settle with no row error = %v, want the original commit error", err)
+	}
 }

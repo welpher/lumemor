@@ -609,6 +609,13 @@ func wallInZone(wall time.Time, zone *time.Location) time.Time {
 // files the loser never got to reference are discarded, and the
 // conflict resolves through the lookup into the duplicate or trashed
 // state, carried as a normal outcome.
+//
+// A COMMIT error is the one outcome that does NOT discard: the commit
+// may have landed while its acknowledgement was lost, so the placed
+// files stay (see settleAmbiguousCommit; the boot orphan sweep
+// reclaims a true leak). Every earlier failure -- validation, an
+// insert, the album wiring -- is a certain rollback, and those paths
+// discard as before.
 func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm, photo, video *sealedUpload) (dbgen.Asset, apigen.AssetResponseState, error) {
 	ctx := r.Context()
 
@@ -782,12 +789,54 @@ func (s *server) insertUpload(r *http.Request, owner uuid.UUID, form uploadForm,
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		// The commit failed: the rows did not land, so the placed
-		// files are orphans this request owns -- remove them.
-		discardUpload(photo, video)
-		return dbgen.Asset{}, "", err
+		// A COMMIT ERROR IS NOT PROOF THE ROWS DID NOT LAND. The commit
+		// can be durable server-side while the client sees an error --
+		// the connection reset, a proxy cut the reply, the context was
+		// cancelled, the database restarted inside the reply window.
+		// The placed files therefore STAY: a leak is reclaimable by the
+		// boot orphan sweep, a deleted original behind a committed row
+		// is not. settleAmbiguousCommit only decides what to ANSWER.
+		return s.settleAmbiguousCommit(ctx, owner, photo.checksum, err)
 	}
 	return photoRow, apigen.Created, nil
+}
+
+// commitProbeTimeout bounds the read-only probe that answers an
+// ambiguous commit. It is short because it only decides the response;
+// a probe that cannot finish answers the original commit error.
+const commitProbeTimeout = 5 * time.Second
+
+// settleAmbiguousCommit answers a failed transaction commit without
+// touching the placed originals. The only question it settles is what
+// the response says: a read-only probe over the owner+checksum, on a
+// DETACHED context (the request's cancellation is exactly one of the
+// ways a commit fails, so the probe cannot ride it; WithoutCancel keeps
+// the values and sheds the cancellation, and a short timeout bounds
+// it), finds the row when the commit was durable. Present -> the upload
+// DID land: answer the row as created. Absent or a probe error -> the
+// original commit error stands.
+//
+// THE PROBE NEVER AUTHORIZES DELETION. There is a window between the
+// probe and the commit's own outcome in which the transaction lands
+// after the probe found nothing, so "not found" says nothing about the
+// files; they stay on disk for the orphan sweep either way. Adding a
+// discard call to the absent branch would reintroduce exactly the loss
+// this helper exists to prevent.
+func (s *server) settleAmbiguousCommit(ctx context.Context, owner uuid.UUID, checksum string, commitErr error) (dbgen.Asset, apigen.AssetResponseState, error) {
+	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), commitProbeTimeout)
+	defer cancel()
+
+	row, err := s.queries.GetAssetByOwnerChecksum(probeCtx, dbgen.GetAssetByOwnerChecksumParams{
+		OwnerID:  pgUUID(owner),
+		Checksum: checksum,
+	})
+	if err == nil {
+		s.logger.Warn("the upload commit reported an error but landed; answering created",
+			"owner_id", owner, "checksum", checksum,
+			"asset_id", uuid.UUID(row.ID.Bytes), "error", commitErr)
+		return row, apigen.Created, nil
+	}
+	return dbgen.Asset{}, "", commitErr
 }
 
 // resolveUploadConflict turns a failed CreateAsset into the upload
