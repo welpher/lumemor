@@ -371,7 +371,10 @@ func (s *server) EmptyTrash(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		for _, row := range rows {
-			deleted, err := s.purgeAssetWithPair(r, row)
+			// The sweep arm proves the row is STILL trash inside the
+			// deleting statement: a row restored since the listing
+			// matches nothing and keeps its row and its file.
+			deleted, err := s.purgeAssetWithPair(r, row, true)
 			if err != nil {
 				s.internalError(w, r, "empty the trash", err)
 				return
@@ -512,7 +515,10 @@ func (s *server) BatchTrash(w http.ResponseWriter, r *http.Request) {
 				restored = append(restored, id)
 			}
 		case apigen.TrashBatchRequestActionDelete:
-			deleted, err := s.purgeAssetWithPair(r, row)
+			// The same guarded arm as the whole-trash empty: the row's
+			// id resolved from the trash, but a restore between the
+			// resolution and this purge must survive it.
+			deleted, err := s.purgeAssetWithPair(r, row, true)
 			if err != nil {
 				s.internalError(w, r, "delete asset in trash batch", err)
 				return
@@ -558,6 +564,13 @@ func (s *server) BatchTrash(w http.ResponseWriter, r *http.Request) {
 // request that names the component video row directly deletes just
 // that row -- the photo it belongs to survives, its component link
 // nulling out through the schema's ON DELETE SET NULL.
+//
+// This surface is one of the two deliberate EXCEPTIONS to the
+// sweep arms' "still in the trash" guard: its contract is "destroy the
+// asset whatever its state", so it passes trashedOnly=false. The other
+// exception is a Live Photo's component follow-up inside the pair
+// purge (the component is a live row by design -- the trash only ever
+// holds the still). Do not unify them with the sweep arms.
 func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	requester, ok := authFrom(r.Context())
 	if !ok {
@@ -586,8 +599,9 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 	// component follow-up and the orphaned stills' announcements are
 	// one shared helper -- the whole-trash arms (the empty and the
 	// trash batch's delete) run the same rules per row, so the
-	// single-asset surface is not its own special case.
-	deleted, err := s.purgeAssetWithPair(r, row)
+	// single-asset surface is not its own special case. trashedOnly
+	// is false: this contract destroys the asset whatever its state.
+	deleted, err := s.purgeAssetWithPair(r, row, false)
 	if err != nil {
 		s.internalError(w, r, "delete asset permanently", err)
 		return
@@ -607,7 +621,14 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 // delete's rules and, when the row is a Live Photo still, the
 // component video row the delete leaves unreferenced. It reports
 // whether THIS call deleted the row: false means a concurrent delete
-// won the race and the row is already gone.
+// won the race and the row is already gone -- or, on the sweep arms,
+// that the row left the trash (a restore) before the guarded delete
+// landed, in which case nothing at all was destroyed.
+//
+// trashedOnly selects the deleting statement: true is the sweep arms'
+// "still in the trash" guard (the trash empty and batch delete), false
+// the explicit delete's "whatever its state". The caller owns that
+// decision; the helper only threads it to purgeAssetRow.
 //
 // A COMPONENT'S DELETE CHANGES ITS STILLS' SHAPE: the link nulls
 // through the schema, so the stills are read BEFORE the row goes
@@ -615,7 +636,7 @@ func (s *server) DeleteAsset(w http.ResponseWriter, r *http.Request, id openapi_
 // below -- the same convergence the pair maintenance publishes, so an
 // open wall drops the type mark instead of keeping a mark for a
 // motion that no longer exists.
-func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset) (bool, error) {
+func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset, trashedOnly bool) (bool, error) {
 	var orphanedStills []dbgen.ListLivePhotoStillsOfMotionRow
 	if row.IsComponent {
 		stills, err := s.queries.ListLivePhotoStillsOfMotion(r.Context(), row.ID)
@@ -628,7 +649,7 @@ func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset) (bool, err
 	// The photo row goes before its linked component video row: the
 	// component delete would otherwise trip the foreign key the photo
 	// still holds on it.
-	deleted, err := s.purgeAssetRow(r, row)
+	deleted, err := s.purgeAssetRow(r, row, trashedOnly)
 	if err != nil {
 		return false, err
 	}
@@ -657,7 +678,13 @@ func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset) (bool, err
 			// The component is never the client-visible asset, so it
 			// purges without its own announcement; its file answers
 			// the same reference rule through the same helper.
-			if _, err := s.purgeAssetRow(r, component); err != nil {
+			//
+			// THE SECOND DELIBERATE EXCEPTION to the trash guard: the
+			// component row is LIVE by design (the trash only ever
+			// holds the still), so its follow-up purge is
+			// unconditional -- a trashedOnly=true here would silently
+			// orphan every motion whose still is deleted.
+			if _, err := s.purgeAssetRow(r, component, false); err != nil {
 				return true, err
 			}
 		}
@@ -683,7 +710,18 @@ func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset) (bool, err
 // a storage leak, never data loss, so file errors are logged and
 // swallowed while the row's delete stands. It reports whether THIS
 // call deleted the row; false means a concurrent delete won the race
-// and the row is already gone.
+// (or, with trashedOnly, the row is no longer in the trash) and the
+// row's file is left exactly where it is -- a zero-row delete must
+// never reach the file half.
+//
+// trashedOnly picks the deleting statement: true is
+// DeleteTrashedAssetPermanently (the sweep arms' restore guard: the
+// row must still be in the trash at the instant of the delete), false
+// is DeleteAssetPermanently (the explicit delete's "whatever its
+// state", and the Live Photo component follow-up -- the component is a
+// live row, so a guard would skip it forever). The two statements
+// coexist on purpose; unifying them reintroduces the
+// restore-vs-sweep race that deletes a live row and its only file.
 //
 // The row delete and the face cluster sweep land in one transaction:
 // the cascade removes the asset's faces, and a face that is a
@@ -699,7 +737,7 @@ func (s *server) purgeAssetWithPair(r *http.Request, row dbgen.Asset) (bool, err
 // in data/trash/<assetID>/ -- a live external's source file is the
 // family's own and is never touched, whatever the caller asked the
 // server to delete.
-func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
+func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset, trashedOnly bool) (bool, error) {
 	ctx := r.Context()
 	assetID := uuid.UUID(row.ID.Bytes)
 
@@ -743,7 +781,15 @@ func (s *server) purgeAssetRow(r *http.Request, row dbgen.Asset) (bool, error) {
 		return false, fmt.Errorf("dissolve the clusters the asset's faces held: %w", err)
 	}
 
-	deleted, err := queries.DeleteAssetPermanently(ctx, row.ID)
+	// The guarded or unconditional statement, per the caller's
+	// decision above: a row that no longer matches (restored, or
+	// already purged) answers zero and the file half never runs.
+	var deleted int64
+	if trashedOnly {
+		deleted, err = queries.DeleteTrashedAssetPermanently(ctx, row.ID)
+	} else {
+		deleted, err = queries.DeleteAssetPermanently(ctx, row.ID)
+	}
 	if err != nil {
 		return false, err
 	}
