@@ -8,15 +8,20 @@ import 'package:built_value/serializer.dart';
 
 part 'tiles_settings_update_request.g.dart';
 
-/// Payload of `PUT /admin/settings/tiles`.
+/// Payload of `PUT /admin/settings/tiles`: both styles, one document. The save replaces the pair wholesale. 
 ///
 /// Properties:
-/// * [tilejsonUrl] - The tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
+/// * [tilejsonUrl] - The light tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
+/// * [darkTilejsonUrl] - The dark tile source URL to save. Omitting it or sending the empty string clears it (the dark theme then reuses the light source). A non-empty value follows the light field's rule: an absolute `http` or `https` URL, a LAN address included. 
 @BuiltValue()
 abstract class TilesSettingsUpdateRequest implements Built<TilesSettingsUpdateRequest, TilesSettingsUpdateRequestBuilder> {
-  /// The tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
+  /// The light tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
   @BuiltValueField(wireName: r'tilejsonUrl')
   String get tilejsonUrl;
+
+  /// The dark tile source URL to save. Omitting it or sending the empty string clears it (the dark theme then reuses the light source). A non-empty value follows the light field's rule: an absolute `http` or `https` URL, a LAN address included. 
+  @BuiltValueField(wireName: r'darkTilejsonUrl')
+  String? get darkTilejsonUrl;
 
   TilesSettingsUpdateRequest._();
 
@@ -46,6 +51,13 @@ class _$TilesSettingsUpdateRequestSerializer implements PrimitiveSerializer<Tile
       object.tilejsonUrl,
       specifiedType: const FullType(String),
     );
+    if (object.darkTilejsonUrl != null) {
+      yield r'darkTilejsonUrl';
+      yield serializers.serialize(
+        object.darkTilejsonUrl,
+        specifiedType: const FullType(String),
+      );
+    }
   }
 
   @override
@@ -75,6 +87,14 @@ class _$TilesSettingsUpdateRequestSerializer implements PrimitiveSerializer<Tile
             specifiedType: const FullType(String),
           ) as String;
           result.tilejsonUrl = valueDes;
+          break;
+        case r'darkTilejsonUrl':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(String),
+          ) as String?;
+          if (valueDes == null) continue;
+          result.darkTilejsonUrl = valueDes;
           break;
         default:
           unhandled.add(key);
