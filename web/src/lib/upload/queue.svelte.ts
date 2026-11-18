@@ -13,6 +13,13 @@
 // single `photo` part and never sends `liveVideo` (the contract
 // marks it optional).
 //
+// A 201 answer can also carry `notices`: decisions the asset fields
+// cannot show, whose one current case is a Live Photo absorbing an
+// existing video's bytes as its motion. Each notice goes to the
+// injected `onNotice` handler -- the singleton wires it to an info
+// toast -- after the row settled, so the upload is never blocked and
+// no dialog opens.
+//
 // ARCHITECTURE
 //
 // - The queue is a module singleton (like the events module): items
@@ -56,10 +63,16 @@
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
 import { subscribeAssetEvents } from '$lib/events';
 import { forceLogout } from '$lib/auth/session.svelte';
+import { toast } from '$lib/components/toast.svelte';
+import { get } from 'svelte/store';
+import { _ } from 'svelte-i18n';
 import type { components } from '../../../../openapi/generated/web/api';
 
 /** One upload response body, exactly the contract's AssetResponse. */
 type UploadAsset = components['schemas']['AssetResponse'];
+
+/** One entry of an upload response's optional notices array. */
+export type UploadNotice = components['schemas']['AssetNotice'];
 
 /** The states of one queue item (see the state machine above). */
 export type UploadItemState = 'queued' | 'uploading' | 'conflict' | 'processing' | 'done' | 'failed';
@@ -108,6 +121,14 @@ export type UploadQueueDeps = {
 	onUnauthorized: () => void;
 	/** The fetch half (batch restore / permanent delete). */
 	fetcher: typeof fetch;
+	/**
+	 * The upload contract's notices, delivered one call per entry: the
+	 * server made a decision the asset fields cannot show (a Live Photo
+	 * absorbed an existing video as its motion). The client MUST surface
+	 * each one; it never blocks the upload. Absent in tests that do not
+	 * exercise the notification path.
+	 */
+	onNotice?: (notice: UploadNotice) => void;
 };
 
 /** The pinned upload concurrency cap. */
@@ -376,6 +397,16 @@ export function createUploadQueue(deps: UploadQueueDeps): UploadQueue {
 				progress: 1,
 				asset: body as UploadAsset
 			});
+			// A 201 can carry notices: decisions the asset fields cannot
+			// show (a Live Photo absorbed an existing video as its
+			// motion). Each one reaches the user through the injected
+			// handler; the upload itself is already settled, so this
+			// never blocks, fails or re-opens the row.
+			if (status === 201 && Array.isArray(asset.notices) && deps.onNotice !== undefined) {
+				for (const notice of asset.notices) {
+					deps.onNotice(notice);
+				}
+			}
 			return;
 		}
 		if (status === 200 && asset.state === 'trashed') {
@@ -538,7 +569,15 @@ const singleton = createUploadQueue({
 	},
 	timeZone: () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? null,
 	onUnauthorized: forceLogout,
-	fetcher: globalThis.fetch
+	fetcher: globalThis.fetch,
+	// The absorbed-motion notice: an info toast, never a dialog and
+	// never a blocked upload -- the upload already succeeded, and the
+	// user only needs to know where that video went.
+	onNotice: (notice) => {
+		if (notice.code === 'LIVE_PHOTO_MOTION_ABSORBED') {
+			toast(get(_)('upload_motion_absorbed', { values: { name: notice.name } }), 'info');
+		}
+	}
 });
 
 export const uploadQueueItems = singleton.items;

@@ -334,6 +334,9 @@ NON_ERROR_KEYS = {
     "upload_conflict_body",
     "upload_conflict_restore",
     "upload_conflict_save_as",
+    # The upload drain's absorbed-motion notice: a Live Photo reused a
+    # standalone video's bytes, and the toast says where the video went.
+    "upload_motion_absorbed",
     # Asset viewer UI strings.
     "viewer_failure_title",
     "viewer_failure_body",

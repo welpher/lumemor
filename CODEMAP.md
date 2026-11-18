@@ -16,6 +16,9 @@ One page so you can add a feature without spelunking.
   thumbnails).
 - `internal/storage/` — the blob tree (`originals/<userId>/…`, the storage
   template engine, `data/trash/` lifecycle).
+- `internal/maintenance/` — the boot-time repairs no request owns: the
+  orphan-originals sweep that reclaims files a never-committed upload left
+  behind (the price of keeping placed files on an ambiguous commit).
 - `internal/geodata/` — the baked GeoNames loader and the in-memory
   resolution grid.
 - `internal/ml/` — the onnxruntime inference layer (model registry, slots).

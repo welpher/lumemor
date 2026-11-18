@@ -3,13 +3,14 @@
 //
 
 // ignore_for_file: unused_element
+import 'package:lumemor_api/src/model/asset_notice.dart';
 import 'package:built_collection/built_collection.dart';
 import 'package:built_value/built_value.dart';
 import 'package:built_value/serializer.dart';
 
 part 'asset_response.g.dart';
 
-/// One stored asset as the upload and idempotency endpoints return it. `state` discriminates the upload outcome: `created` (201, a new asset), `duplicate` (200, an identical live asset already existed), `trashed` (200, an identical asset sits in the trash; the body carries that asset so the client can offer restore or save-as-new). The idempotency lookup mirrors the same states: it reports what a re-upload of the content would yield, so `created` never appears there. 
+/// One stored asset as the upload and idempotency endpoints return it. `state` discriminates the upload outcome: `created` (201, a new asset), `duplicate` (200, an identical live asset already existed), `trashed` (200, an identical asset sits in the trash; the body carries that asset so the client can offer restore or save-as-new). The idempotency lookup mirrors the same states: it reports what a re-upload of the content would yield, so `created` never appears there.  `notices` is absent or empty unless something needs telling: the one current case is a Live Photo whose motion bytes were reused as an existing standalone video's row. A client that ignores it leaves the user with a video that silently stopped listing on its own, so the obligation to surface each notice is part of the contract, not a presentation choice. 
 ///
 /// Properties:
 /// * [id] - UUIDv7 identifier of the asset.
@@ -23,6 +24,7 @@ part 'asset_response.g.dart';
 /// * [createdAt] - When the asset record was created (RFC 3339 UTC).
 /// * [takenAt] - Capture time (RFC 3339). Seeded from `deviceCreatedAt` (or the upload time when absent) and refined from EXIF by the metadata pipeline; responses render the best value the server has at answer time. 
 /// * [isTrashed] - True when the asset sits in the trash; `state: trashed` responses carry it as true so clients can offer the restore or save-as-new decision. 
+/// * [notices] - What the client must tell the user about this upload. Absent or empty when there is nothing to say; the array is informational, never a failure list. Present on a 201 `created` answer today (a Live Photo motion absorbed into an existing video); the client surfaces each entry to the user without blocking the upload. 
 @BuiltValue()
 abstract class AssetResponse implements Built<AssetResponse, AssetResponseBuilder> {
   /// UUIDv7 identifier of the asset.
@@ -70,6 +72,10 @@ abstract class AssetResponse implements Built<AssetResponse, AssetResponseBuilde
   /// True when the asset sits in the trash; `state: trashed` responses carry it as true so clients can offer the restore or save-as-new decision. 
   @BuiltValueField(wireName: r'isTrashed')
   bool get isTrashed;
+
+  /// What the client must tell the user about this upload. Absent or empty when there is nothing to say; the array is informational, never a failure list. Present on a 201 `created` answer today (a Live Photo motion absorbed into an existing video); the client surfaces each entry to the user without blocking the upload. 
+  @BuiltValueField(wireName: r'notices')
+  BuiltList<AssetNotice>? get notices;
 
   AssetResponse._();
 
@@ -149,6 +155,13 @@ class _$AssetResponseSerializer implements PrimitiveSerializer<AssetResponse> {
       object.isTrashed,
       specifiedType: const FullType(bool),
     );
+    if (object.notices != null) {
+      yield r'notices';
+      yield serializers.serialize(
+        object.notices,
+        specifiedType: const FullType(BuiltList, [FullType(AssetNotice)]),
+      );
+    }
   }
 
   @override
@@ -248,6 +261,14 @@ class _$AssetResponseSerializer implements PrimitiveSerializer<AssetResponse> {
             specifiedType: const FullType(bool),
           ) as bool;
           result.isTrashed = valueDes;
+          break;
+        case r'notices':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType.nullable(BuiltList, [FullType(AssetNotice)]),
+          ) as BuiltList<AssetNotice>?;
+          if (valueDes == null) continue;
+          result.notices.replace(valueDes);
           break;
         default:
           unhandled.add(key);

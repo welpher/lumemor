@@ -53,6 +53,7 @@ export 'package:lumemor_api/src/model/asset_album_ref.dart';
 export 'package:lumemor_api/src/model/asset_coordinates.dart';
 export 'package:lumemor_api/src/model/asset_detail.dart';
 export 'package:lumemor_api/src/model/asset_face_summary.dart';
+export 'package:lumemor_api/src/model/asset_notice.dart';
 export 'package:lumemor_api/src/model/asset_patch.dart';
 export 'package:lumemor_api/src/model/asset_place_ref.dart';
 export 'package:lumemor_api/src/model/asset_response.dart';
