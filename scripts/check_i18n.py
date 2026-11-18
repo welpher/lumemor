@@ -337,6 +337,9 @@ NON_ERROR_KEYS = {
     # The upload drain's absorbed-motion notice: a Live Photo reused a
     # standalone video's bytes, and the toast says where the video went.
     "upload_motion_absorbed",
+    # The reverse direction's notice: the uploaded video's bytes
+    # already play as some Live Photo's motion.
+    "upload_motion_already_stored",
     # Asset viewer UI strings.
     "viewer_failure_title",
     "viewer_failure_body",
