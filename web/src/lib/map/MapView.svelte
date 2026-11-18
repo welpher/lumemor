@@ -324,6 +324,19 @@
 	});
 
 	/** A pin or bubble click: the place ids it stands for. */
+	/**
+	 * The pin's visible size by photo count, the design's four-step
+	 * ladder: 26 / 30 / 34 / 40 px. The value is a MINIMUM width, not a
+	 * cap -- a four-digit count widens the circle into a capsule instead
+	 * of clipping the digits.
+	 */
+	function pinDiameter(count: number): number {
+		if (count < 10) return 26;
+		if (count < 100) return 30;
+		if (count < 1000) return 34;
+		return 40;
+	}
+
 	function pick(marker: Marker): void {
 		if (onselect !== undefined && marker.placeIds.length > 0) {
 			onselect(marker.placeIds);
@@ -399,31 +412,24 @@
 					: $_('places_map_pin_label', { values: { name: marker.name, count: marker.count } })}
 				onclick={() => pick(marker)}
 			>
+				<!-- Only the number: a map point already says "photos
+				     here", and the icon is that sentence twice. The
+				     size reads the count; the background carries the
+				     identity (accent = a group, card = a named city)
+				     and keeps the digits legible over the basemap. -->
 				<span
-					class="map__pin-pill inline-flex items-center gap-1 rounded-full font-body font-semibold text-[13px] leading-[1.4] transition-[scale,border-color] duration-(--motion-fast) ease-standard hover:scale-105 {marker.name ===
+					class="map__pin-pill inline-flex items-center justify-center rounded-full font-body font-semibold text-[13px] leading-[1.4] tabular-nums transition-[scale,border-color] duration-(--motion-fast) ease-standard hover:scale-105 {marker.name ===
 					null
-						? 'bg-accent text-accent-on px-2.5 h-9 shadow-overlay'
-						: 'bg-card text-text border border-border-strong px-2.5 py-1 shadow-card'} {isSelected(marker)
+						? 'bg-accent text-accent-on shadow-overlay'
+						: 'bg-card text-text border border-border-strong shadow-card'} {isSelected(marker)
 						? 'ring-2 ring-accent'
 						: marker.name === null
 							? 'ring-2 ring-card'
 							: ''}"
+					style="min-width: {pinDiameter(marker.count)}px; height: {pinDiameter(
+						marker.count
+					)}px; padding-inline: 6px"
 				>
-					<svg
-						aria-hidden="true"
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-						<circle cx="9" cy="9" r="2" />
-						<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-					</svg>
 					{marker.count}
 				</span>
 				{#if marker.name !== null}
