@@ -274,6 +274,40 @@ test('a 201 notice reaches the injected handler without blocking the row', () =>
 	expect(rig.notice).toHaveBeenCalledTimes(1);
 });
 
+test('a 200 duplicate notice reaches the injected handler and the row still completes', () => {
+	const rig = buildQueue();
+	rig.queue.enqueueFiles([photoFile('clip.mov')]);
+	const xhr = xhrsOf(rig)[0] as StubXHR;
+	const notice = {
+		code: 'LIVE_PHOTO_MOTION_ALREADY_STORED',
+		assetId: '0192f4b2-6c7d-7e8f-9a0b-1c2d3e4f5a60',
+		name: 'clip.mov'
+	};
+	xhr.answer(200, { ...assetBody('asset-motion', 'duplicate'), notices: [notice] });
+
+	// The notice arrives intact: the duplicate names a Live Photo's
+	// hidden motion, and the user has to hear why their video does
+	// not list on its own.
+	expect(rig.notice).toHaveBeenCalledTimes(1);
+	expect(rig.notice).toHaveBeenCalledWith(notice);
+
+	// The row itself settled exactly like a plain duplicate: done, no
+	// conflict dialog, no failure -- the notice is information.
+	const item = rig.queue.items()[0] as UploadItem;
+	expect(item.state).toBe('done');
+	expect(item.progress).toBe(1);
+	expect(item.errorKey).toBe('');
+	expect(item.asset?.id).toBe('asset-motion');
+	expect(rig.queue.conflictItemId()).toBeNull();
+
+	// A 200 duplicate without notices hands nothing over.
+	rig.queue.enqueueFiles([photoFile('plain.jpg')]);
+	const plain = xhrsOf(rig)[1] as StubXHR;
+	plain.answer(200, assetBody('asset-plain-dup', 'duplicate'));
+	expect(rig.notice).toHaveBeenCalledTimes(1);
+	expect(rig.queue.items()[1]?.state).toBe('done');
+});
+
 test('a trashed answer parks the row and its restore resolves through the batch endpoint', async () => {
 	const rig = buildQueue();
 	rig.queue.enqueueFiles([photoFile()]);

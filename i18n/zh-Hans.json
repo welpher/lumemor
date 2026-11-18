@@ -122,6 +122,7 @@
   "upload_conflict_restore": "恢复回收站副本",
   "upload_conflict_save_as": "仅保留本次上传",
   "upload_motion_absorbed": "「{name}」已合并为这张 Live Photo 的动态，不再单独显示",
+  "upload_motion_already_stored": "「{name}」已是某张 Live Photo 的动态，不再单独显示",
   "viewer_failure_title": "打不开这张照片",
   "viewer_failure_body": "它可能已被删除，或文件在磁盘上不见了。",
   "viewer_info_loading": "正在加载照片信息…",

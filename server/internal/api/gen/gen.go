@@ -262,13 +262,16 @@ func (e AssetDetailTakenAtSource) Valid() bool {
 
 // Defines values for AssetNoticeCode.
 const (
-	AssetNoticeCodeLivePhotoMotionAbsorbed AssetNoticeCode = "LIVE_PHOTO_MOTION_ABSORBED"
+	AssetNoticeCodeLivePhotoMotionAbsorbed      AssetNoticeCode = "LIVE_PHOTO_MOTION_ABSORBED"
+	AssetNoticeCodeLivePhotoMotionAlreadyStored AssetNoticeCode = "LIVE_PHOTO_MOTION_ALREADY_STORED"
 )
 
 // Valid indicates whether the value is a known member of the AssetNoticeCode enum.
 func (e AssetNoticeCode) Valid() bool {
 	switch e {
 	case AssetNoticeCodeLivePhotoMotionAbsorbed:
+		return true
+	case AssetNoticeCodeLivePhotoMotionAlreadyStored:
 		return true
 	default:
 		return false
@@ -2522,14 +2525,24 @@ type AssetFaceSummary struct {
 // response's asset fields. Notices are informational, never
 // failures -- the upload itself succeeded.
 type AssetNotice struct {
-	// AssetId The asset the notice is about: the reused row that became
-	// the Live Photo's motion.
+	// AssetId The asset the notice is about: the video row that plays as
+	// a Live Photo's motion.
 	AssetId openapi_types.UUID `json:"assetId"`
 
-	// Code What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
-	// Photo's motion bytes already existed as a live standalone
-	// video of this owner; that row became the pair's motion
-	// (`assetId` names it) and no longer lists as its own asset.
+	// Code What happened.
+	//
+	// `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes
+	// already existed as a live standalone video of this owner;
+	// that row became the pair's motion (`assetId` names it) and
+	// no longer lists as its own asset. Carried on a 201
+	// `created` answer.
+	//
+	// `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes
+	// already play as a Live Photo's motion, so the returned
+	// row is that hidden component (`assetId` names it) and does
+	// not list on its own. Carried on a 200 `duplicate` answer:
+	// the content genuinely exists, so the state stays
+	// `duplicate` -- there is nothing for the user to fix.
 	Code AssetNoticeCode `json:"code"`
 
 	// Name The affected asset's original filename, so the message can
@@ -2537,10 +2550,20 @@ type AssetNotice struct {
 	Name string `json:"name"`
 }
 
-// AssetNoticeCode What happened. `LIVE_PHOTO_MOTION_ABSORBED`: the Live
-// Photo's motion bytes already existed as a live standalone
-// video of this owner; that row became the pair's motion
-// (`assetId` names it) and no longer lists as its own asset.
+// AssetNoticeCode What happened.
+//
+// `LIVE_PHOTO_MOTION_ABSORBED`: the Live Photo's motion bytes
+// already existed as a live standalone video of this owner;
+// that row became the pair's motion (`assetId` names it) and
+// no longer lists as its own asset. Carried on a 201
+// `created` answer.
+//
+// `LIVE_PHOTO_MOTION_ALREADY_STORED`: the uploaded bytes
+// already play as a Live Photo's motion, so the returned
+// row is that hidden component (`assetId` names it) and does
+// not list on its own. Carried on a 200 `duplicate` answer:
+// the content genuinely exists, so the state stays
+// `duplicate` -- there is nothing for the user to fix.
 type AssetNoticeCode string
 
 // AssetPatch The partial edit of one asset: every field is optional, at
@@ -2635,11 +2658,13 @@ type AssetPlaceRef struct {
 // `created` never appears there.
 //
 // `notices` is absent or empty unless something needs telling:
-// the one current case is a Live Photo whose motion bytes were
-// reused as an existing standalone video's row. A client that
-// ignores it leaves the user with a video that silently stopped
-// listing on its own, so the obligation to surface each notice is
-// part of the contract, not a presentation choice.
+// a Live Photo whose motion bytes were reused as an existing
+// standalone video's row, or a standalone video whose bytes
+// already play as some Live Photo's motion (the returned row is
+// then that hidden component, still a `duplicate`). A client
+// that ignores it leaves the user with a video that silently
+// stopped listing on its own, so the obligation to surface each
+// notice is part of the contract, not a presentation choice.
 type AssetResponse struct {
 	// Checksum SHA-256 digest of the file bytes, lowercase hex. The
 	// owner-scoped idempotency key of the upload.
