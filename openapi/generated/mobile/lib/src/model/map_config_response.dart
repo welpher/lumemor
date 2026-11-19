@@ -13,6 +13,8 @@ part 'map_config_response.g.dart';
 /// Properties:
 /// * [tilejsonUrl] - The light tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The dark theme falls back to this source when `darkTilejsonUrl` is null. The pin data never crosses the tile line: it comes from `GET /places`. 
 /// * [darkTilejsonUrl] - The dark tile source URL, loaded by the dark theme instead of `tilejsonUrl`; null (or, equivalently, the instance not configuring one) means the dark theme reuses the light source. The light theme never loads it. 
+/// * [gcj02] - Whether the light source draws in GCJ-02 (the offset datum Amap and Tencent use inside China). False is the standard WGS-84 every other source draws in, and the shipped default. The browser converts the pins into the active source's datum for display and converts a picked point back to WGS-84 before it reaches the library -- the stored coordinates never leave WGS-84. 
+/// * [darkGcj02] - Whether the dark source draws in GCJ-02, on the same rule as `gcj02`. When no dark source is configured the dark theme reuses the light source and this flag is not consulted. 
 @BuiltValue()
 abstract class MapConfigResponse implements Built<MapConfigResponse, MapConfigResponseBuilder> {
   /// The light tile source URL the browser loads directly from the tile host (a style document or a TileJSON descriptor); null means no source is configured and the map renders its stated absence. The dark theme falls back to this source when `darkTilejsonUrl` is null. The pin data never crosses the tile line: it comes from `GET /places`. 
@@ -22,6 +24,14 @@ abstract class MapConfigResponse implements Built<MapConfigResponse, MapConfigRe
   /// The dark tile source URL, loaded by the dark theme instead of `tilejsonUrl`; null (or, equivalently, the instance not configuring one) means the dark theme reuses the light source. The light theme never loads it. 
   @BuiltValueField(wireName: r'darkTilejsonUrl')
   String? get darkTilejsonUrl;
+
+  /// Whether the light source draws in GCJ-02 (the offset datum Amap and Tencent use inside China). False is the standard WGS-84 every other source draws in, and the shipped default. The browser converts the pins into the active source's datum for display and converts a picked point back to WGS-84 before it reaches the library -- the stored coordinates never leave WGS-84. 
+  @BuiltValueField(wireName: r'gcj02')
+  bool get gcj02;
+
+  /// Whether the dark source draws in GCJ-02, on the same rule as `gcj02`. When no dark source is configured the dark theme reuses the light source and this flag is not consulted. 
+  @BuiltValueField(wireName: r'darkGcj02')
+  bool get darkGcj02;
 
   MapConfigResponse._();
 
@@ -55,6 +65,16 @@ class _$MapConfigResponseSerializer implements PrimitiveSerializer<MapConfigResp
     yield object.darkTilejsonUrl == null ? null : serializers.serialize(
       object.darkTilejsonUrl,
       specifiedType: const FullType.nullable(String),
+    );
+    yield r'gcj02';
+    yield serializers.serialize(
+      object.gcj02,
+      specifiedType: const FullType(bool),
+    );
+    yield r'darkGcj02';
+    yield serializers.serialize(
+      object.darkGcj02,
+      specifiedType: const FullType(bool),
     );
   }
 
@@ -94,6 +114,20 @@ class _$MapConfigResponseSerializer implements PrimitiveSerializer<MapConfigResp
           ) as String?;
           if (valueDes == null) continue;
           result.darkTilejsonUrl = valueDes;
+          break;
+        case r'gcj02':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.gcj02 = valueDes;
+          break;
+        case r'darkGcj02':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.darkGcj02 = valueDes;
           break;
         default:
           unhandled.add(key);
