@@ -19,5 +19,17 @@ void main() {
       // TODO
     });
 
+    // Whether the light source draws in GCJ-02 (the offset datum Amap and Tencent use inside China). False is the standard WGS-84 every other source draws in, and the shipped default. The browser converts the pins into the active source's datum for display and converts a picked point back to WGS-84 before it reaches the library -- the stored coordinates never leave WGS-84. 
+    // bool gcj02
+    test('to test the property `gcj02`', () async {
+      // TODO
+    });
+
+    // Whether the dark source draws in GCJ-02, on the same rule as `gcj02`. When no dark source is configured the dark theme reuses the light source and this flag is not consulted. 
+    // bool darkGcj02
+    test('to test the property `darkGcj02`', () async {
+      // TODO
+    });
+
   });
 }

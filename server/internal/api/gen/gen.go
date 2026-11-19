@@ -3370,6 +3370,15 @@ type LoginRequest struct {
 // the light and dark tile sources the browser loads, each null
 // when the instance has none.
 type MapConfigResponse struct {
+	// DarkGcj02 Whether the dark source draws in GCJ-02, on the same
+	// rule as `gcj02`. When no dark source is configured the
+	// dark theme reuses the light source and this flag is
+	// not consulted.
+	//
+	//
+	// Examples: false, true
+	DarkGcj02 bool `json:"darkGcj02"`
+
 	// DarkTilejsonUrl The dark tile source URL, loaded by the dark theme
 	// instead of `tilejsonUrl`; null (or, equivalently, the
 	// instance not configuring one) means the dark theme reuses
@@ -3378,6 +3387,18 @@ type MapConfigResponse struct {
 	//
 	// Examples: https://tiles.example.net/planet/style-dark.json, null
 	DarkTilejsonUrl *string `json:"darkTilejsonUrl"`
+
+	// Gcj02 Whether the light source draws in GCJ-02 (the offset
+	// datum Amap and Tencent use inside China). False is the
+	// standard WGS-84 every other source draws in, and the
+	// shipped default. The browser converts the pins into the
+	// active source's datum for display and converts a picked
+	// point back to WGS-84 before it reaches the library --
+	// the stored coordinates never leave WGS-84.
+	//
+	//
+	// Examples: false, true
+	Gcj02 bool `json:"gcj02"`
 
 	// TilejsonUrl The light tile source URL the browser loads directly from
 	// the tile host (a style document or a TileJSON
@@ -4732,6 +4753,14 @@ type TagSummary struct {
 // successful `PUT`: the light style plus the optional dark one,
 // each empty when unconfigured.
 type TilesSettingsResponse struct {
+	// DarkGcj02 The dark source's coordinate system, on the same rule as
+	// `gcj02`. An empty dark source reuses the light one, and
+	// the light source's flag then governs the dark theme too.
+	//
+	//
+	// Examples: false, true
+	DarkGcj02 bool `json:"darkGcj02"`
+
 	// DarkTilejsonUrl The dark tile source URL, same shapes as the light one.
 	// The empty string means the dark theme reuses
 	// `tilejsonUrl` -- one source, one look in both themes. A
@@ -4740,6 +4769,18 @@ type TilesSettingsResponse struct {
 	//
 	// Examples: https://tiles.example.net/osm-dark/tilejson.json,
 	DarkTilejsonUrl string `json:"darkTilejsonUrl"`
+
+	// Gcj02 The light source's coordinate system: `true` when its
+	// basemap draws in GCJ-02 (the offset datum Amap and Tencent
+	// use inside China), `false` for the standard WGS-84 every
+	// other source draws in. The flag is a property of the
+	// source, not of the library: the stored photo coordinates
+	// stay WGS-84 and the map converts only at the display and
+	// pick boundaries.
+	//
+	//
+	// Examples: false, true
+	Gcj02 bool `json:"gcj02"`
 
 	// TilejsonUrl The light tile source URL: a style document (vector) or
 	// a TileJSON descriptor (raster), loaded by the browser in
@@ -4756,12 +4797,31 @@ type TilesSettingsResponse struct {
 // TilesSettingsUpdateRequest Payload of `PUT /admin/settings/tiles`: both styles, one
 // document. The save replaces the pair wholesale.
 type TilesSettingsUpdateRequest struct {
+	// DarkGcj02 The dark source's coordinate system, on the same rule as
+	// `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted
+	// for WGS-84. Ignored while the dark source is empty (the
+	// light source then governs both themes).
+	//
+	//
+	// Examples: false, true
+	DarkGcj02 *bool `json:"darkGcj02,omitempty"`
+
 	// DarkTilejsonUrl The dark tile source URL to save. Omitting it or sending
 	// the empty string clears it (the dark theme then reuses
 	// the light source). A non-empty value follows the light
 	// field's rule: an absolute `http` or `https` URL, a LAN
 	// address included.
 	DarkTilejsonUrl *string `json:"darkTilejsonUrl,omitempty"`
+
+	// Gcj02 The light source's coordinate system: `true` for a GCJ-02
+	// basemap (Amap, Tencent), `false` or omitted for the
+	// standard WGS-84. Omitting it saves the false default, so
+	// a client unaware of the flag keeps behaving exactly as
+	// before.
+	//
+	//
+	// Examples: false, true
+	Gcj02 *bool `json:"gcj02,omitempty"`
 
 	// TilejsonUrl The light tile source URL to save, or the empty string to
 	// clear it. A non-empty value must be an absolute `http`
