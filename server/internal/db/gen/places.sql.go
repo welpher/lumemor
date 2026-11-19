@@ -17,14 +17,40 @@ FROM assets a
 JOIN exif e ON e.asset_id = a.id
 WHERE e.lat IS NOT NULL
   AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL
 `
 
-// The scope size of the places re-resolution run: every asset whose
-// exif row carries GPS coordinates (the rows the in-memory grid can
-// resolve), whatever the row's lifecycle state -- place resolution is
-// metadata, not visibility.
+// The scope size of the places re-resolution run's full mode: every
+// asset whose exif row carries GPS coordinates (the rows the
+// in-memory grid can resolve), whatever the row's lifecycle state --
+// place resolution is metadata, not visibility. The manual-location
+// guard is the walk's own predicate (see ListGpsAssetPage): a row the
+// owner located by hand belongs to that decision, so the count and the
+// walk cover the same rows and a run converges to done = total.
 func (q *Queries) CountGpsAssets(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countGpsAssets)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countMissingPlaceAssets = `-- name: CountMissingPlaceAssets :one
+SELECT count(*)
+FROM assets a
+JOIN exif e ON e.asset_id = a.id
+WHERE e.lat IS NOT NULL
+  AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL
+  AND a.place_id IS NULL
+`
+
+// The fill-in scope's size: the GPS-bearing rows whose place is
+// absent -- the subset a missing-only re-resolution walks, exactly
+// the same row predicate as CountGpsAssets narrowed by place_id
+// (the manual-location guard included, so the count and the walk
+// cover the same rows).
+func (q *Queries) CountMissingPlaceAssets(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countMissingPlaceAssets)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -217,6 +243,57 @@ func (q *Queries) ListGpsAssetPage(ctx context.Context, arg ListGpsAssetPagePara
 	var items []ListGpsAssetPageRow
 	for rows.Next() {
 		var i ListGpsAssetPageRow
+		if err := rows.Scan(&i.ID, &i.Lat, &i.Lon); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMissingPlaceAssetPage = `-- name: ListMissingPlaceAssetPage :many
+SELECT a.id,
+       e.lat,
+       e.lon
+FROM assets a
+JOIN exif e ON e.asset_id = a.id
+WHERE e.lat IS NOT NULL
+  AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL
+  AND a.place_id IS NULL
+  AND a.id > $1
+ORDER BY a.id
+LIMIT $2
+`
+
+type ListMissingPlaceAssetPageParams struct {
+	Cursor     pgtype.UUID `json:"cursor"`
+	LimitCount int32       `json:"limit_count"`
+}
+
+type ListMissingPlaceAssetPageRow struct {
+	ID  pgtype.UUID   `json:"id"`
+	Lat pgtype.Float8 `json:"lat"`
+	Lon pgtype.Float8 `json:"lon"`
+}
+
+// One page of the fill-in scope, keyset-ordered by the asset id (the
+// same walk shape as ListGpsAssetPage): only the rows whose place is
+// absent, so a missing-only run rewrites nothing that already
+// resolved. The manual-location rows stay outside, the walk's own
+// discipline (the owner's newer decision owns those rows).
+func (q *Queries) ListMissingPlaceAssetPage(ctx context.Context, arg ListMissingPlaceAssetPageParams) ([]ListMissingPlaceAssetPageRow, error) {
+	rows, err := q.db.Query(ctx, listMissingPlaceAssetPage, arg.Cursor, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMissingPlaceAssetPageRow
+	for rows.Next() {
+		var i ListMissingPlaceAssetPageRow
 		if err := rows.Scan(&i.ID, &i.Lat, &i.Lon); err != nil {
 			return nil, err
 		}
