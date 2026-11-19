@@ -40,21 +40,38 @@ export type TileSource = {
 export type TileSourceResult = { ok: true; source: TileSource } | { ok: false };
 
 /**
- * The tile source URL for one theme: the dark style when the theme is
+ * The configured source pair: the two URLs (null or the empty string
+ * when unconfigured) and each source's coordinate system. The GCJ-02
+ * flag belongs to the source, not to the map: an instance may mix a
+ * standard light style with a China-datum dark one.
+ */
+export type MapSources = {
+	light: string | null;
+	dark: string | null;
+	lightGcj02: boolean;
+	darkGcj02: boolean;
+};
+
+/** The source one theme draws: its URL and its coordinate system. */
+export type ActiveTileSource = { url: string; gcj02: boolean };
+
+/**
+ * The tile source for one theme: the dark style when the theme is
  * dark AND one is configured, the light style otherwise (the dark
- * theme reuses the light source when it has none of its own). Null
+ * theme reuses the light source when it has none of its own -- and
+ * then the light source's coordinate flag governs both themes). Null
  * when neither is configured -- the map's stated absence.
  *
  * Both URLs use the empty string for "unconfigured" as they arrive
  * from the config read (the read flattens the contract's null into
  * it), so a whitespace-free comparison is all the rule needs.
  */
-export function tileSourceForTheme(lightUrl: string | null, darkUrl: string | null, darkTheme: boolean): string | null {
-	if (darkTheme && darkUrl !== null && darkUrl !== '') {
-		return darkUrl;
+export function tileSourceForTheme(sources: MapSources, darkTheme: boolean): ActiveTileSource | null {
+	if (darkTheme && sources.dark !== null && sources.dark !== '') {
+		return { url: sources.dark, gcj02: sources.darkGcj02 };
 	}
-	if (lightUrl !== null && lightUrl !== '') {
-		return lightUrl;
+	if (sources.light !== null && sources.light !== '') {
+		return { url: sources.light, gcj02: sources.lightGcj02 };
 	}
 	return null;
 }
@@ -229,8 +246,10 @@ export function placesFeatureCollection(places: readonly PlacePoint[]): GeoJSON.
 	};
 }
 
-/** The [west, south, east, north] bounds of the pins, null when empty. */
-export function placesBounds(places: readonly PlacePoint[]): [number, number, number, number] | null {
+/** The [west, south, east, north] bounds of the points, null when empty. */
+export function placesBounds(
+	places: readonly Pick<PlacePoint, 'lat' | 'lon'>[]
+): [number, number, number, number] | null {
 	if (places.length === 0) {
 		return null;
 	}

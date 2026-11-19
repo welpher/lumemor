@@ -13,9 +13,17 @@
 import { apiFetch, errorEnvelope } from '$lib/auth/api';
 
 /** The map configuration read's outcome: the light and dark tile
- * source URLs, each null when the instance has none. */
+ * source URLs, each null when the instance has none, and each
+ * source's coordinate system (true = GCJ-02, false = WGS-84). */
 export type MapConfigResult =
-	{ ok: true; tilejsonUrl: string | null; darkTilejsonUrl: string | null } | { ok: false; errorKey: string };
+	| {
+			ok: true;
+			tilejsonUrl: string | null;
+			darkTilejsonUrl: string | null;
+			gcj02: boolean;
+			darkGcj02: boolean;
+	  }
+	| { ok: false; errorKey: string };
 
 /** The config endpoint. */
 const MAP_CONFIG_ENDPOINT = '/api/v1/map/config';
@@ -31,10 +39,10 @@ async function errorKeyFrom(response: Response): Promise<string> {
 
 /**
  * GET /api/v1/map/config: the light and dark tile source URLs, each
- * null when the instance has none. Both are successful reads; only a
- * transport or shape failure is an error. The contract declares both
- * fields required, and the empty string is the same unconfigured
- * state as null.
+ * null when the instance has none, and each source's coordinate
+ * system. All are required by the contract, so a body missing one is
+ * a shape failure; the empty string is the same unconfigured state as
+ * null.
  */
 export async function getMapConfig(fetcher: typeof fetch = globalThis.fetch): Promise<MapConfigResult> {
 	let response: Response;
@@ -57,10 +65,24 @@ export async function getMapConfig(fetcher: typeof fetch = globalThis.fetch): Pr
 	}
 	const light = tileSourceOf(body, 'tilejsonUrl');
 	const dark = tileSourceOf(body, 'darkTilejsonUrl');
-	if (light === null || dark === null) {
+	const lightFlag = gcjFlagOf(body, 'gcj02');
+	const darkFlag = gcjFlagOf(body, 'darkGcj02');
+	if (light === null || dark === null || lightFlag === null || darkFlag === null) {
 		return { ok: false, errorKey: 'internal' };
 	}
-	return { ok: true, tilejsonUrl: light.value, darkTilejsonUrl: dark.value };
+	return {
+		ok: true,
+		tilejsonUrl: light.value,
+		darkTilejsonUrl: dark.value,
+		gcj02: lightFlag,
+		darkGcj02: darkFlag
+	};
+}
+
+/** One source's coordinate flag, null when the body carries no boolean. */
+function gcjFlagOf(body: object, key: 'gcj02' | 'darkGcj02'): boolean | null {
+	const value = (body as Record<string, unknown>)[key];
+	return typeof value === 'boolean' ? value : null;
 }
 
 /**
