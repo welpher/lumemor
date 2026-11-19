@@ -1,6 +1,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { initI18n } from '$lib/i18n';
+import { clearToasts, toasts } from '$lib/components/toast.svelte';
 import Page from './+page.svelte';
 
 // The admin settings page (the geometry: the
@@ -80,6 +81,18 @@ function derivativesSummaryBody(imageCount = 0, estimateMinutes = 1): Record<str
 	return { imageCount, estimateMinutes };
 }
 
+const PLACES_DIGEST = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90';
+
+function placesDatabaseBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		version: PLACES_DIGEST,
+		languages: ['en', 'zh-Hans'],
+		gpsAssets: 12,
+		missingPlaces: 3,
+		...overrides
+	};
+}
+
 function updateCheckStateBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		enabled: true,
@@ -112,6 +125,7 @@ function defaultReads(overrides: Partial<FetchRoute> = {}): FetchRoute {
 		'/api/v1/admin/settings/models': () => jsonResponse(200, modelSettingsBody()),
 		'/api/v1/admin/settings/image': () => jsonResponse(200, imageSettingsBody()),
 		'/api/v1/admin/derivatives/summary': () => jsonResponse(200, derivativesSummaryBody()),
+		'/api/v1/admin/places': () => jsonResponse(200, placesDatabaseBody()),
 		'/api/v1/server/update-check': () => jsonResponse(200, updateCheckStateBody()),
 		...overrides
 	};
@@ -217,6 +231,7 @@ afterEach(() => {
 	}
 	document.body.innerHTML = '';
 	vi.unstubAllGlobals();
+	clearToasts();
 });
 
 test('the read renders the page-header row, the template, the presets and the sample line', async () => {
@@ -952,4 +967,109 @@ test('the rebuild dialog opens over the collapsed card, defaults to the missing 
 	buttonByText('Start rebuild').click();
 	await settle();
 	expect(postedScope).toBe('missing');
+});
+
+test('the map card carries the place database row and the collapsed meta names its marker', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	vi.stubGlobal('fetch', stubFetch(defaultReads()));
+	mountPage();
+	await settle();
+
+	const card = document.body.querySelector<HTMLDetailsElement>('[data-testid="admin-settings-tiles"]');
+	// The folded index names the version beside the tile state (a
+	// content digest shortens to its first eight characters).
+	const meta = card?.querySelector<HTMLElement>('.settings__section-meta');
+	expect(meta?.textContent).toContain('not configured · Place database a1b2c3d4');
+	expect(meta?.textContent).not.toContain(PLACES_DIGEST);
+
+	card?.querySelector('summary')?.click();
+	await settle();
+
+	// The read-only row: the marker and the baked locale set.
+	const row = document.body.querySelector<HTMLElement>('[data-testid="admin-settings-places-db"]');
+	expect(row?.textContent).toContain('Place database a1b2c3d4');
+	expect(row?.textContent).toContain('en / zh-Hans');
+	// The note states the boundary and the rebuild entry stands beside it.
+	const places = document.body.querySelector<HTMLElement>('[data-testid="admin-settings-places"]');
+	expect(places?.textContent).toContain('The database ships with the image');
+	expect(places?.querySelector('[data-testid="admin-settings-places-rebuild"]')).not.toBeNull();
+});
+
+test('the place rebuild dialog pairs the two modes, follows the mode with its estimate and POSTs it', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	let postedMode: unknown = null;
+	const reads = defaultReads();
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			if (url === '/api/v1/admin/places/reresolve' && init?.method === 'POST') {
+				postedMode = JSON.parse(String(init.body)).mode;
+				return jsonResponse(202, { jobRunId: '0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10' });
+			}
+			const answer = reads[url];
+			if (answer === undefined) {
+				throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
+			}
+			return answer(init);
+		})
+	);
+	mountPage();
+	await settle();
+
+	document.body.querySelector<HTMLElement>('[data-testid="admin-settings-tiles"] summary')?.click();
+	await settle();
+	document.body.querySelector<HTMLElement>('[data-testid="admin-settings-places-rebuild"]')?.click();
+	await settle();
+
+	const dialog = document.body.querySelector<HTMLElement>('[data-testid="places-rebuild-dialog"]');
+	expect(dialog).not.toBeNull();
+	// Both modes are offered, the fill-in one chosen by default.
+	const missing = dialog?.querySelector<HTMLInputElement>('input[value="missing"]');
+	const all = dialog?.querySelector<HTMLInputElement>('input[value="all"]');
+	expect(missing?.checked).toBe(true);
+	expect(all?.checked).toBe(false);
+	// The warning names the consequence of the full mode.
+	expect(dialog?.textContent).toContain('A full re-resolve rewrites history');
+	// The estimate quotes the read's count for the selected mode and
+	// follows the mode switch.
+	const estimate = dialog?.querySelector<HTMLElement>('[data-testid="places-rebuild-estimate"]');
+	expect(estimate?.textContent).toContain('Will fill 3 photos.');
+	all?.click();
+	await settle();
+	expect(estimate?.textContent).toContain('Will re-resolve 12 photos.');
+
+	document.body.querySelector<HTMLButtonElement>('[data-testid="places-rebuild-start"]')?.click();
+	await settle();
+
+	expect(postedMode).toBe('all');
+	expect(document.body.querySelector('[data-testid="places-rebuild-dialog"]')).toBeNull();
+	const queued = toasts();
+	expect(queued.at(-1)?.text).toBe('Rebuild started; follow its progress on the Jobs page.');
+});
+
+test('a failed place-database read says the count comes once counted, not a fabricated number', async () => {
+	window.localStorage.removeItem('lumemor:settings:expanded');
+	vi.stubGlobal(
+		'fetch',
+		stubFetch(
+			defaultReads({
+				'/api/v1/admin/places': () => jsonResponse(500, { code: 'INTERNAL', message: 'boom' })
+			})
+		)
+	);
+	mountPage();
+	await settle();
+
+	// The card still renders (the block's read never fails the page),
+	// without a version row.
+	expect(document.body.querySelector('[data-testid="admin-settings-tiles"]')).not.toBeNull();
+	expect(document.body.querySelector('[data-testid="admin-settings-places-db"]')).toBeNull();
+
+	document.body.querySelector<HTMLElement>('[data-testid="admin-settings-tiles"] summary')?.click();
+	await settle();
+	document.body.querySelector<HTMLElement>('[data-testid="admin-settings-places-rebuild"]')?.click();
+	await settle();
+	const estimate = document.body.querySelector<HTMLElement>('[data-testid="places-rebuild-estimate"]');
+	expect(estimate?.textContent).toContain('Shown once counted.');
 });
