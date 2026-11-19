@@ -34,6 +34,8 @@ import 'package:lumemor_api/src/model/model_settings_update_request.dart';
 import 'package:lumemor_api/src/model/model_slot.dart';
 import 'package:lumemor_api/src/model/model_source_switch_request.dart';
 import 'package:lumemor_api/src/model/model_source_switch_response.dart';
+import 'package:lumemor_api/src/model/places_database_response.dart';
+import 'package:lumemor_api/src/model/places_rerun_request.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/rebuild_derivatives_request.dart';
 import 'package:lumemor_api/src/model/rebuild_derivatives_response.dart';
@@ -908,6 +910,90 @@ class AdminApi {
     }
 
     return Response<ModelSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Read the loaded place database and the re-resolution scopes&#39; sizes.
+  /// The map &amp; places card&#39;s read: the place database the instance currently resolves against, plus the size of the two re-resolution scopes the rebuild dialog chooses between.  &#x60;version&#x60; is the data-version marker the startup import wrote. When the marker is a 64-character digest it is a content digest, not a release date: the card displays its first eight characters. An empty string means the instance carries no bake -- the place tables were never imported, so nothing resolves.  &#x60;languages&#x60; is the display-name locale set the bake carries (the same set the places read&#39;s &#x60;locale&#x60; parameter accepts).  The counts are the re-resolution walk&#39;s scope sizes: &#x60;gpsAssets&#x60; counts every GPS-bearing asset row the pipeline owns and &#x60;missingPlaces&#x60; the subset whose place is absent -- exactly what a full run and a missing-only run walk. A row the owner located by hand (&#x60;location_lat&#x60; set) is outside both: that manual decision owns the row, so no count promises work the walk will not do. Place resolution is metadata, not visibility, so the counts are library-wide, never per caller. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [PlacesDatabaseResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<PlacesDatabaseResponse>> getPlacesDatabase({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/places';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    PlacesDatabaseResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(PlacesDatabaseResponse),
+      ) as PlacesDatabaseResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<PlacesDatabaseResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -1990,10 +2076,11 @@ class AdminApi {
     );
   }
 
-  /// Start a full place re-resolution run.
-  /// The places-data-update path of the admin surface: one run that re-resolves the place of EVERY asset whose exif row carries GPS coordinates, against the baked place data the server currently runs on. The run that refills resolutions after the baked GeoNames data changed -- the startup import of a rebuilt image replaces the place tables and, through the schema&#39;s ON DELETE SET NULL, releases every stale resolution; this run is the deliberate step that refills them. (The metadata job resolves every NEW upload on its own; this run only matters for re-resolving what already exists.)  The scope is every GPS-bearing asset row whatever its lifecycle state -- place resolution is metadata, not visibility. &#x60;total&#x60; and &#x60;done&#x60; of the run&#39;s &#x60;job_runs&#x60; row count those assets and &#x60;failed&#x60; the ones whose re-resolution write failed.  The endpoint is idempotent the way the model rerun is: a place re-resolution run still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; a finished (or failed) run never blocks a new one.  The run is API-only for now: no admin page button is wired to it yet (the job panel&#39;s listing shows its progress like any other run). 
+  /// Start a place re-resolution run over the chosen mode.
+  /// The places-data-update path of the admin surface: one run that re-resolves the place of the assets its mode covers, against the baked place data the server currently runs on. The run that refills resolutions after the baked GeoNames data changed -- the startup import of a rebuilt image replaces the place tables and, through the schema&#39;s ON DELETE SET NULL, releases every stale resolution; this run is the deliberate step that refills them. (The metadata job resolves every NEW upload on its own; this run only matters for re-resolving what already exists.)  The mode is the dialog&#39;s honest pair: &#x60;missing&#x60; walks only the GPS-bearing rows whose place is absent (the fill-in path, which rewrites nothing that already resolved), and &#x60;all&#x60; walks every GPS-bearing row (the full re-resolve, which rewrites history -- boundaries that moved change the city). An absent body means &#x60;all&#x60;, the endpoint&#39;s original behavior; any other value is 400 VALIDATION_FAILED.  The scope&#39;s rows are counted whatever their lifecycle state -- place resolution is metadata, not visibility. A row the owner located by hand is outside both modes (the manual decision owns it, no walk rewrites it), and the enqueue counts the same rows the walk visits, so &#x60;total&#x60; and &#x60;done&#x60; converge. &#x60;failed&#x60; counts the rows whose re-resolution write failed.  The endpoint is idempotent the way the model rerun is: a place re-resolution run still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; a finished (or failed) run never blocks a new one. The in-flight join is per kind, not per mode: a &#x60;missing&#x60; run in flight answers a request for &#x60;all&#x60; with 200 as well (v1 does not queue modes; the card points at the jobs page). 
   ///
   /// Parameters:
+  /// * [placesRerunRequest] 
   /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
   /// * [headers] - Can be used to add additional headers to the request
   /// * [extras] - Can be used to add flags to the request
@@ -2004,6 +2091,7 @@ class AdminApi {
   /// Returns a [Future] containing a [Response] with a [PlacesRerunResponse] as data
   /// Throws [DioException] if API call or serialization fails
   Future<Response<PlacesRerunResponse>> reresolvePlaces({ 
+    PlacesRerunRequest? placesRerunRequest,
     CancelToken? cancelToken,
     Map<String, dynamic>? headers,
     Map<String, dynamic>? extra,
@@ -2032,11 +2120,31 @@ class AdminApi {
         ],
         ...?extra,
       },
+      contentType: 'application/json',
       validateStatus: validateStatus,
     );
 
+    dynamic _bodyData;
+
+    try {
+      const _type = FullType(PlacesRerunRequest);
+      _bodyData = placesRerunRequest == null ? null : _serializers.serialize(placesRerunRequest, specifiedType: _type);
+
+    } catch(error, stackTrace) {
+      throw DioException(
+         requestOptions: _options.compose(
+          _dio.options,
+          _path,
+        ),
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
     final _response = await _dio.request<Object>(
       _path,
+      data: _bodyData,
       options: _options,
       cancelToken: cancelToken,
       onSendProgress: onSendProgress,

@@ -833,18 +833,36 @@ func (e ModelSourceSwitchRequestKind) Valid() bool {
 	}
 }
 
+// Defines values for PlacesRerunRequestMode.
+const (
+	PlacesRerunRequestModeAll     PlacesRerunRequestMode = "all"
+	PlacesRerunRequestModeMissing PlacesRerunRequestMode = "missing"
+)
+
+// Valid indicates whether the value is a known member of the PlacesRerunRequestMode enum.
+func (e PlacesRerunRequestMode) Valid() bool {
+	switch e {
+	case PlacesRerunRequestModeAll:
+		return true
+	case PlacesRerunRequestModeMissing:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for RebuildDerivativesRequestScope.
 const (
-	All     RebuildDerivativesRequestScope = "all"
-	Missing RebuildDerivativesRequestScope = "missing"
+	RebuildDerivativesRequestScopeAll     RebuildDerivativesRequestScope = "all"
+	RebuildDerivativesRequestScopeMissing RebuildDerivativesRequestScope = "missing"
 )
 
 // Valid indicates whether the value is a known member of the RebuildDerivativesRequestScope enum.
 func (e RebuildDerivativesRequestScope) Valid() bool {
 	switch e {
-	case All:
+	case RebuildDerivativesRequestScopeAll:
 		return true
-	case Missing:
+	case RebuildDerivativesRequestScopeMissing:
 		return true
 	default:
 		return false
@@ -4265,6 +4283,52 @@ type PlaceSummary struct {
 	TakenAtTo time.Time `json:"takenAtTo"`
 }
 
+// PlacesDatabaseResponse The loaded place database: its data-version marker, the
+// display-name locale set it carries, and the two
+// re-resolution scopes' sizes (the dialog's estimates).
+type PlacesDatabaseResponse struct {
+	// GpsAssets The full re-resolution scope: every asset whose exif row
+	// carries GPS coordinates, whatever its lifecycle state. A
+	// row with a manual location is excluded -- the walk leaves
+	// those rows to the owner's own decision, so the count and
+	// the walk cover the same rows.
+	GpsAssets int `json:"gpsAssets"`
+
+	// Languages The display-name locales the bake carries, in the
+	// product's language-set order. The places read's
+	// `locale` parameter accepts exactly this set.
+	Languages []string `json:"languages"`
+
+	// MissingPlaces The fill-in scope: the GPS-bearing assets whose place is
+	// absent (the subset a `missing` run walks), with the same
+	// manual-location exclusion as `gpsAssets`.
+	MissingPlaces int `json:"missingPlaces"`
+
+	// Version The data-version marker the startup import recorded --
+	// the sha256 digest of the exact loaded bytes. An empty
+	// string means the instance carries no bake (nothing
+	// resolves). A 64-character value is a content digest,
+	// not a release date: the card displays its first eight
+	// characters.
+	Version string `json:"version"`
+}
+
+// PlacesRerunRequest The mode of one place re-resolution run: the honest pair the
+// map & places card's dialog chooses between.
+type PlacesRerunRequest struct {
+	// Mode `missing` re-resolves only the GPS-bearing rows whose
+	// place is absent (nothing that already resolved is
+	// rewritten); `all` re-resolves every GPS-bearing row.
+	// Absent means `all`.
+	Mode *PlacesRerunRequestMode `json:"mode,omitempty"`
+}
+
+// PlacesRerunRequestMode `missing` re-resolves only the GPS-bearing rows whose
+// place is absent (nothing that already resolved is
+// rewritten); `all` re-resolves every GPS-bearing row.
+// Absent means `all`.
+type PlacesRerunRequestMode string
+
 // PlacesRerunResponse The identifier of one place re-resolution run: the
 // `job_runs` row the re-resolution job drives and the
 // `job.*` events announce.
@@ -5874,6 +5938,9 @@ type ProbeModelSourceMultipartRequestBody ProbeModelSourceMultipartBody
 // SwitchModelSourceJSONRequestBody defines body for SwitchModelSource for application/json ContentType.
 type SwitchModelSourceJSONRequestBody = ModelSourceSwitchRequest
 
+// ReresolvePlacesJSONRequestBody defines body for ReresolvePlaces for application/json ContentType.
+type ReresolvePlacesJSONRequestBody = PlacesRerunRequest
+
 // UpdateImageSettingsJSONRequestBody defines body for UpdateImageSettings for application/json ContentType.
 type UpdateImageSettingsJSONRequestBody = ImageSettingsUpdateRequest
 
@@ -6032,7 +6099,10 @@ type ServerInterface interface {
 	// SwitchModelSource Switch a slot onto a probed source.
 	// (POST /admin/models/{slot}/source)
 	SwitchModelSource(w http.ResponseWriter, r *http.Request, slot ModelSlot)
-	// ReresolvePlaces Start a full place re-resolution run.
+	// GetPlacesDatabase Read the loaded place database and the re-resolution scopes' sizes.
+	// (GET /admin/places)
+	GetPlacesDatabase(w http.ResponseWriter, r *http.Request)
+	// ReresolvePlaces Start a place re-resolution run over the chosen mode.
 	// (POST /admin/places/reresolve)
 	ReresolvePlaces(w http.ResponseWriter, r *http.Request)
 	// GetImageSettings Read the derivative image settings.
@@ -6398,7 +6468,13 @@ func (_ Unimplemented) SwitchModelSource(w http.ResponseWriter, r *http.Request,
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// ReresolvePlaces Start a full place re-resolution run.
+// GetPlacesDatabase Read the loaded place database and the re-resolution scopes' sizes.
+// (GET /admin/places)
+func (_ Unimplemented) GetPlacesDatabase(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReresolvePlaces Start a place re-resolution run over the chosen mode.
 // (POST /admin/places/reresolve)
 func (_ Unimplemented) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -7249,6 +7325,20 @@ func (siw *ServerInterfaceWrapper) SwitchModelSource(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SwitchModelSource(w, r, slot)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPlacesDatabase operation middleware
+func (siw *ServerInterfaceWrapper) GetPlacesDatabase(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPlacesDatabase(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9826,6 +9916,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/models/scan", wrapper.ScanModels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/places", wrapper.GetPlacesDatabase)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/places/reresolve", wrapper.ReresolvePlaces)

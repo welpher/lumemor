@@ -180,9 +180,11 @@ type MlRerunEnqueuer interface {
 type PlacesRerunEnqueuer interface {
 	// EnqueuePlacesRerun creates the run's job_runs row and enqueues
 	// the River job in one transaction, returning the run's
-	// identifier. The enqueue refuses a server without the place
-	// reference data: there is no grid to re-resolve against.
-	EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error)
+	// identifier. The mode is the contract's enum (missing, all) and
+	// names the scope the run walks. The enqueue refuses a server
+	// without the place reference data: there is no grid to
+	// re-resolve against.
+	EnqueuePlacesRerun(ctx context.Context, mode string) (uuid.UUID, error)
 }
 
 // AlbumRescanEnqueuer starts one directory album rescan run. It is
@@ -709,10 +711,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Post("/admin/models/{slot}/probe", wrapper.ProbeModelSource)
 				r.Post("/admin/models/{slot}/source", wrapper.SwitchModelSource)
 				r.Get("/admin/models/probes/{probeId}", wrapper.GetModelProbe)
-				// The places re-resolution trigger: the
-				// places-data-update path's run start. The handler is
-				// one bounded row read plus one enqueue; the walk over
-				// every GPS-bearing asset lives on the queue.
+				// The places surface's admin pair: the read
+				// (the card's marker, locale set and scope counts)
+				// and the re-resolution trigger (the places-data-
+				// update path's run start). The handlers are
+				// bounded reads plus one enqueue; the walk over the
+				// mode's scope lives on the queue.
+				r.Get("/admin/places", wrapper.GetPlacesDatabase)
 				r.Post("/admin/places/reresolve", wrapper.ReresolvePlaces)
 				r.Get("/admin/jobs", wrapper.ListJobs)
 				// The task panel's cancel: one bounded row read plus

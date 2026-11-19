@@ -97,6 +97,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**getImageSettings**](doc/AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
 [*AdminApi*](doc/AdminApi.md) | [**getModelProbe**](doc/AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [*AdminApi*](doc/AdminApi.md) | [**getModelSettings**](doc/AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
+[*AdminApi*](doc/AdminApi.md) | [**getPlacesDatabase**](doc/AdminApi.md#getplacesdatabase) | **GET** /admin/places | Read the loaded place database and the re-resolution scopes&#39; sizes.
 [*AdminApi*](doc/AdminApi.md) | [**getRunBudgetSettings**](doc/AdminApi.md#getrunbudgetsettings) | **GET** /admin/settings/run-budget | Read the background work&#39;s budget.
 [*AdminApi*](doc/AdminApi.md) | [**getStorageSettings**](doc/AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [*AdminApi*](doc/AdminApi.md) | [**getTilesSettings**](doc/AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
@@ -109,7 +110,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**listUsers**](doc/AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [*AdminApi*](doc/AdminApi.md) | [**probeModelSource**](doc/AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
 [*AdminApi*](doc/AdminApi.md) | [**rebuildDerivatives**](doc/AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
-[*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
+[*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a place re-resolution run over the chosen mode.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [*AdminApi*](doc/AdminApi.md) | [**runUpdateCheck**](doc/AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
@@ -306,6 +307,8 @@ Class | Method | HTTP request | Description
  - [PersonSummary](doc/PersonSummary.md)
  - [PlaceFacetCount](doc/PlaceFacetCount.md)
  - [PlaceSummary](doc/PlaceSummary.md)
+ - [PlacesDatabaseResponse](doc/PlacesDatabaseResponse.md)
+ - [PlacesRerunRequest](doc/PlacesRerunRequest.md)
  - [PlacesRerunResponse](doc/PlacesRerunResponse.md)
  - [RebuildDerivativesRequest](doc/RebuildDerivativesRequest.md)
  - [RebuildDerivativesResponse](doc/RebuildDerivativesResponse.md)

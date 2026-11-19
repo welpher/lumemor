@@ -10,6 +10,8 @@ package jobs
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/riverqueue/river"
 
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/geodata"
@@ -228,7 +231,7 @@ func TestPlacesRerunWalk(t *testing.T) {
 		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
 	e.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeBeijingFixtureID, a3)
 
-	runID, err := e.queue.EnqueuePlacesRerun(context.Background())
+	runID, err := e.queue.EnqueuePlacesRerun(context.Background(), PlacesRerunModeAll)
 	if err != nil {
 		t.Fatalf("enqueue the places rerun: %v", err)
 	}
@@ -249,6 +252,9 @@ func TestPlacesRerunWalk(t *testing.T) {
 	}
 	if row.Done != 2 || row.Failed != 0 {
 		t.Errorf("run done/failed = %d/%d, want 2/0", row.Done, row.Failed)
+	}
+	if row.Done != row.Total {
+		t.Errorf("run done/total = %d/%d, want equal (the count is the walk's own scope)", row.Done, row.Total)
 	}
 	if !row.StartedAt.Valid || !row.FinishedAt.Valid {
 		t.Errorf("run started/finished = %v/%v, want both set", row.StartedAt, row.FinishedAt)
@@ -272,7 +278,7 @@ func TestPlacesRerunWalk(t *testing.T) {
 
 	// A second run over the converged state is a no-op walk: the same
 	// answers re-write (a1 Paris, a2 NULL), the counts stay honest.
-	second, err := e.queue.EnqueuePlacesRerun(context.Background())
+	second, err := e.queue.EnqueuePlacesRerun(context.Background(), PlacesRerunModeAll)
 	if err != nil {
 		t.Fatalf("enqueue the second places rerun: %v", err)
 	}
@@ -287,9 +293,176 @@ func TestPlacesRerunWalk(t *testing.T) {
 	// to re-resolve against, and the endpoint maps the refusal to the
 	// same 500 the broken-transaction arm answers.
 	bare := &Queue{pool: e.pool}
-	if _, err := bare.EnqueuePlacesRerun(context.Background()); err == nil {
+	if _, err := bare.EnqueuePlacesRerun(context.Background(), PlacesRerunModeAll); err == nil {
 		t.Fatal("EnqueuePlacesRerun without a place grid succeeded, want the refusal")
 	}
+}
+
+// TestPlacesRerunMissingMode pins the fill-in mode: its scope is the
+// GPS-bearing rows whose place is absent (a resolved row is never
+// rewritten, a row beyond the threshold stays NULL), its total is
+// that scope's count, and the full mode runs afterwards move the
+// resolved row again -- the two modes are the dialog's honest pair,
+// and the mode rides the job payload.
+func TestPlacesRerunMissingMode(t *testing.T) {
+	e := newEnvPlaces(t, placesFixtureGrid())
+	e.seedPlacesRows(t)
+
+	takenAt := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC).Truncate(time.Microsecond)
+	// a1: GPS near Paris, no place -- the fill-in's whole point.
+	a1 := e.insertAsset(t, "originals/places/m1.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	e.setExifGPS(t, a1, 48.8584, 2.2945)
+	// a2: GPS near Beijing but resolved to Paris -- a stale answer the
+	// fill-in mode must leave untouched (it is not missing).
+	a2 := e.insertAsset(t, "originals/places/m2.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	e.setExifGPS(t, a2, 39.9075, 116.39723)
+	e.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeParisFixtureID, a2)
+	// a3: GPS beyond the threshold, no place -- walked and left NULL.
+	a3 := e.insertAsset(t, "originals/places/m3.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	e.setExifGPS(t, a3, 47.0, 2.0)
+	// a4: no GPS at all -- outside every mode's scope.
+	a4 := e.insertAsset(t, "originals/places/m4.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	// a5: GPS, no place, but the owner located it by hand -- outside
+	// BOTH modes (the manual decision owns the row), so it is neither
+	// counted nor walked and the run converges to done = total.
+	a5 := e.insertAsset(t, "originals/places/m5.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	e.setExifGPS(t, a5, 39.9075, 116.39723)
+	e.exec(t, "UPDATE assets SET location_lat = 48.855, location_lon = 2.35 WHERE id = $1", a5)
+
+	runID, err := e.queue.EnqueuePlacesRerun(context.Background(), PlacesRerunModeMissing)
+	if err != nil {
+		t.Fatalf("enqueue the missing places rerun: %v", err)
+	}
+	eventually(t, jobWaitTimeout, "the missing places rerun to finish", func() bool {
+		row, err := e.queries.GetJobRun(context.Background(), pgUUID(runID))
+		return err == nil && (row.State == dbgen.JobStateSucceeded || row.State == dbgen.JobStateFailed)
+	})
+
+	row, err := e.queries.GetJobRun(context.Background(), pgUUID(runID))
+	if err != nil {
+		t.Fatalf("load the run row: %v", err)
+	}
+	if row.State != dbgen.JobStateSucceeded {
+		t.Fatalf("run state = %s, want succeeded (done %d, failed %d)", row.State, row.Done, row.Failed)
+	}
+	if row.Total != 2 {
+		t.Errorf("run total = %d, want 2 (the GPS rows without a place)", row.Total)
+	}
+	if row.Done != 2 || row.Failed != 0 {
+		t.Errorf("run done/failed = %d/%d, want 2/0", row.Done, row.Failed)
+	}
+	if row.Done != row.Total {
+		t.Errorf("run done/total = %d/%d, want equal (the count is the walk's own scope)", row.Done, row.Total)
+	}
+
+	requirePlaceID(t, e, a1, ptrInt32(placeParisFixtureID), "the missing scope filling a1")
+	requirePlaceID(t, e, a2, ptrInt32(placeParisFixtureID), "the stale resolution the fill-in leaves alone")
+	requirePlaceID(t, e, a3, nil, "the beyond-threshold row staying NULL")
+	requirePlaceID(t, e, a4, nil, "the no-GPS row staying untouched")
+	requirePlaceID(t, e, a5, nil, "the manual-location row the fill-in never visits")
+
+	// The mode rode the job payload: the worker reads the scope from
+	// it, so a retry re-walks the same one.
+	var mode string
+	if err := e.pool.QueryRow(context.Background(),
+		`SELECT args->>'mode' FROM river_job WHERE args->>'jobRunId' = $1`, runID.String()).Scan(&mode); err != nil {
+		t.Fatalf("read the job payload's mode: %v", err)
+	}
+	if mode != PlacesRerunModeMissing {
+		t.Errorf("job payload mode = %q, want %q", mode, PlacesRerunModeMissing)
+	}
+
+	// The full mode walks every GPS row: a2 moves to its grid answer,
+	// the fill-in's work converges, and the total is the GPS count.
+	full, err := e.queue.EnqueuePlacesRerun(context.Background(), PlacesRerunModeAll)
+	if err != nil {
+		t.Fatalf("enqueue the full places rerun: %v", err)
+	}
+	eventually(t, jobWaitTimeout, "the full places rerun to finish", func() bool {
+		row, err := e.queries.GetJobRun(context.Background(), pgUUID(full))
+		return err == nil && (row.State == dbgen.JobStateSucceeded || row.State == dbgen.JobStateFailed)
+	})
+	fullRow, err := e.queries.GetJobRun(context.Background(), pgUUID(full))
+	if err != nil {
+		t.Fatalf("load the full run row: %v", err)
+	}
+	if fullRow.Total != 3 || fullRow.Done != 3 {
+		t.Errorf("full run total/done = %d/%d, want 3/3 (every GPS row the walk owns)", fullRow.Total, fullRow.Done)
+	}
+	requirePlaceID(t, e, a2, ptrInt32(placeBeijingFixtureID), "the full mode moving the stale resolution")
+	requirePlaceID(t, e, a1, ptrInt32(placeParisFixtureID), "the full mode's a1")
+	requirePlaceID(t, e, a5, nil, "the manual-location row the full mode never visits")
+	// The manual location itself is untouched: the walk rewrote
+	// nothing about that row.
+	var manualLat float64
+	if err := e.pool.QueryRow(context.Background(),
+		"SELECT location_lat FROM assets WHERE id = $1", a5).Scan(&manualLat); err != nil {
+		t.Fatalf("read the manual location: %v", err)
+	}
+	if manualLat != 48.855 {
+		t.Errorf("manual location = %v, want 48.855 (the walk leaves it alone)", manualLat)
+	}
+
+	// A mode outside the enum is refused before any row lands.
+	if _, err := e.queue.EnqueuePlacesRerun(context.Background(), "everything"); err == nil {
+		t.Fatal("EnqueuePlacesRerun with a mode outside the enum succeeded, want the refusal")
+	}
+	// A queue without the grid refuses the enqueue in either mode.
+	bare := &Queue{pool: e.pool}
+	if _, err := bare.EnqueuePlacesRerun(context.Background(), PlacesRerunModeMissing); err == nil {
+		t.Fatal("EnqueuePlacesRerun without a place grid succeeded, want the refusal")
+	}
+}
+
+// TestPlacesRerunEmptyModeWalksAll pins the durable queue's upgrade
+// path: a payload queued before the mode field existed (no `mode`
+// key) walks the full scope, the contract's absent-mode default.
+func TestPlacesRerunEmptyModeWalksAll(t *testing.T) {
+	e := newEnvPlaces(t, placesFixtureGrid())
+	e.seedPlacesRows(t)
+
+	takenAt := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC).Truncate(time.Microsecond)
+	a1 := e.insertAsset(t, "originals/places/o1.jpg", jpegBytes(t), takenAt,
+		`{"deviceCreatedAt":"2026-07-01T12:00:00Z"}`)
+	e.setExifGPS(t, a1, 48.8584, 2.2945)
+	e.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeBeijingFixtureID, a1)
+
+	runID, err := uuid.NewV7()
+	if err != nil {
+		t.Fatalf("generate the run id: %v", err)
+	}
+	if err := e.queries.InsertJobRun(context.Background(), dbgen.InsertJobRunParams{
+		ID:    pgUUID(runID),
+		Kind:  PlacesRerunKind,
+		Total: 1,
+	}); err != nil {
+		t.Fatalf("seed the run row: %v", err)
+	}
+	worker := &PlacesRerunWorker{
+		pool:   e.pool,
+		bus:    e.bus,
+		places: placesFixtureGrid(),
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	if err := worker.Work(context.Background(), &river.Job[PlacesRerunArgs]{
+		Args: PlacesRerunArgs{JobRunID: runID},
+	}); err != nil {
+		t.Fatalf("run the empty-mode walk: %v", err)
+	}
+
+	row, err := e.queries.GetJobRun(context.Background(), pgUUID(runID))
+	if err != nil {
+		t.Fatalf("load the run row: %v", err)
+	}
+	if row.State != dbgen.JobStateSucceeded || row.Done != 1 {
+		t.Errorf("run state/done = %s/%d, want succeeded/1", row.State, row.Done)
+	}
+	requirePlaceID(t, e, a1, ptrInt32(placeParisFixtureID), "the empty mode's full walk")
 }
 
 // ptrInt32 answers a pointer to the value (test-fixture ergonomics).
