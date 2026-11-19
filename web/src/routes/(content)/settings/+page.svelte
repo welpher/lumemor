@@ -28,7 +28,7 @@
 	} from '$lib/api/userSettings';
 	import { APP_LOCALES, localeLanguageName, setLocale, type AppLocale } from '$lib/i18n';
 	import { resolveErrorText } from '$lib/i18n/errors';
-	import { setThemePreference, type ThemePreference } from '$lib/theme/theme.svelte';
+	import { setThemePreference, themePreferenceOf, type ThemePreference } from '$lib/theme/theme.svelte';
 	import User from '@lucide/svelte/icons/user';
 	import Lock from '@lucide/svelte/icons/lock';
 	import Sun from '@lucide/svelte/icons/sun';
@@ -139,6 +139,10 @@
 	/** Adopt one account document as the sections' fresh state. */
 	function adoptSelf(next: UserSelf): void {
 		self = next;
+		// The row is the cross-device truth: whichever read adopted it
+		// (the page's own load, a saved patch), the page's class follows
+		// it -- otherwise a chip can say "dark" while the page is light.
+		setThemePreference(themePreferenceOf(next.theme));
 		formName = next.name;
 		formEmail = next.email;
 		profileError = null;
@@ -211,11 +215,18 @@
 	/** One theme pick: apply locally, persist on the row. */
 	async function pickTheme(theme: UserSelf['theme']): Promise<void> {
 		const choice = themeChoices.find((candidate) => candidate.value === theme);
-		if (self === null || choice === undefined || self.theme === theme) {
+		if (self === null || choice === undefined) {
+			return;
+		}
+		// A pick always APPLIES, even when it matches the stored row: a
+		// browser whose local preference drifted (a fresh profile, a
+		// cleared storage) shows the chip already selected, and clicking
+		// it is the user asking for that theme -- never a silent no-op.
+		setThemePreference(choice.apply);
+		if (self.theme === theme) {
 			return;
 		}
 		self = { ...self, theme };
-		setThemePreference(choice.apply);
 		appearanceErrorKey = '';
 		const outcome = await updateUserSelf({ theme });
 		if (!outcome.ok) {
