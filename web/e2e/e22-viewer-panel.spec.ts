@@ -556,15 +556,12 @@ test.describe('the viewer', () => {
 		await expect(row.locator('[data-map-state="unconfigured"]')).toBeVisible();
 
 		// The instance's own tile source (stubbed here) draws the same
-		// box in the same place: the mini map is display-only. The
-		// source is marked GCJ-02 so this scene also walks the datum
-		// wiring end to end: the mini map projects the library's
-		// WGS-84 point onto the China-datum basemap, and the picker
-		// converts a tapped point back before the dialog stores it
-		// (the conversion math itself is the unit tests').
+		// box in the same place: the mini map is display-only, and the
+		// library is WGS-84 only -- the point projects directly and a
+		// picked point reaches the dialog unchanged.
 		await stubTiles(page);
 		const saved = await page.request.put('/api/v1/admin/settings/tiles', {
-			data: { tilejsonUrl: TILE_SOURCE, gcj02: true }
+			data: { tilejsonUrl: TILE_SOURCE }
 		});
 		expect(saved.status()).toBe(200);
 		// The reload also proves the open preference: the panel comes

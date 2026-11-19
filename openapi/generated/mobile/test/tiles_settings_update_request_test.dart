@@ -19,17 +19,5 @@ void main() {
       // TODO
     });
 
-    // The light source's coordinate system: `true` for a GCJ-02 basemap (Amap, Tencent), `false` or omitted for the standard WGS-84. Omitting it saves the false default, so a client unaware of the flag keeps behaving exactly as before. 
-    // bool gcj02 (default value: false)
-    test('to test the property `gcj02`', () async {
-      // TODO
-    });
-
-    // The dark source's coordinate system, on the same rule as `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted for WGS-84. Ignored while the dark source is empty (the light source then governs both themes). 
-    // bool darkGcj02 (default value: false)
-    test('to test the property `darkGcj02`', () async {
-      // TODO
-    });
-
   });
 }

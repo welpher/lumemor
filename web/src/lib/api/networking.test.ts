@@ -20,38 +20,32 @@ function stub(response: () => Response | Promise<Response>) {
 }
 
 describe('getMapConfig', () => {
-	test('a configured pair answers both URLs and both coordinate flags', async () => {
+	test('a configured pair answers both URLs', async () => {
 		const fetcher = stub(() =>
 			jsonResponse(200, {
 				tilejsonUrl: 'https://tiles.example.net/style.json',
-				darkTilejsonUrl: 'https://tiles.example.net/style-dark.json',
-				gcj02: true,
-				darkGcj02: false
+				darkTilejsonUrl: 'https://tiles.example.net/style-dark.json'
 			})
 		);
 		const outcome = await getMapConfig(fetcher as unknown as typeof fetch);
 		expect(outcome).toEqual({
 			ok: true,
 			tilejsonUrl: 'https://tiles.example.net/style.json',
-			darkTilejsonUrl: 'https://tiles.example.net/style-dark.json',
-			gcj02: true,
-			darkGcj02: false
+			darkTilejsonUrl: 'https://tiles.example.net/style-dark.json'
 		});
 	});
 
 	test('null and the empty string are both the unconfigured state', async () => {
 		for (const body of [
-			{ tilejsonUrl: null, darkTilejsonUrl: null, gcj02: false, darkGcj02: false },
-			{ tilejsonUrl: '', darkTilejsonUrl: '', gcj02: false, darkGcj02: false }
+			{ tilejsonUrl: null, darkTilejsonUrl: null },
+			{ tilejsonUrl: '', darkTilejsonUrl: '' }
 		]) {
 			const fetcher = stub(() => jsonResponse(200, body));
 			const outcome = await getMapConfig(fetcher as unknown as typeof fetch);
 			expect(outcome).toEqual({
 				ok: true,
 				tilejsonUrl: null,
-				darkTilejsonUrl: null,
-				gcj02: false,
-				darkGcj02: false
+				darkTilejsonUrl: null
 			});
 		}
 	});
@@ -60,17 +54,13 @@ describe('getMapConfig', () => {
 		const fetcher = stub(() =>
 			jsonResponse(200, {
 				tilejsonUrl: 'https://tiles.example.net/style.json',
-				darkTilejsonUrl: null,
-				gcj02: false,
-				darkGcj02: false
+				darkTilejsonUrl: null
 			})
 		);
 		expect(await getMapConfig(fetcher as unknown as typeof fetch)).toEqual({
 			ok: true,
 			tilejsonUrl: 'https://tiles.example.net/style.json',
-			darkTilejsonUrl: null,
-			gcj02: false,
-			darkGcj02: false
+			darkTilejsonUrl: null
 		});
 	});
 
@@ -80,30 +70,9 @@ describe('getMapConfig', () => {
 			[() => jsonResponse(401, { code: 'AUTH_INVALID_CREDENTIALS' }), 'session_expired'],
 			[() => jsonResponse(200, { nope: true }), 'internal'],
 			// One field present, the other missing or of the wrong
-			// type: a shaped answer is all-or-nothing -- the
-			// coordinate flags included.
+			// type: a shaped answer is all-or-nothing.
 			[() => jsonResponse(200, { tilejsonUrl: null }), 'internal'],
-			[
-				() =>
-					jsonResponse(200, {
-						tilejsonUrl: null,
-						darkTilejsonUrl: 7,
-						gcj02: false,
-						darkGcj02: false
-					}),
-				'internal'
-			],
-			[() => jsonResponse(200, { tilejsonUrl: null, darkTilejsonUrl: null, darkGcj02: false }), 'internal'],
-			[
-				() =>
-					jsonResponse(200, {
-						tilejsonUrl: null,
-						darkTilejsonUrl: null,
-						gcj02: false,
-						darkGcj02: 'no'
-					}),
-				'internal'
-			],
+			[() => jsonResponse(200, { tilejsonUrl: null, darkTilejsonUrl: 7 }), 'internal'],
 			[() => new Response('not json', { status: 200 }), 'internal']
 		];
 		for (const [respond, errorKey] of cases) {
