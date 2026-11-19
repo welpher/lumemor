@@ -1,5 +1,12 @@
 import { beforeEach, expect, test, vi } from 'vitest';
-import { initTheme, isDarkTheme, setThemePreference, themePreference, toggleTheme } from './theme.svelte';
+import {
+	initTheme,
+	isDarkTheme,
+	setThemePreference,
+	themePreference,
+	themePreferenceOf,
+	toggleTheme
+} from './theme.svelte';
 
 // jsdom does not implement matchMedia; this controllable stub stands
 // in for the OS color-scheme preference. `dispatch` flips the matches
@@ -74,4 +81,11 @@ test('toggleTheme flips between the light and dark themes', () => {
 	expect(document.documentElement.classList.contains('dark')).toBe(true);
 	toggleTheme();
 	expect(document.documentElement.classList.contains('dark')).toBe(false);
+});
+
+test('the account theme maps onto the module preference', () => {
+	expect(themePreferenceOf('dark')).toBe('dark');
+	expect(themePreferenceOf('light')).toBe('light');
+	expect(themePreferenceOf('auto')).toBe('system');
+	expect(themePreferenceOf('something-else')).toBe('system');
 });

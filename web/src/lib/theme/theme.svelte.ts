@@ -71,6 +71,18 @@ export function themePreference(): ThemePreference {
 }
 
 /** Whether the effective theme is dark right now. */
+/**
+ * The account's stored theme as this module's preference: `auto` is
+ * the OS-following state (the account row's word for it), and the two
+ * manual choices pass through unchanged.
+ */
+export function themePreferenceOf(theme: string): ThemePreference {
+	if (theme === 'light' || theme === 'dark') {
+		return theme;
+	}
+	return 'system';
+}
+
 export function isDarkTheme(): boolean {
 	return prefersDark();
 }
