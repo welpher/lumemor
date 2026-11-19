@@ -19,17 +19,5 @@ void main() {
       // TODO
     });
 
-    // The light source's coordinate system: `true` when its basemap draws in GCJ-02 (the offset datum Amap and Tencent use inside China), `false` for the standard WGS-84 every other source draws in. The flag is a property of the source, not of the library: the stored photo coordinates stay WGS-84 and the map converts only at the display and pick boundaries. 
-    // bool gcj02
-    test('to test the property `gcj02`', () async {
-      // TODO
-    });
-
-    // The dark source's coordinate system, on the same rule as `gcj02`. An empty dark source reuses the light one, and the light source's flag then governs the dark theme too. 
-    // bool darkGcj02
-    test('to test the property `darkGcj02`', () async {
-      // TODO
-    });
-
   });
 }

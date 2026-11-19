@@ -5,6 +5,7 @@
 package db
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/welpher/lumemor/server/internal/db/dbtest"
@@ -33,11 +34,11 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 
 	// A row written before the dark field existed: the dark style is
 	// the struct's zero value, so the instance keeps one source for
-	// both themes. The coordinate flags read false (the standard
-	// WGS-84) for the same reason.
+	// both themes. Retired coordinate keys in the same old row are
+	// ignored -- the library only ever stores WGS-84 now.
 	if err := queries.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
 		Key:   TilesSettingsKey,
-		Value: []byte(`{"tilejsonUrl":"https://tiles.example.net/osm/tilejson.json"}`),
+		Value: []byte(`{"tilejsonUrl":"https://tiles.example.net/osm/tilejson.json","gcj02":true,"darkGcj02":true}`),
 	}); err != nil {
 		t.Fatalf("write the old-shaped row: %v", err)
 	}
@@ -49,17 +50,11 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 	if legacy != want {
 		t.Fatalf("TileSettingsOf(old row) = %+v, want %+v", legacy, want)
 	}
-	if legacy.GCJ02 || legacy.DarkGCJ02 {
-		t.Fatalf("TileSettingsOf(old row) flags = %v/%v, want both false", legacy.GCJ02, legacy.DarkGCJ02)
-	}
 
-	// The pair survives the round-trip verbatim, the coordinate
-	// flags included; the two sources may carry different datums.
+	// The pair survives the round-trip verbatim.
 	pair := TileSettings{
 		TileJSONURL:     "https://tiles.example.net/osm/tilejson.json",
 		DarkTileJSONURL: "https://tiles.example.net/osm-dark/tilejson.json",
-		GCJ02:           true,
-		DarkGCJ02:       false,
 	}
 	if err := SaveTileSettings(ctx, queries, pair); err != nil {
 		t.Fatalf("SaveTileSettings() error = %v, want nil", err)
@@ -73,8 +68,8 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 	}
 
 	// The save replaces the document: clearing the dark style clears
-	// it rather than leaving the old one behind, and a flag that is
-	// no longer saved reads false.
+	// it rather than leaving the old one behind, and the retired
+	// coordinate keys do not survive the next write.
 	if err := SaveTileSettings(ctx, queries, TileSettings{TileJSONURL: pair.TileJSONURL}); err != nil {
 		t.Fatalf("SaveTileSettings(light only) error = %v, want nil", err)
 	}
@@ -84,6 +79,13 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 	}
 	if cleared != (TileSettings{TileJSONURL: pair.TileJSONURL}) {
 		t.Fatalf("TileSettingsOf(cleared) = %+v, want the light source alone", cleared)
+	}
+	raw, err := queries.GetInstanceSetting(ctx, TilesSettingsKey)
+	if err != nil {
+		t.Fatalf("read the saved row: %v", err)
+	}
+	if strings.Contains(string(raw), "gcj02") {
+		t.Fatalf("saved row = %s, want the retired coordinate keys dropped", raw)
 	}
 }
 

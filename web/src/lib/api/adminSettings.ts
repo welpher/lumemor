@@ -385,11 +385,6 @@ function tilesSettingsFrom(body: unknown): TilesSettings | null {
 	if (typeof candidate.tilejsonUrl !== 'string' || typeof candidate.darkTilejsonUrl !== 'string') {
 		return null;
 	}
-	// The coordinate flags are required by the contract: a body
-	// without them cannot say which datum either source draws in.
-	if (typeof candidate.gcj02 !== 'boolean' || typeof candidate.darkGcj02 !== 'boolean') {
-		return null;
-	}
 	return body as TilesSettings;
 }
 
@@ -506,21 +501,13 @@ export function getTilesSettings(
 	return readSettings(TILES_SETTINGS_ENDPOINT, tilesSettingsFrom, fetcher);
 }
 
-/** PUT /api/v1/admin/settings/tiles: save both sources ('' clears)
- * and each source's coordinate system. */
+/** PUT /api/v1/admin/settings/tiles: save both sources ('' clears). */
 export function saveTilesSettings(
 	tilejsonUrl: string,
 	darkTilejsonUrl: string,
-	gcj02 = false,
-	darkGcj02 = false,
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<NetworkingSettingsResult<TilesSettings>> {
-	return writeSettings(
-		TILES_SETTINGS_ENDPOINT,
-		{ tilejsonUrl, darkTilejsonUrl, gcj02, darkGcj02 },
-		tilesSettingsFrom,
-		fetcher
-	);
+	return writeSettings(TILES_SETTINGS_ENDPOINT, { tilejsonUrl, darkTilejsonUrl }, tilesSettingsFrom, fetcher);
 }
 
 /** GET /api/v1/admin/settings/models: the model store's policy. */

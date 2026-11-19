@@ -13,8 +13,6 @@ part 'tiles_settings_update_request.g.dart';
 /// Properties:
 /// * [tilejsonUrl] - The light tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
 /// * [darkTilejsonUrl] - The dark tile source URL to save. Omitting it or sending the empty string clears it (the dark theme then reuses the light source). A non-empty value follows the light field's rule: an absolute `http` or `https` URL, a LAN address included. 
-/// * [gcj02] - The light source's coordinate system: `true` for a GCJ-02 basemap (Amap, Tencent), `false` or omitted for the standard WGS-84. Omitting it saves the false default, so a client unaware of the flag keeps behaving exactly as before. 
-/// * [darkGcj02] - The dark source's coordinate system, on the same rule as `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted for WGS-84. Ignored while the dark source is empty (the light source then governs both themes). 
 @BuiltValue()
 abstract class TilesSettingsUpdateRequest implements Built<TilesSettingsUpdateRequest, TilesSettingsUpdateRequestBuilder> {
   /// The light tile source URL to save, or the empty string to clear it. A non-empty value must be an absolute `http` or `https` URL; a LAN address is legitimate (the browser loads the source, not the server). 
@@ -25,22 +23,12 @@ abstract class TilesSettingsUpdateRequest implements Built<TilesSettingsUpdateRe
   @BuiltValueField(wireName: r'darkTilejsonUrl')
   String? get darkTilejsonUrl;
 
-  /// The light source's coordinate system: `true` for a GCJ-02 basemap (Amap, Tencent), `false` or omitted for the standard WGS-84. Omitting it saves the false default, so a client unaware of the flag keeps behaving exactly as before. 
-  @BuiltValueField(wireName: r'gcj02')
-  bool? get gcj02;
-
-  /// The dark source's coordinate system, on the same rule as `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted for WGS-84. Ignored while the dark source is empty (the light source then governs both themes). 
-  @BuiltValueField(wireName: r'darkGcj02')
-  bool? get darkGcj02;
-
   TilesSettingsUpdateRequest._();
 
   factory TilesSettingsUpdateRequest([void updates(TilesSettingsUpdateRequestBuilder b)]) = _$TilesSettingsUpdateRequest;
 
   @BuiltValueHook(initializeBuilder: true)
-  static void _defaults(TilesSettingsUpdateRequestBuilder b) => b
-      ..gcj02 = false
-      ..darkGcj02 = false;
+  static void _defaults(TilesSettingsUpdateRequestBuilder b) => b;
 
   @BuiltValueSerializer(custom: true)
   static Serializer<TilesSettingsUpdateRequest> get serializer => _$TilesSettingsUpdateRequestSerializer();
@@ -68,20 +56,6 @@ class _$TilesSettingsUpdateRequestSerializer implements PrimitiveSerializer<Tile
       yield serializers.serialize(
         object.darkTilejsonUrl,
         specifiedType: const FullType(String),
-      );
-    }
-    if (object.gcj02 != null) {
-      yield r'gcj02';
-      yield serializers.serialize(
-        object.gcj02,
-        specifiedType: const FullType(bool),
-      );
-    }
-    if (object.darkGcj02 != null) {
-      yield r'darkGcj02';
-      yield serializers.serialize(
-        object.darkGcj02,
-        specifiedType: const FullType(bool),
       );
     }
   }
@@ -121,22 +95,6 @@ class _$TilesSettingsUpdateRequestSerializer implements PrimitiveSerializer<Tile
           ) as String?;
           if (valueDes == null) continue;
           result.darkTilejsonUrl = valueDes;
-          break;
-        case r'gcj02':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType.nullable(bool),
-          ) as bool?;
-          if (valueDes == null) continue;
-          result.gcj02 = valueDes;
-          break;
-        case r'darkGcj02':
-          final valueDes = serializers.deserialize(
-            value,
-            specifiedType: const FullType.nullable(bool),
-          ) as bool?;
-          if (valueDes == null) continue;
-          result.darkGcj02 = valueDes;
           break;
         default:
           unhandled.add(key);

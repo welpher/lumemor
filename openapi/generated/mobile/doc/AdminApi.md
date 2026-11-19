@@ -1512,7 +1512,7 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getAdminApi();
-final TilesSettingsUpdateRequest tilesSettingsUpdateRequest = {"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json","darkTilejsonUrl":"http://192.168.1.20:8080/tilejson-dark.json","gcj02":false,"darkGcj02":false}; // TilesSettingsUpdateRequest | 
+final TilesSettingsUpdateRequest tilesSettingsUpdateRequest = {"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json","darkTilejsonUrl":"http://192.168.1.20:8080/tilejson-dark.json"}; // TilesSettingsUpdateRequest | 
 
 try {
     final response = api.updateTilesSettings(tilesSettingsUpdateRequest);

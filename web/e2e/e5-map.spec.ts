@@ -149,18 +149,11 @@ async function settledPinBox(page: Page): Promise<{ x: number; y: number }> {
 
 /**
  * Save the tile sources through the admin API (the settings' own
- * write): the light style, the optional dark one, and each source's
- * coordinate system (WGS-84 unless a scene asks for GCJ-02).
+ * write): the light style and the optional dark one.
  */
-async function setTileSource(
-	page: Page,
-	tilejsonUrl: string,
-	darkTilejsonUrl = '',
-	gcj02 = false,
-	darkGcj02 = false
-): Promise<void> {
+async function setTileSource(page: Page, tilejsonUrl: string, darkTilejsonUrl = ''): Promise<void> {
 	const response = await page.request.put('/api/v1/admin/settings/tiles', {
-		data: { tilejsonUrl, darkTilejsonUrl, gcj02, darkGcj02 }
+		data: { tilejsonUrl, darkTilejsonUrl }
 	});
 	expect(response.status()).toBe(200);
 }
@@ -216,33 +209,32 @@ test.describe('the signed-in scenes', () => {
 		await expect(darkSourceField).toHaveValue('');
 		await expect(tilesCard).toContainText('never fetches or proxies a tile');
 		// The dark field names its fallback, and the recommended
-		// sources ride beneath the pair (copy, not a bundled default).
+		// source rides beneath the pair (copy, not a bundled default).
 		await expect(tilesCard).toContainText('Dark style (optional)');
 		await expect(tilesCard).toContainText('Leave empty to reuse the light source in dark mode.');
-		await expect(tilesCard).toContainText('Recommended sources: OpenFreeMap');
+		await expect(tilesCard).toContainText('Recommended source: OpenFreeMap');
+
+		// A known China basemap raises the offset warning; a standard
+		// source clears it. The save is never blocked by the warning.
+		await sourceField.fill('https://webrd01.is.autonavi.com/appmaptile?style=7');
+		await expect(tilesCard).toContainText('This source is not WGS-84');
+		await sourceField.fill(TILE_SOURCE);
+		await expect(tilesCard).not.toContainText('This source is not WGS-84');
 
 		// Saving both sources through the form (the admin's own path,
-		// not the API seeding the later scenes use), with the light
-		// source marked as a GCJ-02 China basemap and the dark one
-		// left on the standard datum: the two flags are per source.
+		// not the API seeding the later scenes use).
 		await sourceField.fill(TILE_SOURCE);
 		await darkSourceField.fill(TILE_DARK_SOURCE);
-		await page.locator('#admin-tiles-coord').selectOption({ label: 'GCJ-02 (Amap / Tencent)' });
 		await tilesCard.getByRole('button', { name: 'Save' }).click();
 		await expect(tilesCard).toContainText('The map picks it up on its next load');
 
-		// The persisted pair reads back into both fields and both
-		// selectors, flags included.
+		// The persisted pair reads back into both fields.
 		const saved = await page.request.get('/api/v1/admin/settings/tiles');
 		expect(saved.status()).toBe(200);
 		expect(await saved.json()).toMatchObject({
 			tilejsonUrl: TILE_SOURCE,
-			darkTilejsonUrl: TILE_DARK_SOURCE,
-			gcj02: true,
-			darkGcj02: false
+			darkTilejsonUrl: TILE_DARK_SOURCE
 		});
-		await expect(page.locator('#admin-tiles-coord')).toHaveValue('true');
-		await expect(page.locator('#admin-tiles-dark-coord')).toHaveValue('false');
 
 		// The model download policy card: the automatic fill is on by
 		// default, and the copy names the one case it covers.
