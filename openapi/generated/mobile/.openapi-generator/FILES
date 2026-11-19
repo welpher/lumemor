@@ -118,6 +118,8 @@ doc/PersonSummary.md
 doc/PlaceFacetCount.md
 doc/PlaceSummary.md
 doc/PlacesApi.md
+doc/PlacesDatabaseResponse.md
+doc/PlacesRerunRequest.md
 doc/PlacesRerunResponse.md
 doc/RebuildDerivativesRequest.md
 doc/RebuildDerivativesResponse.md
@@ -304,6 +306,8 @@ lib/src/model/person_label_response.dart
 lib/src/model/person_summary.dart
 lib/src/model/place_facet_count.dart
 lib/src/model/place_summary.dart
+lib/src/model/places_database_response.dart
+lib/src/model/places_rerun_request.dart
 lib/src/model/places_rerun_response.dart
 lib/src/model/rebuild_derivatives_request.dart
 lib/src/model/rebuild_derivatives_response.dart
@@ -474,6 +478,8 @@ test/person_summary_test.dart
 test/place_facet_count_test.dart
 test/place_summary_test.dart
 test/places_api_test.dart
+test/places_database_response_test.dart
+test/places_rerun_request_test.dart
 test/places_rerun_response_test.dart
 test/rebuild_derivatives_request_test.dart
 test/rebuild_derivatives_response_test.dart

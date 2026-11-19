@@ -2,11 +2,12 @@
 // path. The startup import of a changed GeoNames bake replaces the
 // reference tables and -- through the schema's ON DELETE SET NULL --
 // releases every stale resolution; this run is the deliberate step
-// that refills them: one walk over every GPS-bearing asset row,
-// resolving each against the process's in-memory grid (the same grid
-// the metadata job's GPS step uses, loaded once per process) and
-// writing the answer -- the nearest city within the threshold, or
-// NULL when the grid answers nothing.
+// that refills them: one walk over the mode's scope (every GPS-bearing
+// asset row, or only the rows whose place is absent), resolving each
+// against the process's in-memory grid (the same grid the metadata
+// job's GPS step uses, loaded once per process) and writing the answer
+// -- the nearest city within the threshold, or NULL when the grid
+// answers nothing.
 //
 // Unlike the ML rerun driver there is no per-asset dispatch: place
 // resolution is a microsecond in-memory query plus one bounded row
@@ -46,6 +47,15 @@ import (
 // the same string: one driver, no per-asset dispatch.
 const PlacesRerunKind = "places_rerun"
 
+// The re-resolution modes, the contract's enum: the fill-in pair the
+// map & places card's dialog chooses between. Missing walks only the
+// GPS-bearing rows whose place is absent; all walks every GPS-bearing
+// row (the full re-resolve that may rewrite history).
+const (
+	PlacesRerunModeMissing = "missing"
+	PlacesRerunModeAll     = "all"
+)
+
 // placesRerunTimeout raises the worker's execution envelope above
 // River's one minute default: the walk over a large library's
 // GPS-bearing rows (one bounded page read per 500 assets plus one
@@ -65,12 +75,13 @@ const placesRerunPageSize = 500
 // bounded write), so the panel's truth stays page-fresh.
 const placesRerunProgressInterval = time.Second
 
-// PlacesRerunArgs identifies the run the worker walks. The scope
-// (every GPS-bearing asset) needs no payload: the walk reads it from
-// the database, so a retry after new GPS-bearing assets arriving
-// simply includes them.
+// PlacesRerunArgs identifies the run the worker walks; the mode names
+// which scope it walks (the contract's enum). The rows themselves
+// need no payload: the walk reads them from the database, so a retry
+// after new GPS-bearing assets arriving simply includes them.
 type PlacesRerunArgs struct {
 	JobRunID uuid.UUID `json:"jobRunId"`
+	Mode     string    `json:"mode"`
 }
 
 // Kind is River's stable job kind identifier.
@@ -144,6 +155,22 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 	total := int(run.Total)
 	w.bus.Publish("job.started", jobEventPayload(jobRunID, PlacesRerunKind, total, 0, 0, dbgen.JobStateRunning))
 
+	// The mode: the contract's enum. An absent mode is the contract's
+	// own default -- the full walk, which is also the scope a run
+	// queued by an older build's payload was counted against, so a
+	// durable queue survives the field's arrival. A non-empty value
+	// outside the enum is a wiring bug; the run closes failed instead
+	// of pretending to have resolved anything.
+	mode := job.Args.Mode
+	if mode == "" {
+		mode = PlacesRerunModeAll
+	}
+	if mode != PlacesRerunModeMissing && mode != PlacesRerunModeAll {
+		w.logger.Error("places rerun run started with a mode outside the enum",
+			"job_run_id", jobRunID, "mode", job.Args.Mode)
+		return w.finishRerun(ctx, jobRunID, total, 0, 0, dbgen.JobStateFailed)
+	}
+
 	// The resolution seam: no grid wired means the run cannot do its
 	// work. The enqueue refuses this state; only a directly
 	// constructed worker (a wiring bug) gets here, and the run closes
@@ -172,10 +199,7 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 			w.logger.Info("places rerun run cancelled at its own page boundary", "job_run_id", jobRunID, "done", done)
 			break
 		}
-		rows, err := queries.ListGpsAssetPage(ctx, dbgen.ListGpsAssetPageParams{
-			Cursor:     cursor,
-			LimitCount: placesRerunPageSize,
-		})
+		rows, err := listPlacesRerunPage(ctx, queries, mode, cursor)
 		if err != nil {
 			return fmt.Errorf("list the places rerun scope of run %s: %w", jobRunID, err)
 		}
@@ -183,17 +207,17 @@ func (w *PlacesRerunWorker) Work(ctx context.Context, job *river.Job[PlacesRerun
 			break
 		}
 		for _, row := range rows {
-			cursor = row.ID
-			assetID := uuid.UUID(row.ID.Bytes)
+			cursor = row.id
+			assetID := uuid.UUID(row.id.Bytes)
 			// The same deterministic resolution the metadata job's
 			// GPS step applies: the grid's nearest city within the
 			// threshold, else NULL (no country-polygon fallback).
 			placeID := pgtype.Int4{}
-			if id, _, ok := w.places.NearestWithin(row.Lat.Float64, row.Lon.Float64, geodata.ResolutionRadiusKm); ok {
+			if id, _, ok := w.places.NearestWithin(row.lat.Float64, row.lon.Float64, geodata.ResolutionRadiusKm); ok {
 				placeID.Int32, placeID.Valid = id, true
 			}
 			if err := queries.SetAssetPlace(ctx, dbgen.SetAssetPlaceParams{
-				ID:      row.ID,
+				ID:      row.id,
 				PlaceID: placeID,
 			}); err != nil {
 				failed++
@@ -248,17 +272,21 @@ func (w *PlacesRerunWorker) finishRerun(ctx context.Context, jobRunID uuid.UUID,
 }
 
 // EnqueuePlacesRerun starts one re-resolution run: the job_runs row
-// (the places rerun kind, the GPS-bearing scope's asset count as its
-// total) and the River job land in ONE transaction, so an enqueue
-// that fails halfway leaves neither behind. The row starts queued;
-// the worker flips it to running when the walk begins. A queue whose
-// process runs without the place reference data refuses the enqueue:
-// there is no grid to re-resolve against, and the endpoint maps the
-// refusal to the same 500 the broken-transaction arm answers (the
-// log line carries the reason).
-func (q *Queue) EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error) {
+// (the places rerun kind, the mode's scope count as its total) and the
+// River job land in ONE transaction, so an enqueue that fails halfway
+// leaves neither behind. The row starts queued; the worker flips it to
+// running when the walk begins. The mode is the contract's enum and
+// rides the job payload, so a retry re-walks the same scope. A queue
+// whose process runs without the place reference data refuses the
+// enqueue: there is no grid to re-resolve against, and the endpoint
+// maps the refusal to the same 500 the broken-transaction arm answers
+// (the log line carries the reason).
+func (q *Queue) EnqueuePlacesRerun(ctx context.Context, mode string) (uuid.UUID, error) {
 	if q.places == nil {
 		return uuid.Nil, fmt.Errorf("jobs: the place resolver is not wired (no reference data)")
+	}
+	if mode != PlacesRerunModeMissing && mode != PlacesRerunModeAll {
+		return uuid.Nil, fmt.Errorf("jobs: the places rerun mode %q is outside the enum", mode)
 	}
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -276,7 +304,12 @@ func (q *Queue) EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error) {
 	// insert: the total the row announces is exactly the scope the
 	// enqueue saw.
 	queries := dbgen.New(tx)
-	total, err := queries.CountGpsAssets(ctx)
+	var total int64
+	if mode == PlacesRerunModeMissing {
+		total, err = queries.CountMissingPlaceAssets(ctx)
+	} else {
+		total, err = queries.CountGpsAssets(ctx)
+	}
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("count the places rerun scope: %w", err)
 	}
@@ -287,11 +320,53 @@ func (q *Queue) EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error) {
 	}); err != nil {
 		return uuid.Nil, fmt.Errorf("insert the places rerun run row: %w", err)
 	}
-	if _, err := q.client.InsertTx(ctx, tx, PlacesRerunArgs{JobRunID: id}, nil); err != nil {
+	if _, err := q.client.InsertTx(ctx, tx, PlacesRerunArgs{JobRunID: id, Mode: mode}, nil); err != nil {
 		return uuid.Nil, fmt.Errorf("insert the places rerun job: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return uuid.Nil, fmt.Errorf("commit the places rerun enqueue: %w", err)
 	}
 	return id, nil
+}
+
+// placesRerunRow is one page row of either scope: the asset id and
+// the resolution input. Both page queries answer the same three
+// columns, so the walk reads them through one shape.
+type placesRerunRow struct {
+	id  pgtype.UUID
+	lat pgtype.Float8
+	lon pgtype.Float8
+}
+
+// listPlacesRerunPage answers one page of the mode's scope: the
+// fill-in set (place absent) or the full GPS-bearing set, both
+// keyset-ordered by the asset id. The mode was validated by the
+// worker before the walk began.
+func listPlacesRerunPage(ctx context.Context, queries *dbgen.Queries, mode string, cursor pgtype.UUID) ([]placesRerunRow, error) {
+	if mode == PlacesRerunModeMissing {
+		rows, err := queries.ListMissingPlaceAssetPage(ctx, dbgen.ListMissingPlaceAssetPageParams{
+			Cursor:     cursor,
+			LimitCount: placesRerunPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		page := make([]placesRerunRow, 0, len(rows))
+		for _, row := range rows {
+			page = append(page, placesRerunRow{id: row.ID, lat: row.Lat, lon: row.Lon})
+		}
+		return page, nil
+	}
+	rows, err := queries.ListGpsAssetPage(ctx, dbgen.ListGpsAssetPageParams{
+		Cursor:     cursor,
+		LimitCount: placesRerunPageSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	page := make([]placesRerunRow, 0, len(rows))
+	for _, row := range rows {
+		page = append(page, placesRerunRow{id: row.ID, lat: row.Lat, lon: row.Lon})
+	}
+	return page, nil
 }
