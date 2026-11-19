@@ -52,13 +52,8 @@ function updateCheckSettingsBody(overrides: Record<string, unknown> = {}): Recor
 	};
 }
 
-function tilesSettingsBody(
-	tilejsonUrl = '',
-	darkTilejsonUrl = '',
-	gcj02 = false,
-	darkGcj02 = false
-): Record<string, unknown> {
-	return { tilejsonUrl, darkTilejsonUrl, gcj02, darkGcj02 };
+function tilesSettingsBody(tilejsonUrl = '', darkTilejsonUrl = ''): Record<string, unknown> {
+	return { tilejsonUrl, darkTilejsonUrl };
 }
 
 function modelSettingsBody(autoDownload = true): Record<string, unknown> {
@@ -665,30 +660,17 @@ test('the tile sources and the model policy save their own bodies', async () => 
 	expect(tilesField?.value).toBe('');
 	expect(darkField?.value).toBe('');
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="models-auto-download"]')?.checked).toBe(true);
-	// Both coordinate selectors ship on the standard datum.
-	const lightCoord = document.body.querySelector<HTMLSelectElement>('#admin-tiles-coord');
-	const darkCoord = document.body.querySelector<HTMLSelectElement>('#admin-tiles-dark-coord');
-	expect(lightCoord?.value).toBe('false');
-	expect(darkCoord?.value).toBe('false');
 	// The boundary copy rides both cards, and the map card names the
-	// dark field's fallback, the coordinate rule and the recommended
-	// sources.
+	// dark field's fallback and the recommended source.
 	expect(document.body.textContent).toContain('never fetches or proxies a tile');
 	expect(document.body.textContent).toContain('Leave empty to reuse the light source in dark mode.');
-	expect(document.body.textContent).toContain(
-		'Photos store WGS-84 GPS. A GCJ-02 basemap (Amap, Tencent) shifts the pins to match'
-	);
-	expect(document.body.textContent).toContain('Recommended sources: OpenFreeMap');
+	expect(document.body.textContent).toContain('Recommended source: OpenFreeMap');
 	expect(document.body.textContent).toContain('a wiped model store');
 
 	tilesField!.value = 'https://tiles.example.net/osm/tilejson.json';
 	tilesField!.dispatchEvent(new Event('input', { bubbles: true }));
 	darkField!.value = 'https://tiles.example.net/osm-dark/tilejson.json';
 	darkField!.dispatchEvent(new Event('input', { bubbles: true }));
-	// A GCJ-02 light basemap beside a standard dark one: the two
-	// flags are picked per source.
-	lightCoord!.value = 'true';
-	lightCoord!.dispatchEvent(new Event('change', { bubbles: true }));
 	submitFormBy('admin-settings-tiles');
 	await settle();
 
@@ -698,11 +680,20 @@ test('the tile sources and the model policy save their own bodies', async () => 
 	);
 	expect(JSON.parse(String((tilesPut?.[1] as RequestInit).body))).toEqual({
 		tilejsonUrl: 'https://tiles.example.net/osm/tilejson.json',
-		darkTilejsonUrl: 'https://tiles.example.net/osm-dark/tilejson.json',
-		gcj02: true,
-		darkGcj02: false
+		darkTilejsonUrl: 'https://tiles.example.net/osm-dark/tilejson.json'
 	});
 	expect(document.body.textContent).toContain('The map picks it up on its next load');
+
+	// A known Chinese basemap raises the offset warning; a standard
+	// source clears it. The URL itself is still just the saved shape.
+	tilesField!.value = 'https://webrd01.is.autonavi.com/appmaptile?style=7';
+	tilesField!.dispatchEvent(new Event('input', { bubbles: true }));
+	await settle();
+	expect(document.body.textContent).toContain('This source is not WGS-84');
+	tilesField!.value = 'https://tiles.example.net/osm/tilejson.json';
+	tilesField!.dispatchEvent(new Event('input', { bubbles: true }));
+	await settle();
+	expect(document.body.textContent).not.toContain('This source is not WGS-84');
 
 	const auto = document.body.querySelector<HTMLInputElement>('[data-testid="models-auto-download"]');
 	auto!.checked = false;
@@ -722,7 +713,7 @@ test('the tile sources and the model policy save their own bodies', async () => 
 	});
 });
 
-test('the map card reads both sources and both data, and the reset clears the drafts without saving', async () => {
+test('the map card reads both sources, and the reset clears the drafts without saving', async () => {
 	const fetchMock = stubFetch(
 		defaultReads({
 			'/api/v1/admin/settings/tiles': (init?: RequestInit) =>
@@ -732,9 +723,7 @@ test('the map card reads both sources and both data, and the reset clears the dr
 							200,
 							tilesSettingsBody(
 								'https://tiles.example.net/osm/tilejson.json',
-								'https://tiles.example.net/osm-dark/tilejson.json',
-								true,
-								false
+								'https://tiles.example.net/osm-dark/tilejson.json'
 							)
 						)
 		})
@@ -743,16 +732,11 @@ test('the map card reads both sources and both data, and the reset clears the dr
 	mountPage();
 	await settle();
 
-	// The read's pair lands in the two fields, and each source's
-	// coordinate system lands in its own selector.
+	// The read's pair lands in the two fields.
 	const tilesField = document.body.querySelector<HTMLInputElement>('#admin-tiles-source');
 	const darkField = document.body.querySelector<HTMLInputElement>('#admin-tiles-dark-source');
-	const lightCoord = document.body.querySelector<HTMLSelectElement>('#admin-tiles-coord');
-	const darkCoord = document.body.querySelector<HTMLSelectElement>('#admin-tiles-dark-coord');
 	expect(tilesField?.value).toBe('https://tiles.example.net/osm/tilejson.json');
 	expect(darkField?.value).toBe('https://tiles.example.net/osm-dark/tilejson.json');
-	expect(lightCoord?.value).toBe('true');
-	expect(darkCoord?.value).toBe('false');
 
 	// The reset is a DRAFT edit: both fields empty, both data back to
 	// the standard, and no write yet.
@@ -764,8 +748,6 @@ test('the map card reads both sources and both data, and the reset clears the dr
 	await tick();
 	expect(tilesField?.value).toBe('');
 	expect(darkField?.value).toBe('');
-	expect(lightCoord?.value).toBe('false');
-	expect(darkCoord?.value).toBe('false');
 	const putsBefore = fetchMock.mock.calls.filter(
 		(call) =>
 			String(call[0]).endsWith('/admin/settings/tiles') && (call[1] as RequestInit | undefined)?.method === 'PUT'
@@ -781,9 +763,7 @@ test('the map card reads both sources and both data, and the reset clears the dr
 	);
 	expect(JSON.parse(String((tilesPut?.[1] as RequestInit).body))).toEqual({
 		tilejsonUrl: '',
-		darkTilejsonUrl: '',
-		gcj02: false,
-		darkGcj02: false
+		darkTilejsonUrl: ''
 	});
 	expect(document.body.textContent).toContain('The map picks it up on its next load');
 });
