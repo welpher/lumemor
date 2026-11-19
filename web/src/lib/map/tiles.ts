@@ -41,25 +41,21 @@ export type TileSourceResult = { ok: true; source: TileSource } | { ok: false };
 
 /**
  * The configured source pair: the two URLs (null or the empty string
- * when unconfigured) and each source's coordinate system. The GCJ-02
- * flag belongs to the source, not to the map: an instance may mix a
- * standard light style with a China-datum dark one.
+ * when unconfigured). The library is WGS-84 only; the source's own
+ * datum is the administrator's concern, warned about in the settings.
  */
 export type MapSources = {
 	light: string | null;
 	dark: string | null;
-	lightGcj02: boolean;
-	darkGcj02: boolean;
 };
 
-/** The source one theme draws: its URL and its coordinate system. */
-export type ActiveTileSource = { url: string; gcj02: boolean };
+/** The source one theme draws. */
+export type ActiveTileSource = { url: string };
 
 /**
  * The tile source for one theme: the dark style when the theme is
  * dark AND one is configured, the light style otherwise (the dark
- * theme reuses the light source when it has none of its own -- and
- * then the light source's coordinate flag governs both themes). Null
+ * theme reuses the light source when it has none of its own). Null
  * when neither is configured -- the map's stated absence.
  *
  * Both URLs use the empty string for "unconfigured" as they arrive
@@ -68,10 +64,10 @@ export type ActiveTileSource = { url: string; gcj02: boolean };
  */
 export function tileSourceForTheme(sources: MapSources, darkTheme: boolean): ActiveTileSource | null {
 	if (darkTheme && sources.dark !== null && sources.dark !== '') {
-		return { url: sources.dark, gcj02: sources.darkGcj02 };
+		return { url: sources.dark };
 	}
 	if (sources.light !== null && sources.light !== '') {
-		return { url: sources.light, gcj02: sources.lightGcj02 };
+		return { url: sources.light };
 	}
 	return null;
 }

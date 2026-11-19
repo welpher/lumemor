@@ -7674,29 +7674,21 @@ paths:
                   value:
                     tilejsonUrl: https://tiles.example.net/planet/style.json
                     darkTilejsonUrl: https://tiles.example.net/planet/style-dark.json
-                    gcj02: false
-                    darkGcj02: false
                 lightOnly:
                   summary: One style for both themes.
                   value:
                     tilejsonUrl: https://tiles.example.net/planet/style.json
                     darkTilejsonUrl: null
-                    gcj02: false
-                    darkGcj02: false
-                chinaBasemap:
-                  summary: A GCJ-02 basemap (Amap) in both themes.
+                chinaBasemapUrl:
+                  summary: A China basemap URL, loaded as-is with no datum correction.
                   value:
                     tilejsonUrl: https://webrd01.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}
                     darkTilejsonUrl: null
-                    gcj02: true
-                    darkGcj02: false
                 unconfigured:
                   summary: No source configured (the degraded state).
                   value:
                     tilejsonUrl: null
                     darkTilejsonUrl: null
-                    gcj02: false
-                    darkGcj02: false
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -12527,29 +12519,21 @@ paths:
                   value:
                     tilejsonUrl: https://tiles.example.net/osm/tilejson.json
                     darkTilejsonUrl: https://tiles.example.net/osm-dark/tilejson.json
-                    gcj02: false
-                    darkGcj02: false
                 lightOnly:
                   summary: One source for both themes (the dark style is empty).
                   value:
                     tilejsonUrl: https://tiles.example.net/osm/tilejson.json
                     darkTilejsonUrl: ''
-                    gcj02: false
-                    darkGcj02: false
-                chinaBasemap:
-                  summary: A GCJ-02 basemap (Amap) in the light theme.
+                chinaBasemapUrl:
+                  summary: A China basemap URL in the light theme, loaded as-is.
                   value:
                     tilejsonUrl: https://webrd01.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}
                     darkTilejsonUrl: ''
-                    gcj02: true
-                    darkGcj02: false
                 unconfigured:
                   summary: 'The shipped state: no source configured.'
                   value:
                     tilejsonUrl: ''
                     darkTilejsonUrl: ''
-                    gcj02: false
-                    darkGcj02: false
         '401':
           description: |
             Authentication is missing or no longer valid: the cookie
@@ -12626,29 +12610,21 @@ paths:
                 value:
                   tilejsonUrl: http://192.168.1.20:8080/tilejson.json
                   darkTilejsonUrl: http://192.168.1.20:8080/tilejson-dark.json
-                  gcj02: false
-                  darkGcj02: false
               lightOnly:
                 summary: One source for both themes.
                 value:
                   tilejsonUrl: http://192.168.1.20:8080/tilejson.json
                   darkTilejsonUrl: ''
-                  gcj02: false
-                  darkGcj02: false
-              chinaBasemap:
-                summary: A GCJ-02 basemap, the flag saved beside its URL.
+              chinaBasemapUrl:
+                summary: A China basemap URL, saved as-is with no conversion.
                 value:
                   tilejsonUrl: https://webrd01.is.autonavi.com/appmaptile?style=7&x={x}&y={y}&z={z}
                   darkTilejsonUrl: ''
-                  gcj02: true
-                  darkGcj02: false
               cleared:
                 summary: Clearing both sources.
                 value:
                   tilejsonUrl: ''
                   darkTilejsonUrl: ''
-                  gcj02: false
-                  darkGcj02: false
       responses:
         '200':
           description: The validated settings were saved.
@@ -12662,8 +12638,6 @@ paths:
                   value:
                     tilejsonUrl: http://192.168.1.20:8080/tilejson.json
                     darkTilejsonUrl: http://192.168.1.20:8080/tilejson-dark.json
-                    gcj02: false
-                    darkGcj02: false
         '400':
           description: |
             `tilejsonUrl` or `darkTilejsonUrl` is not an absolute
@@ -14259,8 +14233,6 @@ components:
       required:
         - tilejsonUrl
         - darkTilejsonUrl
-        - gcj02
-        - darkGcj02
       properties:
         tilejsonUrl:
           type: string
@@ -14284,28 +14256,6 @@ components:
           examples:
             - https://tiles.example.net/osm-dark/tilejson.json
             - ''
-        gcj02:
-          type: boolean
-          description: |
-            The light source's coordinate system: `true` when its
-            basemap draws in GCJ-02 (the offset datum Amap and Tencent
-            use inside China), `false` for the standard WGS-84 every
-            other source draws in. The flag is a property of the
-            source, not of the library: the stored photo coordinates
-            stay WGS-84 and the map converts only at the display and
-            pick boundaries.
-          examples:
-            - false
-            - true
-        darkGcj02:
-          type: boolean
-          description: |
-            The dark source's coordinate system, on the same rule as
-            `gcj02`. An empty dark source reuses the light one, and
-            the light source's flag then governs the dark theme too.
-          examples:
-            - false
-            - true
     TilesSettingsUpdateRequest:
       type: object
       description: |
@@ -14329,29 +14279,6 @@ components:
             the light source). A non-empty value follows the light
             field's rule: an absolute `http` or `https` URL, a LAN
             address included.
-        gcj02:
-          type: boolean
-          default: false
-          description: |
-            The light source's coordinate system: `true` for a GCJ-02
-            basemap (Amap, Tencent), `false` or omitted for the
-            standard WGS-84. Omitting it saves the false default, so
-            a client unaware of the flag keeps behaving exactly as
-            before.
-          examples:
-            - false
-            - true
-        darkGcj02:
-          type: boolean
-          default: false
-          description: |
-            The dark source's coordinate system, on the same rule as
-            `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted
-            for WGS-84. Ignored while the dark source is empty (the
-            light source then governs both themes).
-          examples:
-            - false
-            - true
     ModelSettingsResponse:
       type: object
       description: |
@@ -14483,8 +14410,6 @@ components:
       required:
         - tilejsonUrl
         - darkTilejsonUrl
-        - gcj02
-        - darkGcj02
       properties:
         tilejsonUrl:
           type:
@@ -14512,29 +14437,6 @@ components:
           examples:
             - https://tiles.example.net/planet/style-dark.json
             - null
-        gcj02:
-          type: boolean
-          description: |
-            Whether the light source draws in GCJ-02 (the offset
-            datum Amap and Tencent use inside China). False is the
-            standard WGS-84 every other source draws in, and the
-            shipped default. The browser converts the pins into the
-            active source's datum for display and converts a picked
-            point back to WGS-84 before it reaches the library --
-            the stored coordinates never leave WGS-84.
-          examples:
-            - false
-            - true
-        darkGcj02:
-          type: boolean
-          description: |
-            Whether the dark source draws in GCJ-02, on the same
-            rule as `gcj02`. When no dark source is configured the
-            dark theme reuses the light source and this flag is
-            not consulted.
-          examples:
-            - false
-            - true
     AlbumPathCompletionsResponse:
       type: object
       description: |

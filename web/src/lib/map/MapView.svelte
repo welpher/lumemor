@@ -15,7 +15,6 @@
 		type PinMarker,
 		type PlacePoint
 	} from '$lib/map/tiles';
-	import { gcj02ToWgs84, wgs84ToGcj02 } from '$lib/map/gcj02';
 
 	/** The base layer's state, as the notice renders it. */
 	export type MapState = 'loading' | 'ready' | 'unconfigured' | 'unavailable';
@@ -98,19 +97,10 @@
 	let resizeObserver: ResizeObserver | undefined;
 	/**
 	 * The configured sources, once the read lands: the two URLs, the
-	 * optional dark one included (null when unconfigured), and each
-	 * source's coordinate system. The theme effect reads this to pick
-	 * a source -- and its datum -- on a live switch.
+	 * optional dark one included (null when unconfigured). The theme
+	 * effect reads this to pick a source on a live switch.
 	 */
 	let sources = $state<MapSources | null>(null);
-	/**
-	 * The coordinate system of the source currently drawing: true
-	 * when it is a GCJ-02 basemap. The overlay converts library
-	 * coordinates into this datum before projecting, and converts a
-	 * picked point back out of it; the stored data never leaves
-	 * WGS-84.
-	 */
-	let activeGcj02 = false;
 	/**
 	 * The URL whose base layer the component last asked for (null =
 	 * the empty style). Set when a switch STARTS, so the theme effect
@@ -133,15 +123,6 @@
 	let sourceUnresolved = false;
 
 	/**
-	 * One library coordinate in the active source's datum: identity
-	 * over a WGS-84 basemap, the China offset over a GCJ-02 one. The
-	 * stored coordinate itself is never touched.
-	 */
-	function displayPoint(lat: number, lon: number): { lat: number; lon: number } {
-		return activeGcj02 ? wgs84ToGcj02(lat, lon) : { lat, lon };
-	}
-
-	/**
 	 * Recompute the overlay from the map's current camera: project
 	 * every pin, group nearby ones when clustering is on, and hand the
 	 * list to the template. Runs on every camera move.
@@ -151,8 +132,7 @@
 			return;
 		}
 		const projected = places.map((place) => {
-			const at = displayPoint(place.lat, place.lon);
-			const pixel = map!.project([at.lon, at.lat]);
+			const pixel = map!.project([place.lon, place.lat]);
 			return { placeId: place.placeId, name: place.name, count: place.count, x: pixel.x, y: pixel.y };
 		});
 		single = point === null ? null : assetMarker(map, point);
@@ -172,8 +152,7 @@
 
 	/** The mini map's one marker: the asset's own point, projected. */
 	function assetMarker(instance: MapLibreMap, at: NonNullable<Props['point']>): Marker {
-		const shown = displayPoint(at.lat, at.lon);
-		const pixel = instance.project([shown.lon, shown.lat]);
+		const pixel = instance.project([at.lon, at.lat]);
 		return { key: 'asset', x: pixel.x, y: pixel.y, count: 0, name: null, placeIds: [] };
 	}
 
@@ -194,10 +173,7 @@
 		// squeeze): resize first so the fit reads the fresh viewport.
 		map.resize();
 		const wanted = ids === null ? [...places] : places.filter((place) => ids.includes(place.placeId));
-		// The frame follows the pins: the same datum conversion the
-		// overlay uses, so a GCJ-02 basemap frames exactly where the
-		// pins land.
-		const bounds = placesBounds(wanted.map((place) => displayPoint(place.lat, place.lon)));
+		const bounds = placesBounds(wanted);
 		if (bounds === null) {
 			return;
 		}
@@ -238,23 +214,14 @@
 	/**
 	 * Swap the base layer in place: resolve the source (null = the
 	 * empty style, the stated absence) and set it on the live map.
-	 * The source's coordinate system travels with it: the overlay
-	 * re-projects in the new datum at once, so a theme switch between
-	 * differently-datumed sources moves the pins onto the basemap
-	 * instead of leaving them 300-600 m off. The camera is not part of
-	 * the style -- the library keeps the center, zoom and bearing
-	 * across a setStyle -- and the pins are DOM markers outside the
-	 * style, so a switch moves neither; the selection state rides the
-	 * component's own props.
+	 * The camera is not part of the style -- the library keeps the
+	 * center, zoom and bearing across a setStyle -- and the pins are
+	 * DOM markers outside the style, so a switch moves neither; the
+	 * selection state rides the component's own props.
 	 */
 	async function applySource(choice: ActiveTileSource | null): Promise<void> {
 		const generation = ++sourceGeneration;
 		requestedUrl = choice?.url ?? null;
-		activeGcj02 = choice?.gcj02 ?? false;
-		// The overlay follows the datum even while the document is in
-		// flight: the projection must match the basemap that is about
-		// to draw, not the one leaving.
-		refreshMarkers();
 		if (choice === null) {
 			sourceUnresolved = false;
 			attribution = '';
@@ -297,19 +264,13 @@
 			} else {
 				const configured: MapSources = {
 					light: config.tilejsonUrl,
-					dark: config.darkTilejsonUrl,
-					lightGcj02: config.gcj02,
-					darkGcj02: config.darkGcj02
+					dark: config.darkTilejsonUrl
 				};
 				sources = configured;
 				const wanted = tileSourceForTheme(configured, isDarkTheme());
 				if (wanted === null) {
 					tiles = 'unconfigured';
 				} else {
-					// The first camera and the first overlay are framed
-					// in the source's own datum: the map opens with the
-					// pins already on the basemap.
-					activeGcj02 = wanted.gcj02;
 					const source = await resolveTileSource(wanted.url);
 					if (disposed) {
 						return;
@@ -371,11 +332,10 @@
 			});
 			instance.on('load', () => {
 				ready = true;
-				const bounds = placesBounds(places.map((place) => displayPoint(place.lat, place.lon)));
+				const bounds = placesBounds(places);
 				framedKey = '';
 				if (point !== null) {
-					const at = displayPoint(point.lat, point.lon);
-					instance.jumpTo({ center: [at.lon, at.lat], zoom: 12 });
+					instance.jumpTo({ center: [point.lon, point.lat], zoom: 12 });
 				} else if (bounds !== null) {
 					instance.fitBounds(
 						[
@@ -390,14 +350,11 @@
 			instance.on('move', refreshMarkers);
 			// The picker's arm: one click hands the clicked point over
 			// (the pin follows through the point prop). The wrap keeps
-			// the longitude in the contract's range. A GCJ-02 basemap's
-			// clicked point converts BACK to WGS-84 first: the caller
-			// stores library coordinates, never a basemap datum.
+			// the longitude in the contract's range.
 			if (onpick !== undefined) {
 				instance.on('click', (event) => {
 					const at = event.lngLat.wrap();
-					const stored = activeGcj02 ? gcj02ToWgs84(at.lat, at.lng) : { lat: at.lat, lon: at.lng };
-					onpick({ lat: stored.lat, lon: stored.lon });
+					onpick({ lat: at.lat, lon: at.lng });
 				});
 			}
 
@@ -435,12 +392,11 @@
 		}
 	});
 
-	// The theme switch: a light/dark flip re-picks the source -- and its
-	// coordinate system -- and swaps the base layer in place. No page
-	// reload: the pins are DOM markers and the camera is not part of
-	// the style, so both survive the swap; the overlay re-projects in
-	// the new datum, and the selected state rides the props. A switch
-	// that resolves to the source already loaded (a light-only
+	// The theme switch: a light/dark flip re-picks the source and swaps
+	// the base layer in place. No page reload: the pins are DOM markers
+	// and the camera is not part of the style, so both survive the
+	// swap, and the selected state rides the props. A switch that
+	// resolves to the source already loaded (a light-only
 	// configuration, or a theme with no dark style of its own) does
 	// nothing.
 	$effect(() => {
@@ -450,8 +406,7 @@
 		}
 		const wanted = tileSourceForTheme(sources, dark);
 		const wantedUrl = wanted?.url ?? null;
-		const wantedGcj02 = wanted?.gcj02 ?? false;
-		if (wantedUrl === requestedUrl && wantedGcj02 === activeGcj02) {
+		if (wantedUrl === requestedUrl) {
 			return;
 		}
 		void applySource(wanted);
@@ -521,13 +476,9 @@
 	base layer through setStyle -- no reload, and the pins (DOM markers
 	outside the style) and the camera survive it.
 
-	THE DATUM BOUNDARY: a source may draw in GCJ-02 (the China offset
-	datum Amap and Tencent use). The library's coordinates stay WGS-84:
-	this component converts the pins, the frames and the mini map's
-	point into the active source's datum before projecting, and
-	converts a picked point back before handing it to the caller. A
-	theme switch between differently-datumed sources re-projects the
-	overlay in place.
+	THE DATUM: the library stores and displays WGS-84 only. A Chinese
+	basemap URL is loaded as-is; the settings face warns about the
+	offset before the admin saves it. No conversion happens here.
 
 	The library is loaded lazily: the wall pages never pay for it, and
 	the two map surfaces (the places tab and the viewer's location card)

@@ -430,15 +430,12 @@ func SaveUpdateCheckState(ctx context.Context, q *dbgen.Queries, state UpdateChe
 // theme loads as its fallback, and the optional dark style the dark
 // theme loads instead. The empty string means unconfigured in both
 // cases, and an empty dark style means the dark theme reuses the
-// light one. Each source carries its coordinate system: GCJ02 is
-// true for a basemap that draws in the China offset datum (Amap,
-// Tencent), false for the standard WGS-84. The flag is a property of
-// the source, so the light and dark sources may differ.
+// light one. The library stores and displays WGS-84 only; a Chinese
+// basemap URL is saved as-is and the settings face warns about the
+// offset it will show.
 type TileSettings struct {
 	TileJSONURL     string `json:"tilejsonUrl"`
 	DarkTileJSONURL string `json:"darkTilejsonUrl"`
-	GCJ02           bool   `json:"gcj02"`
-	DarkGCJ02       bool   `json:"darkGcj02"`
 }
 
 // TileSettingsOf reads the map's tile sources. The empty strings are
@@ -447,7 +444,8 @@ type TileSettings struct {
 // describing it, so a broken row can never turn into a source the
 // browser loads. A row written before a field existed reads that
 // field's zero value, so such an instance keeps the pre-existing
-// behavior: one source, both themes, and the standard WGS-84 datum.
+// behavior: one source, both themes. Retired coordinate flags in an
+// old row are ignored and dropped on the next save.
 func TileSettingsOf(ctx context.Context, q *dbgen.Queries) (TileSettings, error) {
 	raw, err := q.GetInstanceSetting(ctx, TilesSettingsKey)
 	if errors.Is(err, pgx.ErrNoRows) {
