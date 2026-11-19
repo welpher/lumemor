@@ -5478,6 +5478,26 @@ export interface components {
              * @example
              */
             darkTilejsonUrl: string;
+            /**
+             * @description The light source's coordinate system: `true` when its
+             *     basemap draws in GCJ-02 (the offset datum Amap and Tencent
+             *     use inside China), `false` for the standard WGS-84 every
+             *     other source draws in. The flag is a property of the
+             *     source, not of the library: the stored photo coordinates
+             *     stay WGS-84 and the map converts only at the display and
+             *     pick boundaries.
+             * @example false
+             * @example true
+             */
+            gcj02: boolean;
+            /**
+             * @description The dark source's coordinate system, on the same rule as
+             *     `gcj02`. An empty dark source reuses the light one, and
+             *     the light source's flag then governs the dark theme too.
+             * @example false
+             * @example true
+             */
+            darkGcj02: boolean;
         };
         /**
          * @description Payload of `PUT /admin/settings/tiles`: both styles, one
@@ -5499,6 +5519,27 @@ export interface components {
              *     address included.
              */
             darkTilejsonUrl?: string;
+            /**
+             * @description The light source's coordinate system: `true` for a GCJ-02
+             *     basemap (Amap, Tencent), `false` or omitted for the
+             *     standard WGS-84. Omitting it saves the false default, so
+             *     a client unaware of the flag keeps behaving exactly as
+             *     before.
+             * @default false
+             * @example false
+             * @example true
+             */
+            gcj02: boolean;
+            /**
+             * @description The dark source's coordinate system, on the same rule as
+             *     `gcj02`: `true` for a GCJ-02 basemap, `false` or omitted
+             *     for WGS-84. Ignored while the dark source is empty (the
+             *     light source then governs both themes).
+             * @default false
+             * @example false
+             * @example true
+             */
+            darkGcj02: boolean;
         };
         /**
          * @description The model store's policy, download sources and pipeline
@@ -5621,6 +5662,27 @@ export interface components {
              * @example null
              */
             darkTilejsonUrl: string | null;
+            /**
+             * @description Whether the light source draws in GCJ-02 (the offset
+             *     datum Amap and Tencent use inside China). False is the
+             *     standard WGS-84 every other source draws in, and the
+             *     shipped default. The browser converts the pins into the
+             *     active source's datum for display and converts a picked
+             *     point back to WGS-84 before it reaches the library --
+             *     the stored coordinates never leave WGS-84.
+             * @example false
+             * @example true
+             */
+            gcj02: boolean;
+            /**
+             * @description Whether the dark source draws in GCJ-02, on the same
+             *     rule as `gcj02`. When no dark source is configured the
+             *     dark theme reuses the light source and this flag is
+             *     not consulted.
+             * @example false
+             * @example true
+             */
+            darkGcj02: boolean;
         };
         /**
          * @description The path completion answer: the pickable source directories

@@ -11,6 +11,7 @@ import {
 	placesFeatureCollection,
 	resolveTileSource,
 	tileSourceForTheme,
+	type MapSources,
 	type PlacePoint
 } from './tiles';
 
@@ -96,29 +97,50 @@ describe('resolveTileSource', () => {
 describe('tileSourceForTheme', () => {
 	const light = 'https://tiles.example.net/bright';
 	const dark = 'https://tiles.example.net/dark';
+	const sources = (overrides: Partial<MapSources> = {}): MapSources => ({
+		light,
+		dark,
+		lightGcj02: false,
+		darkGcj02: false,
+		...overrides
+	});
 
 	test('a dark theme with a dark source loads it', () => {
-		expect(tileSourceForTheme(light, dark, true)).toBe(dark);
+		expect(tileSourceForTheme(sources(), true)).toEqual({ url: dark, gcj02: false });
 	});
 
 	test('a light theme always loads the light source', () => {
-		expect(tileSourceForTheme(light, dark, false)).toBe(light);
+		expect(tileSourceForTheme(sources(), false)).toEqual({ url: light, gcj02: false });
 	});
 
-	test('an empty dark source makes the dark theme reuse the light one', () => {
-		expect(tileSourceForTheme(light, '', true)).toBe(light);
-		expect(tileSourceForTheme(light, null, true)).toBe(light);
+	test('the coordinate flag travels with the source that draws', () => {
+		// A GCJ-02 light basemap and a standard dark one: each theme
+		// takes its own source's datum.
+		const mixed = sources({ lightGcj02: true, darkGcj02: false });
+		expect(tileSourceForTheme(mixed, false)).toEqual({ url: light, gcj02: true });
+		expect(tileSourceForTheme(mixed, true)).toEqual({ url: dark, gcj02: false });
+	});
+
+	test('an empty dark source makes the dark theme reuse the light one and its flag', () => {
+		expect(tileSourceForTheme(sources({ dark: '' }), true)).toEqual({ url: light, gcj02: false });
+		expect(tileSourceForTheme(sources({ dark: null, lightGcj02: true }), true)).toEqual({
+			url: light,
+			gcj02: true
+		});
 	});
 
 	test('only a dark source configured: the light theme is unconfigured, the dark one loads it', () => {
-		expect(tileSourceForTheme('', dark, false)).toBeNull();
-		expect(tileSourceForTheme(null, dark, true)).toBe(dark);
+		expect(tileSourceForTheme(sources({ light: '' }), false)).toBeNull();
+		expect(tileSourceForTheme(sources({ light: null, darkGcj02: true }), true)).toEqual({
+			url: dark,
+			gcj02: true
+		});
 	});
 
 	test('neither configured is the degraded state', () => {
-		expect(tileSourceForTheme('', '', true)).toBeNull();
-		expect(tileSourceForTheme(null, null, false)).toBeNull();
-		expect(tileSourceForTheme('', null, true)).toBeNull();
+		expect(tileSourceForTheme(sources({ light: '', dark: '' }), true)).toBeNull();
+		expect(tileSourceForTheme(sources({ light: null, dark: null }), false)).toBeNull();
+		expect(tileSourceForTheme(sources({ light: '', dark: null }), true)).toBeNull();
 	});
 });
 
