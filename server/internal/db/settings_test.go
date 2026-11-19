@@ -1,8 +1,7 @@
-// The instance settings' storage leaves: the map's tile sources are
-// the one pair this block grows, and their two compatibility facts --
-// an unwritten row and a row written before the dark field existed --
-// both have to read as the empty strings rather than fail or invent a
-// source.
+// The instance settings' storage leaves: the map's tile sources, and
+// their compatibility facts -- an unwritten row and a row written
+// before a field existed both read that field's zero value rather
+// than fail or invent a source.
 package db
 
 import (
@@ -34,7 +33,8 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 
 	// A row written before the dark field existed: the dark style is
 	// the struct's zero value, so the instance keeps one source for
-	// both themes.
+	// both themes. The coordinate flags read false (the standard
+	// WGS-84) for the same reason.
 	if err := queries.SetInstanceSettingRaw(ctx, dbgen.SetInstanceSettingRawParams{
 		Key:   TilesSettingsKey,
 		Value: []byte(`{"tilejsonUrl":"https://tiles.example.net/osm/tilejson.json"}`),
@@ -49,11 +49,17 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 	if legacy != want {
 		t.Fatalf("TileSettingsOf(old row) = %+v, want %+v", legacy, want)
 	}
+	if legacy.GCJ02 || legacy.DarkGCJ02 {
+		t.Fatalf("TileSettingsOf(old row) flags = %v/%v, want both false", legacy.GCJ02, legacy.DarkGCJ02)
+	}
 
-	// The pair survives the round-trip verbatim.
+	// The pair survives the round-trip verbatim, the coordinate
+	// flags included; the two sources may carry different datums.
 	pair := TileSettings{
 		TileJSONURL:     "https://tiles.example.net/osm/tilejson.json",
 		DarkTileJSONURL: "https://tiles.example.net/osm-dark/tilejson.json",
+		GCJ02:           true,
+		DarkGCJ02:       false,
 	}
 	if err := SaveTileSettings(ctx, queries, pair); err != nil {
 		t.Fatalf("SaveTileSettings() error = %v, want nil", err)
@@ -67,7 +73,8 @@ func TestTileSettingsRoundTrip(t *testing.T) {
 	}
 
 	// The save replaces the document: clearing the dark style clears
-	// it rather than leaving the old one behind.
+	// it rather than leaving the old one behind, and a flag that is
+	// no longer saved reads false.
 	if err := SaveTileSettings(ctx, queries, TileSettings{TileJSONURL: pair.TileJSONURL}); err != nil {
 		t.Fatalf("SaveTileSettings(light only) error = %v, want nil", err)
 	}

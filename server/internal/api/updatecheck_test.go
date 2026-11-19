@@ -271,9 +271,11 @@ func TestUpdateCheckSettingsValidation(t *testing.T) {
 }
 
 // TestTilesSettingsRoundTrip pins the empty default, a save, the clear
-// and the shape refusal -- for both URLs. The dark style is optional
-// on the wire (an omission clears it), and the map config carries the
-// pair with null for whatever is unset.
+// and the shape refusal -- for both URLs and both coordinate flags.
+// The dark style is optional on the wire (an omission clears it), the
+// GCJ-02 flags are optional too (an omission saves false, the
+// standard WGS-84), and the map config carries the pair with null for
+// whatever is unset.
 func TestTilesSettingsRoundTrip(t *testing.T) {
 	env := newNetworkingEnv(t, http.StatusOK, `{}`)
 
@@ -288,9 +290,12 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 	if initial["darkTilejsonUrl"] != "" {
 		t.Fatalf("default darkTilejsonUrl = %v, want the empty string", initial["darkTilejsonUrl"])
 	}
+	if initial["gcj02"] != false || initial["darkGcj02"] != false {
+		t.Fatalf("default coordinate flags = %v/%v, want both false", initial["gcj02"], initial["darkGcj02"])
+	}
 
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles",
-		`{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json","darkTilejsonUrl":"http://192.168.1.20:8080/tilejson-dark.json"}`,
+		`{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json","darkTilejsonUrl":"http://192.168.1.20:8080/tilejson-dark.json","gcj02":true,"darkGcj02":false}`,
 		env.cookie); rec.Code != http.StatusOK {
 		t.Fatalf("save: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
 	}
@@ -305,9 +310,24 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 	if config["darkTilejsonUrl"] != "http://192.168.1.20:8080/tilejson-dark.json" {
 		t.Errorf("map config dark = %v, want the saved dark source", config["darkTilejsonUrl"])
 	}
+	if config["gcj02"] != true || config["darkGcj02"] != false {
+		t.Errorf("map config coordinate flags = %v/%v, want true/false", config["gcj02"], config["darkGcj02"])
+	}
+
+	// The read pair carries the same flags back to the settings form.
+	readback := env.do(t, http.MethodGet, "/api/v1/admin/settings/tiles", "", env.cookie)
+	var savedTiles map[string]any
+	if err := json.Unmarshal(readback.Body.Bytes(), &savedTiles); err != nil {
+		t.Fatalf("decode the saved pair: %v", err)
+	}
+	if savedTiles["gcj02"] != true || savedTiles["darkGcj02"] != false {
+		t.Errorf("saved coordinate flags = %v/%v, want true/false", savedTiles["gcj02"], savedTiles["darkGcj02"])
+	}
 
 	// An omitted dark field clears it: the dark theme falls back to
-	// the light source, and the map config answers null.
+	// the light source, and the map config answers null. An omitted
+	// flag saves false -- the standard datum -- rather than keeping
+	// the previous value.
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles",
 		`{"tilejsonUrl":"http://192.168.1.20:8080/tilejson.json"}`,
 		env.cookie); rec.Code != http.StatusOK {
@@ -317,8 +337,16 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 	if !strings.Contains(lightOnly.Body.String(), `"darkTilejsonUrl":null`) {
 		t.Errorf("light-only map config = %q, want a null dark URL", lightOnly.Body.String())
 	}
+	var lightOnlyBody map[string]any
+	if err := json.Unmarshal(lightOnly.Body.Bytes(), &lightOnlyBody); err != nil {
+		t.Fatalf("decode the light-only map config: %v", err)
+	}
+	if lightOnlyBody["gcj02"] != false || lightOnlyBody["darkGcj02"] != false {
+		t.Errorf("omitted flags read = %v/%v, want both false", lightOnlyBody["gcj02"], lightOnlyBody["darkGcj02"])
+	}
 
-	// The clear answers the empty strings and the map config null.
+	// The clear answers the empty strings, the false flags and the
+	// map config null.
 	if rec := env.do(t, http.MethodPut, "/api/v1/admin/settings/tiles", `{"tilejsonUrl":"","darkTilejsonUrl":""}`, env.cookie); rec.Code != http.StatusOK {
 		t.Fatalf("clear: status = %d, want %d", rec.Code, http.StatusOK)
 	}
@@ -328,6 +356,9 @@ func TestTilesSettingsRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(cleared.Body.String(), `"darkTilejsonUrl":null`) {
 		t.Errorf("cleared map config = %q, want a null dark URL", cleared.Body.String())
+	}
+	if !strings.Contains(cleared.Body.String(), `"gcj02":false`) {
+		t.Errorf("cleared map config = %q, want a false light flag", cleared.Body.String())
 	}
 
 	// Both fields refuse a non-absolute or non-http(s) value, and the
