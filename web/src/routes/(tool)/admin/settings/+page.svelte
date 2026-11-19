@@ -214,9 +214,12 @@
 	let checking = $state(false);
 
 	// The map's tile source form: the light style and the optional
-	// dark one, saved as one document.
+	// dark one, saved as one document, plus each source's coordinate
+	// system (WGS-84 by default; GCJ-02 for the China basemaps).
 	let formTilejsonUrl = $state('');
 	let formDarkTilejsonUrl = $state('');
+	let formGcj02 = $state(false);
+	let formDarkGcj02 = $state(false);
 	let savingTiles = $state(false);
 	let tilesErrorKey = $state('');
 	let tilesSaved = $state(false);
@@ -348,6 +351,8 @@
 		updateCheckSaved = false;
 		formTilejsonUrl = tiles.tilejsonUrl;
 		formDarkTilejsonUrl = tiles.darkTilejsonUrl;
+		formGcj02 = tiles.gcj02;
+		formDarkGcj02 = tiles.darkGcj02;
 		tilesErrorKey = '';
 		tilesSaved = false;
 		formModels = { ...models };
@@ -545,11 +550,18 @@
 		savingTiles = true;
 		tilesErrorKey = '';
 		tilesSaved = false;
-		const outcome = await saveTilesSettings(formTilejsonUrl.trim(), formDarkTilejsonUrl.trim());
+		const outcome = await saveTilesSettings(
+			formTilejsonUrl.trim(),
+			formDarkTilejsonUrl.trim(),
+			formGcj02,
+			formDarkGcj02
+		);
 		savingTiles = false;
 		if (outcome.ok) {
 			formTilejsonUrl = outcome.settings.tilejsonUrl;
 			formDarkTilejsonUrl = outcome.settings.darkTilejsonUrl;
+			formGcj02 = outcome.settings.gcj02;
+			formDarkGcj02 = outcome.settings.darkGcj02;
 			tilesSaved = true;
 			return;
 		}
@@ -564,6 +576,8 @@
 	function resetTileSources(): void {
 		formTilejsonUrl = '';
 		formDarkTilejsonUrl = '';
+		formGcj02 = false;
+		formDarkGcj02 = false;
 		tilesErrorKey = '';
 		tilesSaved = false;
 	}
@@ -1435,6 +1449,30 @@
 							class="font-mono"
 							bind:value={formTilejsonUrl}
 						/>
+						<!-- The coordinate system is a property of the
+						     source, so each of the two styles carries its
+						     own: a GCJ-02 light basemap may sit beside a
+						     WGS-84 dark one. -->
+						<div class="settings__field flex flex-col gap-1.5">
+							<label
+								class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+								for="admin-tiles-coord">{$_('admin_settings_tiles_coord_label')}</label
+							>
+							<select
+								class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
+								id="admin-tiles-coord"
+								bind:value={formGcj02}
+								data-testid="tiles-coord-light"
+							>
+								<option value={false}>{$_('admin_settings_tiles_coord_wgs84')}</option>
+								<option value={true}>{$_('admin_settings_tiles_coord_gcj02')}</option>
+							</select>
+							<p
+								class="settings__field-hint m-0 font-body font-normal text-[12px] leading-[1.5] text-text-faint"
+							>
+								{$_('admin_settings_tiles_coord_hint')}
+							</p>
+						</div>
 						<Input
 							id="admin-tiles-dark-source"
 							label={$_('admin_settings_tiles_dark_label')}
@@ -1445,6 +1483,21 @@
 							placeholder="https://…/style-dark.json"
 							bind:value={formDarkTilejsonUrl}
 						/>
+						<div class="settings__field flex flex-col gap-1.5">
+							<label
+								class="settings__label font-body font-semibold text-[14px] leading-[1.4] text-text"
+								for="admin-tiles-dark-coord">{$_('admin_settings_tiles_coord_label')}</label
+							>
+							<select
+								class="settings__select px-3 py-[9px] font-body font-normal text-[15px] leading-[1.4] text-text bg-card border border-border-strong rounded-control transition-[border-color] duration-(--motion-fast) ease-standard"
+								id="admin-tiles-dark-coord"
+								bind:value={formDarkGcj02}
+								data-testid="tiles-coord-dark"
+							>
+								<option value={false}>{$_('admin_settings_tiles_coord_wgs84')}</option>
+								<option value={true}>{$_('admin_settings_tiles_coord_gcj02')}</option>
+							</select>
+						</div>
 						<p
 							class="settings__field-hint m-0 font-body font-normal text-[12px] leading-[1.5] text-text-faint"
 						>
