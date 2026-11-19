@@ -4045,6 +4045,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the loaded place database and the re-resolution scopes' sizes.
+         * @description The map & places card's read: the place database the instance
+         *     currently resolves against, plus the size of the two
+         *     re-resolution scopes the rebuild dialog chooses between.
+         *
+         *     `version` is the data-version marker the startup import
+         *     wrote. When the marker is a 64-character digest it is a
+         *     content digest, not a release date: the card displays its
+         *     first eight characters. An empty string means the instance
+         *     carries no bake -- the place tables were never imported, so
+         *     nothing resolves.
+         *
+         *     `languages` is the display-name locale set the bake carries
+         *     (the same set the places read's `locale` parameter accepts).
+         *
+         *     The counts are the re-resolution walk's scope sizes:
+         *     `gpsAssets` counts every GPS-bearing asset row the pipeline
+         *     owns and `missingPlaces` the subset whose place is absent --
+         *     exactly what a full run and a missing-only run walk. A row the
+         *     owner located by hand (`location_lat` set) is outside both:
+         *     that manual decision owns the row, so no count promises work
+         *     the walk will not do. Place resolution is metadata, not
+         *     visibility, so the counts are library-wide, never per caller.
+         */
+        get: operations["getPlacesDatabase"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/places/reresolve": {
         parameters: {
             query?: never;
@@ -4055,33 +4096,41 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Start a full place re-resolution run.
+         * Start a place re-resolution run over the chosen mode.
          * @description The places-data-update path of the admin surface: one run
-         *     that re-resolves the place of EVERY asset whose exif row
-         *     carries GPS coordinates, against the baked place data the
-         *     server currently runs on. The run that refills resolutions
-         *     after the baked GeoNames data changed -- the startup import
-         *     of a rebuilt image replaces the place tables and, through
-         *     the schema's ON DELETE SET NULL, releases every stale
-         *     resolution; this run is the deliberate step that refills
-         *     them. (The metadata job resolves every NEW upload on its
-         *     own; this run only matters for re-resolving what already
-         *     exists.)
+         *     that re-resolves the place of the assets its mode covers,
+         *     against the baked place data the server currently runs on.
+         *     The run that refills resolutions after the baked GeoNames
+         *     data changed -- the startup import of a rebuilt image
+         *     replaces the place tables and, through the schema's ON
+         *     DELETE SET NULL, releases every stale resolution; this run
+         *     is the deliberate step that refills them. (The metadata job
+         *     resolves every NEW upload on its own; this run only matters
+         *     for re-resolving what already exists.)
          *
-         *     The scope is every GPS-bearing asset row whatever its
-         *     lifecycle state -- place resolution is metadata, not
-         *     visibility. `total` and `done` of the run's `job_runs` row
-         *     count those assets and `failed` the ones whose re-resolution
-         *     write failed.
+         *     The mode is the dialog's honest pair: `missing` walks only
+         *     the GPS-bearing rows whose place is absent (the fill-in
+         *     path, which rewrites nothing that already resolved), and
+         *     `all` walks every GPS-bearing row (the full re-resolve,
+         *     which rewrites history -- boundaries that moved change the
+         *     city). An absent body means `all`, the endpoint's original
+         *     behavior; any other value is 400 VALIDATION_FAILED.
+         *
+         *     The scope's rows are counted whatever their lifecycle state
+         *     -- place resolution is metadata, not visibility. A row the
+         *     owner located by hand is outside both modes (the manual
+         *     decision owns it, no walk rewrites it), and the enqueue
+         *     counts the same rows the walk visits, so `total` and `done`
+         *     converge. `failed` counts the rows whose re-resolution write
+         *     failed.
          *
          *     The endpoint is idempotent the way the model rerun is: a
          *     place re-resolution run still in flight (`queued` or
          *     `running`) answers 200 with its identifier and starts
          *     nothing; a finished (or failed) run never blocks a new one.
-         *
-         *     The run is API-only for now: no admin page button
-         *     is wired to it yet (the job panel's listing shows its
-         *     progress like any other run).
+         *     The in-flight join is per kind, not per mode: a `missing`
+         *     run in flight answers a request for `all` with 200 as well
+         *     (v1 does not queue modes; the card points at the jobs page).
          */
         post: operations["reresolvePlaces"];
         delete?: never;
@@ -7780,6 +7829,56 @@ export interface components {
              *     first.
              */
             representativeCoverAssetIds: string[];
+        };
+        /**
+         * @description The loaded place database: its data-version marker, the
+         *     display-name locale set it carries, and the two
+         *     re-resolution scopes' sizes (the dialog's estimates).
+         */
+        PlacesDatabaseResponse: {
+            /**
+             * @description The data-version marker the startup import recorded --
+             *     the sha256 digest of the exact loaded bytes. An empty
+             *     string means the instance carries no bake (nothing
+             *     resolves). A 64-character value is a content digest,
+             *     not a release date: the card displays its first eight
+             *     characters.
+             */
+            version: string;
+            /**
+             * @description The display-name locales the bake carries, in the
+             *     product's language-set order. The places read's
+             *     `locale` parameter accepts exactly this set.
+             */
+            languages: string[];
+            /**
+             * @description The full re-resolution scope: every asset whose exif row
+             *     carries GPS coordinates, whatever its lifecycle state. A
+             *     row with a manual location is excluded -- the walk leaves
+             *     those rows to the owner's own decision, so the count and
+             *     the walk cover the same rows.
+             */
+            gpsAssets: number;
+            /**
+             * @description The fill-in scope: the GPS-bearing assets whose place is
+             *     absent (the subset a `missing` run walks), with the same
+             *     manual-location exclusion as `gpsAssets`.
+             */
+            missingPlaces: number;
+        };
+        /**
+         * @description The mode of one place re-resolution run: the honest pair the
+         *     map & places card's dialog chooses between.
+         */
+        PlacesRerunRequest: {
+            /**
+             * @description `missing` re-resolves only the GPS-bearing rows whose
+             *     place is absent (nothing that already resolved is
+             *     rewritten); `all` re-resolves every GPS-bearing row.
+             *     Absent means `all`.
+             * @enum {string}
+             */
+            mode?: "missing" | "all";
         };
         /**
          * @description The identifier of one place re-resolution run: the
@@ -15193,7 +15292,7 @@ export interface operations {
             };
         };
     };
-    reresolvePlaces: {
+    getPlacesDatabase: {
         parameters: {
             query?: never;
             header?: never;
@@ -15201,6 +15300,69 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /**
+             * @description The loaded place database's marker and locale set, and
+             *     the two re-resolution scope sizes.
+             */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlacesDatabaseResponse"];
+                };
+            };
+            /**
+             * @description Authentication is missing or no longer valid: the cookie
+             *     or bearer token is absent, expired or revoked.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The caller is authenticated but their role is not
+             *     `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The place database's marker or the scope counts could not
+             *     be read.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reresolvePlaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlacesRerunRequest"];
+            };
+        };
         responses: {
             /**
              * @description A place re-resolution run is already in flight (`queued`
@@ -15227,6 +15389,18 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlacesRerunResponse"];
+                };
+            };
+            /**
+             * @description The requested mode is outside the contract's enum
+             *     (`missing`, `all`). Nothing was started.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /**

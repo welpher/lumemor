@@ -19,6 +19,7 @@ Method | HTTP request | Description
 [**getImageSettings**](AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
 [**getModelProbe**](AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [**getModelSettings**](AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
+[**getPlacesDatabase**](AdminApi.md#getplacesdatabase) | **GET** /admin/places | Read the loaded place database and the re-resolution scopes&#39; sizes.
 [**getRunBudgetSettings**](AdminApi.md#getrunbudgetsettings) | **GET** /admin/settings/run-budget | Read the background work&#39;s budget.
 [**getStorageSettings**](AdminApi.md#getstoragesettings) | **GET** /admin/settings/storage | Read the storage template setting.
 [**getTilesSettings**](AdminApi.md#gettilessettings) | **GET** /admin/settings/tiles | Read the map tile source setting.
@@ -31,7 +32,7 @@ Method | HTTP request | Description
 [**listUsers**](AdminApi.md#listusers) | **GET** /admin/users | List the instance&#39;s accounts.
 [**probeModelSource**](AdminApi.md#probemodelsource) | **POST** /admin/models/{slot}/probe | Probe a model source for one slot.
 [**rebuildDerivatives**](AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
-[**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a full place re-resolution run.
+[**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a place re-resolution run over the chosen mode.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
 [**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
@@ -492,6 +493,49 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**ModelSettingsResponse**](ModelSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getPlacesDatabase**
+> PlacesDatabaseResponse getPlacesDatabase()
+
+Read the loaded place database and the re-resolution scopes' sizes.
+
+The map & places card's read: the place database the instance currently resolves against, plus the size of the two re-resolution scopes the rebuild dialog chooses between.  `version` is the data-version marker the startup import wrote. When the marker is a 64-character digest it is a content digest, not a release date: the card displays its first eight characters. An empty string means the instance carries no bake -- the place tables were never imported, so nothing resolves.  `languages` is the display-name locale set the bake carries (the same set the places read's `locale` parameter accepts).  The counts are the re-resolution walk's scope sizes: `gpsAssets` counts every GPS-bearing asset row the pipeline owns and `missingPlaces` the subset whose place is absent -- exactly what a full run and a missing-only run walk. A row the owner located by hand (`location_lat` set) is outside both: that manual decision owns the row, so no count promises work the walk will not do. Place resolution is metadata, not visibility, so the counts are library-wide, never per caller. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getPlacesDatabase();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getPlacesDatabase: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**PlacesDatabaseResponse**](PlacesDatabaseResponse.md)
 
 ### Authorization
 
@@ -1041,11 +1085,11 @@ Name | Type | Description  | Notes
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
 
 # **reresolvePlaces**
-> PlacesRerunResponse reresolvePlaces()
+> PlacesRerunResponse reresolvePlaces(placesRerunRequest)
 
-Start a full place re-resolution run.
+Start a place re-resolution run over the chosen mode.
 
-The places-data-update path of the admin surface: one run that re-resolves the place of EVERY asset whose exif row carries GPS coordinates, against the baked place data the server currently runs on. The run that refills resolutions after the baked GeoNames data changed -- the startup import of a rebuilt image replaces the place tables and, through the schema's ON DELETE SET NULL, releases every stale resolution; this run is the deliberate step that refills them. (The metadata job resolves every NEW upload on its own; this run only matters for re-resolving what already exists.)  The scope is every GPS-bearing asset row whatever its lifecycle state -- place resolution is metadata, not visibility. `total` and `done` of the run's `job_runs` row count those assets and `failed` the ones whose re-resolution write failed.  The endpoint is idempotent the way the model rerun is: a place re-resolution run still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; a finished (or failed) run never blocks a new one.  The run is API-only for now: no admin page button is wired to it yet (the job panel's listing shows its progress like any other run). 
+The places-data-update path of the admin surface: one run that re-resolves the place of the assets its mode covers, against the baked place data the server currently runs on. The run that refills resolutions after the baked GeoNames data changed -- the startup import of a rebuilt image replaces the place tables and, through the schema's ON DELETE SET NULL, releases every stale resolution; this run is the deliberate step that refills them. (The metadata job resolves every NEW upload on its own; this run only matters for re-resolving what already exists.)  The mode is the dialog's honest pair: `missing` walks only the GPS-bearing rows whose place is absent (the fill-in path, which rewrites nothing that already resolved), and `all` walks every GPS-bearing row (the full re-resolve, which rewrites history -- boundaries that moved change the city). An absent body means `all`, the endpoint's original behavior; any other value is 400 VALIDATION_FAILED.  The scope's rows are counted whatever their lifecycle state -- place resolution is metadata, not visibility. A row the owner located by hand is outside both modes (the manual decision owns it, no walk rewrites it), and the enqueue counts the same rows the walk visits, so `total` and `done` converge. `failed` counts the rows whose re-resolution write failed.  The endpoint is idempotent the way the model rerun is: a place re-resolution run still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; a finished (or failed) run never blocks a new one. The in-flight join is per kind, not per mode: a `missing` run in flight answers a request for `all` with 200 as well (v1 does not queue modes; the card points at the jobs page). 
 
 ### Example
 ```dart
@@ -1056,9 +1100,10 @@ import 'package:lumemor_api/api.dart';
 //defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
 
 final api = LumemorApi().getAdminApi();
+final PlacesRerunRequest placesRerunRequest = {"mode":"missing"}; // PlacesRerunRequest | 
 
 try {
-    final response = api.reresolvePlaces();
+    final response = api.reresolvePlaces(placesRerunRequest);
     print(response);
 } on DioException catch (e) {
     print('Exception when calling AdminApi->reresolvePlaces: $e\n');
@@ -1066,7 +1111,10 @@ try {
 ```
 
 ### Parameters
-This endpoint does not need any parameter.
+
+Name | Type | Description  | Notes
+------------- | ------------- | ------------- | -------------
+ **placesRerunRequest** | [**PlacesRerunRequest**](PlacesRerunRequest.md)|  | [optional] 
 
 ### Return type
 
@@ -1078,7 +1126,7 @@ This endpoint does not need any parameter.
 
 ### HTTP request headers
 
- - **Content-Type**: Not defined
+ - **Content-Type**: application/json
  - **Accept**: application/json
 
 [[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)

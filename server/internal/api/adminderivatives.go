@@ -90,7 +90,7 @@ func (s *server) RebuildDerivatives(w http.ResponseWriter, r *http.Request) {
 		s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
 		return
 	}
-	if req.Scope != apigen.Missing && req.Scope != apigen.All {
+	if req.Scope != apigen.RebuildDerivativesRequestScopeMissing && req.Scope != apigen.RebuildDerivativesRequestScopeAll {
 		s.writeValidationError(w, "scope must be one of missing, all", []string{"scope"})
 		return
 	}

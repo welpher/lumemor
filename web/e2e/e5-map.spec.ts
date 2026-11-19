@@ -34,6 +34,10 @@
 //  7. No source at all: the same promise, worded for the configuration.
 //  8. The viewer's location card: the asset's own coordinates, the
 //     mini map over them, and the point's marker on it.
+//  9. The map card's place database row: the read's marker and locale
+//     set, the collapsed meta carrying the version, the rebuild
+//     dialog's two modes with their estimates and its warning, and
+//     the run landing on the jobs page.
 
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -417,5 +421,78 @@ test.describe('the signed-in scenes', () => {
 		// derived would have cached the first render's empty state).
 		await expect(card.locator('.map__asset-pin')).toBeVisible();
 		await expect(card.locator('[data-map-state]')).toHaveCount(0);
+	});
+
+	test('scene 9: the place database row and the rebuild dialog start a run the jobs page carries', async ({
+		page
+	}) => {
+		// The read the card renders: the loaded bake's marker, the
+		// baked locale set, and the two scopes' sizes.
+		const database = await page.request.get('/api/v1/admin/places');
+		expect(database.status()).toBe(200);
+		const body = (await database.json()) as {
+			version: string;
+			languages: string[];
+			gpsAssets: number;
+			missingPlaces: number;
+		};
+		expect(body.languages).toEqual(['en', 'zh-Hans']);
+		// The shipped bake's marker is a content digest: the card prints
+		// its first eight characters, never a fabricated date.
+		expect(body.version).toMatch(/^[0-9a-f]{64}$/);
+		const marker = body.version.slice(0, 8);
+		// Scene 3's GPS fixture resolved, so the full scope holds it.
+		expect(body.gpsAssets).toBeGreaterThanOrEqual(1);
+		expect(body.missingPlaces).toBeLessThanOrEqual(body.gpsAssets);
+
+		await page.goto('/admin/settings');
+		const card = page.getByTestId('admin-settings-tiles');
+		// The collapsed index names the marker beside the tile state.
+		await expect(card.locator('.settings__section-meta')).toContainText(`Place database ${marker}`);
+
+		await card.locator('summary').click();
+		const row = page.getByTestId('admin-settings-places-db');
+		await expect(row).toContainText(`Place database ${marker}`);
+		await expect(row).toContainText('en / zh-Hans');
+		await expect(card).toContainText('The database ships with the image');
+
+		// The dialog: the two modes, the selected mode's estimate, the
+		// consequence sentence.
+		await page.getByTestId('admin-settings-places-rebuild').click();
+		const dialog = page.getByTestId('places-rebuild-dialog');
+		await expect(dialog).toBeVisible();
+		const estimate = page.getByTestId('places-rebuild-estimate');
+		await expect(dialog.getByRole('radio', { name: 'Fill missing only' })).toBeChecked();
+		await expect(estimate).toContainText(`Will fill ${body.missingPlaces}`);
+		await expect(dialog).toContainText('A full re-resolve rewrites history');
+
+		// The estimate follows the mode switch (the full scope's count).
+		await dialog.getByRole('radio', { name: 'Re-resolve everything' }).check();
+		await expect(estimate).toContainText(`Will re-resolve ${body.gpsAssets}`);
+
+		// Start: the dialog closes, the toast points at the jobs page,
+		// and the run lands there as a places rerun row.
+		await page.getByTestId('places-rebuild-start').click();
+		await expect(page.locator('.toasts')).toContainText('Rebuild started; follow its progress on the Jobs page.');
+		await expect(page.getByTestId('places-rebuild-dialog')).toHaveCount(0);
+		await page.goto('/admin/jobs');
+		await expect(page.getByText('Places rerun').first()).toBeVisible();
+
+		// The run's own scope: the full walk covers the count the read
+		// announced.
+		await expect
+			.poll(
+				async () => {
+					const response = await page.request.get('/api/v1/admin/jobs');
+					expect(response.status()).toBe(200);
+					const runs = (await response.json()) as {
+						jobs: Array<{ kind: string; total: number; state: string }>;
+					};
+					const run = runs.jobs.find((entry) => entry.kind === 'places_rerun');
+					return run?.total ?? -1;
+				},
+				{ timeout: 60_000, intervals: [500, 1000, 2000] }
+			)
+			.toBe(body.gpsAssets);
 	});
 });

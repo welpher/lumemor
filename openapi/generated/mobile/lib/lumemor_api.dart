@@ -131,6 +131,8 @@ export 'package:lumemor_api/src/model/person_label_response.dart';
 export 'package:lumemor_api/src/model/person_summary.dart';
 export 'package:lumemor_api/src/model/place_facet_count.dart';
 export 'package:lumemor_api/src/model/place_summary.dart';
+export 'package:lumemor_api/src/model/places_database_response.dart';
+export 'package:lumemor_api/src/model/places_rerun_request.dart';
 export 'package:lumemor_api/src/model/places_rerun_response.dart';
 export 'package:lumemor_api/src/model/rebuild_derivatives_request.dart';
 export 'package:lumemor_api/src/model/rebuild_derivatives_response.dart';

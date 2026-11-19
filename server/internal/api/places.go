@@ -27,8 +27,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -47,6 +50,13 @@ const (
 	// in-flight join and the rerun test's seeded row drive the two
 	// against each other, so they cannot drift apart).
 	placesRerunJobKind = "places_rerun"
+
+	// The re-resolution modes, the contract's enum -- the jobs
+	// package's pinned vocabulary, mirrored here for the same reason
+	// as the kind: the endpoint validates the request against its
+	// own copy and passes the value through the enqueue seam.
+	placesRerunModeMissing = "missing"
+	placesRerunModeAll     = "all"
 )
 
 // resolveManualPlace resolves the manual location edit's place: the
@@ -157,19 +167,93 @@ func (s *server) ListPlaces(w http.ResponseWriter, r *http.Request, params apige
 	s.writeJSON(w, http.StatusOK, places)
 }
 
+// GetPlacesDatabase implements GET /api/v1/admin/places: the map &
+// places card's read -- the loaded place database's data-version
+// marker and locale set, plus the two re-resolution scopes' sizes.
+//
+// The marker is whatever the startup import recorded (an empty string
+// when the instance never imported a bake; the card renders its first
+// eight characters when it is a content digest). The locales are the
+// baked set's constants -- the display-name join the places read
+// performs, not a per-instance setting. The counts are the walk's
+// scope sizes, library-wide (place resolution is metadata, not
+// visibility): every GPS-bearing asset row the pipeline owns, and the
+// subset whose place is absent. A hand-located row is outside both --
+// the manual decision owns it and no walk rewrites it -- so a count
+// never promises work the walk will not do.
+func (s *server) GetPlacesDatabase(w http.ResponseWriter, r *http.Request) {
+	if _, ok := authFrom(r.Context()); !ok {
+		s.rejectUnauthenticated(w)
+		return
+	}
+	ctx := r.Context()
+
+	version, err := s.queries.GetGeodataVersion(ctx, geodata.VersionSettingKey)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// No bake ever imported: the honest empty marker.
+		version = ""
+	} else if err != nil {
+		s.internalError(w, r, "read the place database marker", err)
+		return
+	}
+	gpsAssets, err := s.queries.CountGpsAssets(ctx)
+	if err != nil {
+		s.internalError(w, r, "count the GPS-bearing assets", err)
+		return
+	}
+	missingPlaces, err := s.queries.CountMissingPlaceAssets(ctx)
+	if err != nil {
+		s.internalError(w, r, "count the assets without a place", err)
+		return
+	}
+	s.writeJSON(w, http.StatusOK, apigen.PlacesDatabaseResponse{
+		Version:       version,
+		Languages:     []string{geodata.LocaleEn, geodata.LocaleZhHans},
+		GpsAssets:     int(gpsAssets),
+		MissingPlaces: int(missingPlaces),
+	})
+}
+
 // ReresolvePlaces implements POST /api/v1/admin/places/reresolve:
-// one run that re-resolves the place of every GPS-bearing asset
+// one run that re-resolves the place of the assets its mode covers
 // against the baked place data the server currently runs on -- the
-// places-data-update path. Idempotent the way the model rerun is: a
-// run of the kind still in flight answers 200 with its identifier,
-// anything else starts a fresh run. No admin page button is wired
-// to it yet; the job panel lists the run like any other.
+// places-data-update path. The mode is the contract's enum: missing
+// walks only the GPS-bearing rows whose place is absent, all walks
+// every GPS-bearing row; an absent body means all, any other value is
+// 400. Idempotent the way the model rerun is: a run of the kind still
+// in flight answers 200 with its identifier, anything else starts a
+// fresh run. The in-flight join is per kind, not per mode -- v1 does
+// not queue modes, so a missing run in flight answers an all request
+// with 200 as well (the card points at the jobs page).
 func (s *server) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 	if _, ok := authFrom(r.Context()); !ok {
 		s.rejectUnauthenticated(w)
 		return
 	}
 	ctx := r.Context()
+
+	// The mode: an absent body means the endpoint's original full
+	// walk; a present body must name one of the enum's values.
+	mode := placesRerunModeAll
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		s.writeValidationError(w, "request body could not be read", []string{"body"})
+		return
+	}
+	if len(bytes.TrimSpace(body)) > 0 {
+		var req apigen.PlacesRerunRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			s.writeValidationError(w, "request body must be valid JSON", []string{"body"})
+			return
+		}
+		if req.Mode != nil {
+			if !req.Mode.Valid() {
+				s.writeValidationError(w, "mode must be one of missing, all", []string{"mode"})
+				return
+			}
+			mode = string(*req.Mode)
+		}
+	}
 
 	// A run of the kind still in flight answers 200 with its
 	// identifier: the request joins the running re-resolution instead
@@ -188,13 +272,13 @@ func (s *server) ReresolvePlaces(w http.ResponseWriter, r *http.Request) {
 			"the re-resolution could not be started", nil)
 		return
 	}
-	jobRunID, err := s.placesReruns.EnqueuePlacesRerun(ctx)
+	jobRunID, err := s.placesReruns.EnqueuePlacesRerun(ctx, mode)
 	if err != nil {
 		// The queue refuses the enqueue when this server runs without
 		// the place reference data (no GeoNames bake, so no grid to
 		// resolve against) exactly as it does for a broken
 		// transaction; the log line carries which.
-		s.logger.Error("enqueue the places re-resolution", "error", err)
+		s.logger.Error("enqueue the places re-resolution", "error", err, "mode", mode)
 		s.writeError(w, http.StatusInternalServerError, apigen.INTERNAL,
 			"the re-resolution could not be started", nil)
 		return

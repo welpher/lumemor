@@ -135,16 +135,34 @@ export async function listPlaces(
 /** The place re-resolution trigger's outcome: the run's id, or the failure's i18n key. */
 export type PlacesReresolveResult = { ok: true; jobRunId: string } | { ok: false; errorKey: string };
 
+/** The re-resolution modes, exactly the contract's enum. */
+export type PlacesRerunMode = 'missing' | 'all';
+
 /**
- * POST /api/v1/admin/places/reresolve: start (or join) one full
- * place re-resolution run. The endpoint is idempotent -- an in-flight
- * run answers 200 with its identifier, a fresh one 202 -- so both
- * statuses are the same outcome for the caller.
+ * POST /api/v1/admin/places/reresolve: start (or join) one place
+ * re-resolution run over the chosen mode. The endpoint is idempotent
+ * -- an in-flight run answers 200 with its identifier, a fresh one
+ * 202 -- so both statuses are the same outcome for the caller. An
+ * absent mode sends no body, which the contract reads as the full
+ * walk (the jobs page's retry path).
  */
-export async function reresolvePlaces(fetcher: typeof fetch = globalThis.fetch): Promise<PlacesReresolveResult> {
+export async function reresolvePlaces(
+	mode?: PlacesRerunMode,
+	fetcher: typeof fetch = globalThis.fetch
+): Promise<PlacesReresolveResult> {
 	let response: Response;
 	try {
-		response = await apiFetch('/api/v1/admin/places/reresolve', { method: 'POST' }, fetcher);
+		response = await apiFetch(
+			'/api/v1/admin/places/reresolve',
+			mode === undefined
+				? { method: 'POST' }
+				: {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ mode })
+					},
+			fetcher
+		);
 	} catch {
 		return { ok: false, errorKey: 'internal' };
 	}
@@ -160,4 +178,53 @@ export async function reresolvePlaces(fetcher: typeof fetch = globalThis.fetch):
 		return { ok: false, errorKey: 'internal' };
 	}
 	return { ok: true, jobRunId };
+}
+
+/** The loaded place database and the two re-resolution scopes' sizes, exactly the contract's shape. */
+export type PlacesDatabase = components['schemas']['PlacesDatabaseResponse'];
+
+/** The place-database read's outcome. */
+export type PlacesDatabaseResult = { ok: true; database: PlacesDatabase } | { ok: false; errorKey: string };
+
+/** Structurally validate one place-database body; null when it is not one. */
+function placesDatabaseFrom(body: unknown): PlacesDatabase | null {
+	if (body === null || typeof body !== 'object') {
+		return null;
+	}
+	const candidate = body as Partial<PlacesDatabase>;
+	if (typeof candidate.version !== 'string') {
+		return null;
+	}
+	if (!Array.isArray(candidate.languages) || candidate.languages.some((tag) => typeof tag !== 'string')) {
+		return null;
+	}
+	for (const count of [candidate.gpsAssets, candidate.missingPlaces]) {
+		if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+			return null;
+		}
+	}
+	return body as PlacesDatabase;
+}
+
+/**
+ * GET /api/v1/admin/places: the loaded place database's marker and
+ * locale set, plus the two re-resolution scope sizes the rebuild
+ * dialog's estimates quote.
+ */
+export async function getPlacesDatabase(fetcher: typeof fetch = globalThis.fetch): Promise<PlacesDatabaseResult> {
+	let response: Response;
+	try {
+		response = await apiFetch('/api/v1/admin/places', undefined, fetcher);
+	} catch {
+		return { ok: false, errorKey: 'internal' };
+	}
+	if (!response.ok) {
+		return { ok: false, errorKey: await errorKeyFrom(response) };
+	}
+	const body = await bodyOf(response);
+	const database = placesDatabaseFrom(body);
+	if (database === null) {
+		return { ok: false, errorKey: 'internal' };
+	}
+	return { ok: true, database };
 }

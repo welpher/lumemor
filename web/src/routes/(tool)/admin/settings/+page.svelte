@@ -63,6 +63,7 @@
 		type UpdateCheckSettings
 	} from '$lib/api/adminSettings';
 	import { getUpdateCheck, runUpdateCheck, type UpdateCheckState } from '$lib/api/updateCheck';
+	import { getPlacesDatabase, reresolvePlaces, type PlacesDatabase, type PlacesRerunMode } from '$lib/api/places';
 	import { resolveErrorText } from '$lib/i18n/errors';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import Check from '@lucide/svelte/icons/check';
@@ -226,6 +227,20 @@
 	let tilesErrorKey = $state('');
 	let tilesSaved = $state(false);
 
+	// The place database block under the tile fields: the read's
+	// marker, locale set and scope counts, and the rebuild dialog's
+	// two modes. The read's own failure dims the block's facts (the
+	// estimate falls back to "shown once counted"); it never fails
+	// the page, exactly like the image card's cost line.
+	let placesDb = $state<PlacesDatabase | null>(null);
+	/** The place-database read's state: the dialog's estimate speaks to it
+	 * (counting, the count, or "shown once counted" after a failure). */
+	let placesDbState = $state<'loading' | 'ready' | 'failed'>('loading');
+	let placesDialogOpen = $state(false);
+	let placesMode = $state<PlacesRerunMode>('missing');
+	let placesStarting = $state(false);
+	let placesErrorKey = $state('');
+
 	// The model store's policy form.
 	let formAutoDownload = $state(true);
 	/** The model settings' read document, the sources included: the
@@ -246,9 +261,10 @@
 		void retryTick;
 		status = 'loading';
 		errorKey = '';
+		placesDbState = 'loading';
 		let current = true;
 		void (async () => {
-			const [storage, trash, transcoding, updateCheck, tiles, models, checkState, image, summary] =
+			const [storage, trash, transcoding, updateCheck, tiles, models, checkState, image, summary, places] =
 				await Promise.all([
 					getStorageSettings(),
 					getTrashSettings(),
@@ -258,7 +274,8 @@
 					getModelSettings(),
 					getUpdateCheck(),
 					getImageSettings(),
-					getDerivativesSummary()
+					getDerivativesSummary(),
+					getPlacesDatabase()
 				]);
 			if (!current) {
 				return;
@@ -319,6 +336,11 @@
 			} else {
 				summaryError = true;
 			}
+			// The place database block's facts: a failed read leaves
+			// the version row out and the dialog's estimate on its
+			// "shown once counted" line, never a broken card.
+			placesDb = places.ok ? places.database : null;
+			placesDbState = places.ok ? 'ready' : 'failed';
 			status = 'ready';
 		})();
 		return () => {
@@ -328,10 +350,15 @@
 
 	// The dialog deep link (?dialog=rebuild-derivatives): the dialog
 	// opens over the collapsed index -- the collapse and the dialog
-	// are independent layers (the design's boundary table).
+	// are independent layers (the design's boundary table). The places
+	// rebuild dialog carries the same deep link.
 	$effect(() => {
-		if (status === 'ready' && page.url.searchParams.get('dialog') === 'rebuild-derivatives') {
+		const dialog = page.url.searchParams.get('dialog');
+		if (status === 'ready' && dialog === 'rebuild-derivatives') {
 			rebuildOpen = true;
+		}
+		if (status === 'ready' && dialog === 'rebuild-places') {
+			placesDialogOpen = true;
 		}
 	});
 
@@ -506,6 +533,28 @@
 		rebuildErrorKey = outcome.errorKey;
 	}
 
+	/**
+	 * The place rebuild start: one POST with the dialog's chosen mode,
+	 * the honest toast on the way out, the error line in the dialog.
+	 * The in-flight 200 (a run already going) is the same started
+	 * toast: the card's request is satisfied either way.
+	 */
+	async function handlePlacesStart(): Promise<void> {
+		if (placesStarting) {
+			return;
+		}
+		placesStarting = true;
+		placesErrorKey = '';
+		const outcome = await reresolvePlaces(placesMode);
+		placesStarting = false;
+		if (outcome.ok) {
+			placesDialogOpen = false;
+			toast($_('admin_settings_places_started'));
+			return;
+		}
+		placesErrorKey = outcome.errorKey;
+	}
+
 	async function handleUpdateCheckSubmit(event: SubmitEvent): Promise<void> {
 		event.preventDefault();
 		if (savingUpdateCheck) {
@@ -626,6 +675,24 @@
 		{ value: 4, labelKey: 'admin_settings_transcode_concurrency_4' }
 	];
 
+	/**
+	 * The place database's display marker: a 64-character content
+	 * digest shortens to its first eight characters (a digest is not a
+	 * release date, so nothing is invented); an empty marker -- an
+	 * instance that never imported a bake -- shows the honest dash.
+	 */
+	function placeVersion(database: PlacesDatabase): string {
+		if (database.version === '') {
+			return '—';
+		}
+		return /^[0-9a-f]{64}$/i.test(database.version) ? database.version.slice(0, 8) : database.version;
+	}
+
+	/** The place database's locale set, the row's join ("en / zh-Hans"). */
+	function placeLanguages(database: PlacesDatabase): string {
+		return database.languages.join(' / ');
+	}
+
 	/** The collapsed row's value for one card: NOW what is, never what will be. */
 	function metaOf(id: CardId): string {
 		switch (id) {
@@ -637,10 +704,18 @@
 				return `${$_(presetOf(formTranscoding.preset) === 'custom' ? 'admin_settings_transcode_preset_auto' : `admin_settings_transcode_preset_${formTranscoding.preset}`)} · ${formTranscoding.concurrency}`;
 			case 'image':
 				return `${$_('admin_settings_image_thumb_label')} ${formImage.tileSize} · ${formImage.previewSize} · ${formImage.format.toUpperCase()}`;
-			case 'tiles':
-				return formTilejsonUrl === '' && formDarkTilejsonUrl === ''
-					? $_('admin_settings_collapse_unconfigured')
-					: $_('admin_settings_collapse_configured');
+			case 'tiles': {
+				const tileState =
+					formTilejsonUrl === '' && formDarkTilejsonUrl === ''
+						? $_('admin_settings_collapse_unconfigured')
+						: $_('admin_settings_collapse_configured');
+				if (placesDb === null) {
+					return tileState;
+				}
+				// The place database's marker rides the tile state (the
+				// index's value line: what the card currently carries).
+				return `${tileState} · ${$_('admin_settings_collapse_places_db', { values: { version: placeVersion(placesDb) } })}`;
+			}
 			case 'models':
 				return formAutoDownload ? $_('admin_settings_collapse_on') : $_('admin_settings_collapse_off');
 			case 'update':
@@ -1497,6 +1572,42 @@
 						>
 					</div>
 				</form>
+				<!-- The place database: a read-only fact row (the loaded
+				     bake's marker and locale set), the honest note, and
+				     the rebuild entry. Nothing here downloads anything. -->
+				<div
+					class="settings__places mt-4 pt-4 border-t border-border flex flex-col gap-2"
+					data-testid="admin-settings-places"
+				>
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						{#if placesDb !== null}
+							<span
+								class="settings__places-db font-body font-normal text-[13px] leading-[1.4] text-text-soft"
+								data-testid="admin-settings-places-db"
+							>
+								{$_('admin_settings_places_db', {
+									values: {
+										version: placeVersion(placesDb),
+										languages: placeLanguages(placesDb)
+									}
+								})}
+							</span>
+						{/if}
+						<Button
+							type="button"
+							data-testid="admin-settings-places-rebuild"
+							onclick={() => {
+								placesErrorKey = '';
+								placesDialogOpen = true;
+							}}
+						>
+							{$_('admin_settings_places_rebuild')}
+						</Button>
+					</div>
+					<span class="settings__places-note font-body font-normal text-[12px] leading-[1.5] text-text-faint">
+						{$_('admin_settings_places_note')}
+					</span>
+				</div>
 				<p
 					class="settings__contract mt-4 pt-4 border-t border-border font-body font-normal text-[13px] leading-[1.5] text-text-faint"
 				>
@@ -1663,6 +1774,88 @@
 			aria-busy={rebuilding}
 		>
 			{$_('admin_rebuild_start')}
+		</Button>
+	{/snippet}
+</Modal>
+
+<!-- The place rebuild dialog: the honest pair (fill missing only vs
+     re-resolve everything), the selected mode's estimate, and the
+     warning that names the consequence. Same page-level layer as the
+     derivative rebuild: it opens over the collapsed index. -->
+<Modal
+	bind:open={placesDialogOpen}
+	title={$_('admin_settings_places_rebuild_title')}
+	onclose={() => {
+		placesErrorKey = '';
+	}}
+>
+	<div class="flex flex-col gap-3" data-testid="places-rebuild-dialog">
+		<label class="flex items-start gap-2 px-3 py-2.5 bg-page border border-border rounded-control cursor-pointer">
+			<input
+				class="mt-0.5 w-[16px] h-[16px] accent-accent"
+				type="radio"
+				name="places-rebuild-mode"
+				value="missing"
+				bind:group={placesMode}
+			/>
+			<span class="font-body font-semibold text-[14px] leading-[1.4] text-text">
+				{$_('admin_settings_places_rebuild_missing')}
+			</span>
+		</label>
+		<label class="flex items-start gap-2 px-3 py-2.5 bg-page border border-border rounded-control cursor-pointer">
+			<input
+				class="mt-0.5 w-[16px] h-[16px] accent-accent"
+				type="radio"
+				name="places-rebuild-mode"
+				value="all"
+				bind:group={placesMode}
+			/>
+			<span class="font-body font-semibold text-[14px] leading-[1.4] text-text">
+				{$_('admin_settings_places_rebuild_all')}
+			</span>
+		</label>
+		<p
+			class="settings__places-estimate m-0 font-body font-normal text-[13px] leading-[1.5] text-text-soft tabular-nums"
+			data-testid="places-rebuild-estimate"
+			role="status"
+			aria-live="polite"
+		>
+			{#if placesDbState === 'loading'}
+				{$_('admin_settings_places_estimating')}
+			{:else if placesDb === null}
+				{$_('admin_settings_places_estimate_unavailable')}
+			{:else if placesMode === 'missing'}
+				{$_('admin_settings_places_estimate_missing', { values: { count: placesDb.missingPlaces } })}
+			{:else}
+				{$_('admin_settings_places_estimate_all', { values: { count: placesDb.gpsAssets } })}
+			{/if}
+		</p>
+		<div
+			class="flex items-start gap-1.5 px-3 py-2 rounded-control bg-[color-mix(in_srgb,var(--color-warning)_22%,transparent)] border border-[color-mix(in_srgb,var(--color-warning)_55%,transparent)]"
+		>
+			<TriangleAlert size={14} class="shrink-0 mt-0.5 text-warning-text" aria-hidden="true" />
+			<span class="font-body font-normal text-[12px] leading-[1.5] text-text">
+				{$_('admin_settings_places_rebuild_warning')}
+			</span>
+		</div>
+		{#if placesErrorKey !== ''}
+			<p class="m-0 font-body font-medium text-[13px] leading-[1.4] text-danger-text" role="alert">
+				{errorText(placesErrorKey)}
+			</p>
+		{/if}
+	</div>
+	{#snippet footer()}
+		<Button variant="ghost" onclick={() => (placesDialogOpen = false)}>
+			{$_('common_cancel')}
+		</Button>
+		<Button
+			variant="primary"
+			disabled={placesStarting}
+			onclick={() => void handlePlacesStart()}
+			data-testid="places-rebuild-start"
+			aria-busy={placesStarting}
+		>
+			{$_('admin_settings_places_rebuild_start')}
 		</Button>
 	{/snippet}
 </Modal>

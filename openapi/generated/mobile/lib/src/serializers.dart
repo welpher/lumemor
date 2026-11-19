@@ -123,6 +123,8 @@ import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
 import 'package:lumemor_api/src/model/place_facet_count.dart';
 import 'package:lumemor_api/src/model/place_summary.dart';
+import 'package:lumemor_api/src/model/places_database_response.dart';
+import 'package:lumemor_api/src/model/places_rerun_request.dart';
 import 'package:lumemor_api/src/model/places_rerun_response.dart';
 import 'package:lumemor_api/src/model/rebuild_derivatives_request.dart';
 import 'package:lumemor_api/src/model/rebuild_derivatives_response.dart';
@@ -288,6 +290,8 @@ part 'serializers.g.dart';
   PersonSummary,
   PlaceFacetCount,
   PlaceSummary,
+  PlacesDatabaseResponse,
+  PlacesRerunRequest,
   PlacesRerunResponse,
   RebuildDerivativesRequest,
   RebuildDerivativesResponse,

@@ -15,8 +15,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -343,6 +345,108 @@ func TestPlacesCoversCapAtFour(t *testing.T) {
 	}
 }
 
+// postPlacesReresolve fires POST /api/v1/admin/places/reresolve with
+// an optional JSON body (nil sends none, the endpoint's full-walk
+// default).
+func postPlacesReresolve(router http.Handler, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
+	var reader io.Reader
+	if body != "" {
+		reader = strings.NewReader(body)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/places/reresolve", reader)
+	req.Header.Set("Content-Type", "application/json")
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// decodePlacesDatabase decodes the place-database read.
+func decodePlacesDatabase(t *testing.T, rec *httptest.ResponseRecorder) apigen.PlacesDatabaseResponse {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
+	}
+	var database apigen.PlacesDatabaseResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &database); err != nil {
+		t.Fatalf("decode place database %q: %v", rec.Body.String(), err)
+	}
+	return database
+}
+
+// TestGetPlacesDatabase pins the map & places card's read: the empty
+// marker of an instance without a bake, the baked locale set, the two
+// scope counts (every GPS row, and the subset without a place), the
+// stored marker once one lands, and the role guards.
+func TestGetPlacesDatabase(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	adminID := env.sessionUserID(t)
+	env.insertPlacesFixture(t)
+
+	// No bake imported yet: the honest empty marker, the baked
+	// locale set, and the counts of what the library carries.
+	database := decodePlacesDatabase(t, authedRequest(env.router, http.MethodGet, "/api/v1/admin/places", env.cookie))
+	if database.Version != "" {
+		t.Errorf("version = %q, want the empty marker (no bake imported)", database.Version)
+	}
+	if len(database.Languages) != 2 || database.Languages[0] != "en" || database.Languages[1] != "zh-Hans" {
+		t.Errorf("languages = %v, want [en zh-Hans]", database.Languages)
+	}
+	if database.GpsAssets != 0 || database.MissingPlaces != 0 {
+		t.Errorf("counts = %d/%d, want 0/0 (no GPS rows yet)", database.GpsAssets, database.MissingPlaces)
+	}
+
+	// Two GPS rows (one resolved, one not), one row without GPS, and
+	// one GPS row the owner located by hand -- the walks leave manual
+	// locations alone, so neither count covers it.
+	withGPS := placeAssetID("31")
+	missing := placeAssetID("32")
+	withoutGPS := placeAssetID("33")
+	manual := placeAssetID("34")
+	env.insertOwnedAsset(t, withGPS, adminID, time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, missing, adminID, time.Date(2026, 7, 2, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, withoutGPS, adminID, time.Date(2026, 7, 3, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.insertOwnedAsset(t, manual, adminID, time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	env.exec(t, `INSERT INTO exif (asset_id, exif, lat, lon) VALUES
+			($1, '{}'::jsonb, 48.85, 2.35),
+			($2, '{}'::jsonb, 48.86, 2.36),
+			($3, '{}'::jsonb, 48.87, 2.37)`,
+		withGPS, missing, manual)
+	env.exec(t, "UPDATE assets SET place_id = $1 WHERE id = $2", placeParisID, withGPS)
+	env.exec(t, "UPDATE assets SET location_lat = 48.90, location_lon = 2.40 WHERE id = $1", manual)
+
+	database = decodePlacesDatabase(t, authedRequest(env.router, http.MethodGet, "/api/v1/admin/places", env.cookie))
+	if database.GpsAssets != 2 {
+		t.Errorf("gpsAssets = %d, want 2 (the GPS rows the walk owns)", database.GpsAssets)
+	}
+	if database.MissingPlaces != 1 {
+		t.Errorf("missingPlaces = %d, want 1 (the GPS row without a place)", database.MissingPlaces)
+	}
+
+	// The stored marker answers verbatim (the card shortens a digest
+	// for display; the contract never does).
+	env.exec(t, "INSERT INTO instance_settings (key, value) VALUES ($1, to_jsonb($2::text))",
+		"geodata_version", "feedfacefeedface")
+	database = decodePlacesDatabase(t, authedRequest(env.router, http.MethodGet, "/api/v1/admin/places", env.cookie))
+	if database.Version != "feedfacefeedface" {
+		t.Errorf("version = %q, want the stored marker", database.Version)
+	}
+
+	// The role guards: 401 without a session, 403 for a plain user.
+	rec := httptest.NewRecorder()
+	env.router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/admin/places", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("unauthenticated status = %d, want 401", rec.Code)
+	}
+	_, plainCookie := env.createSecondUser(t, "places-db-plain@example.com")
+	rec = authedRequest(env.router, http.MethodGet, "/api/v1/admin/places", plainCookie)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("plain user status = %d, want 403", rec.Code)
+	}
+}
+
 // TestReresolvePlaces pins the admin re-resolution trigger: the role
 // guards (401 without a session, 403 for a plain user), the 202 of
 // the first call (the run enqueued through the seam), the 200 of the
@@ -360,8 +464,7 @@ func TestReresolvePlaces(t *testing.T) {
 	adminCookie, _ := loginCookie(t, router, "ada@example.com", testPassword, "places-rerun-tests")
 
 	// Unauthenticated: 401.
-	rec = httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/admin/places/reresolve", nil))
+	rec = postPlacesReresolve(router, nil, "")
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated status = %d, want 401", rec.Code)
 	}
@@ -369,13 +472,29 @@ func TestReresolvePlaces(t *testing.T) {
 	// The plain user: 403 (the admin-role guard).
 	env := &assetEnv{pool: pool}
 	_, plainCookie := env.createSecondUser(t, "places-plain@example.com")
-	rec = authedRequest(router, http.MethodPost, "/api/v1/admin/places/reresolve", plainCookie)
+	rec = postPlacesReresolve(router, plainCookie, "")
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("plain user status = %d, want 403", rec.Code)
 	}
 
-	// The first call: 202 with the fresh run's identifier.
-	rec = authedRequest(router, http.MethodPost, "/api/v1/admin/places/reresolve", adminCookie)
+	// A mode outside the enum: 400 VALIDATION_FAILED, nothing enqueued.
+	rec = postPlacesReresolve(router, adminCookie, `{"mode":"everything"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("bad mode status = %d, want 400 (body %q)", rec.Code, rec.Body.String())
+	}
+	apiErr, fields := decodeError(t, rec)
+	if apiErr.Code != apigen.VALIDATIONFAILED {
+		t.Errorf("bad mode code = %q, want VALIDATION_FAILED", apiErr.Code)
+	}
+	if len(fields) != 1 || fields[0] != "mode" {
+		t.Errorf("bad mode details.fields = %v, want [mode]", fields)
+	}
+	if stub.calls != 0 {
+		t.Errorf("enqueue calls after the rejected mode = %d, want 0", stub.calls)
+	}
+
+	// The absent-body call keeps the endpoint's original full walk.
+	rec = postPlacesReresolve(router, adminCookie, "")
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("first call status = %d, want 202 (body %q)", rec.Code, rec.Body.String())
 	}
@@ -386,8 +505,17 @@ func TestReresolvePlaces(t *testing.T) {
 	if started.JobRunId != stub.id {
 		t.Errorf("jobRunId = %s, want %s", started.JobRunId, stub.id)
 	}
-	if stub.calls != 1 {
-		t.Errorf("enqueue calls = %d, want 1", stub.calls)
+	if stub.calls != 1 || len(stub.modes) != 1 || stub.modes[0] != "all" {
+		t.Errorf("enqueue calls/modes = %d/%v, want 1/[all] (an absent body means all)", stub.calls, stub.modes)
+	}
+
+	// An explicit mode rides the enqueue seam.
+	rec = postPlacesReresolve(router, adminCookie, `{"mode":"missing"}`)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("missing-mode status = %d, want 202 (body %q)", rec.Code, rec.Body.String())
+	}
+	if stub.calls != 2 || stub.modes[1] != "missing" {
+		t.Errorf("enqueue calls/modes = %d/%v, want the second call carrying missing", stub.calls, stub.modes)
 	}
 
 	// An in-flight run answers 200 with its identifier and enqueues
@@ -400,7 +528,9 @@ func TestReresolvePlaces(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed in-flight run: %v", err)
 	}
-	rec = authedRequest(router, http.MethodPost, "/api/v1/admin/places/reresolve", adminCookie)
+	// The join is per kind: a request for the other mode still answers
+	// 200 with the in-flight run (v1 does not queue modes).
+	rec = postPlacesReresolve(router, adminCookie, `{"mode":"all"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("in-flight status = %d, want 200 (body %q)", rec.Code, rec.Body.String())
 	}
@@ -411,8 +541,8 @@ func TestReresolvePlaces(t *testing.T) {
 	if joined.JobRunId != inFlight {
 		t.Errorf("jobRunId = %s, want the in-flight run %s", joined.JobRunId, inFlight)
 	}
-	if stub.calls != 1 {
-		t.Errorf("enqueue calls after the in-flight join = %d, want 1 (no second enqueue)", stub.calls)
+	if stub.calls != 2 {
+		t.Errorf("enqueue calls after the in-flight join = %d, want 2 (no second enqueue)", stub.calls)
 	}
 
 	// A wired-but-failing enqueue maps to the 500 envelope. The
@@ -422,11 +552,11 @@ func TestReresolvePlaces(t *testing.T) {
 	e := &assetEnv{pool: pool}
 	e.exec(t, "UPDATE job_runs SET state = 'succeeded' WHERE id = $1", pgUUID(inFlight))
 	stub.err = errPlacesRerunRefused
-	rec = authedRequest(router, http.MethodPost, "/api/v1/admin/places/reresolve", adminCookie)
+	rec = postPlacesReresolve(router, adminCookie, "")
 	if rec.Code != http.StatusInternalServerError {
 		t.Fatalf("failed enqueue status = %d, want 500", rec.Code)
 	}
-	apiErr, _ := decodeError(t, rec)
+	apiErr, _ = decodeError(t, rec)
 	if apiErr.Code != apigen.INTERNAL {
 		t.Errorf("code = %q, want INTERNAL", apiErr.Code)
 	}
@@ -436,16 +566,19 @@ func TestReresolvePlaces(t *testing.T) {
 var errPlacesRerunRefused = errors.New("the place resolver is not wired")
 
 // stubPlacesReruns is the enqueue seam under test: it counts the
-// calls, answers a fixed run identifier, and can be told to fail.
+// calls, records the requested mode, answers a fixed run identifier,
+// and can be told to fail.
 type stubPlacesReruns struct {
 	calls int
+	modes []string
 	id    uuid.UUID
 	err   error
 }
 
 // EnqueuePlacesRerun implements PlacesRerunEnqueuer.
-func (s *stubPlacesReruns) EnqueuePlacesRerun(ctx context.Context) (uuid.UUID, error) {
+func (s *stubPlacesReruns) EnqueuePlacesRerun(ctx context.Context, mode string) (uuid.UUID, error) {
 	s.calls++
+	s.modes = append(s.modes, mode)
 	if s.err != nil {
 		return uuid.Nil, s.err
 	}

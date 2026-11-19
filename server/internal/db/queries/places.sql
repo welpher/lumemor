@@ -122,15 +122,52 @@ WHERE ranked.recency_rank <= 4
 ORDER BY ranked.place_id, ranked.recency_rank;
 
 -- name: CountGpsAssets :one
--- The scope size of the places re-resolution run: every asset whose
--- exif row carries GPS coordinates (the rows the in-memory grid can
--- resolve), whatever the row's lifecycle state -- place resolution is
--- metadata, not visibility.
+-- The scope size of the places re-resolution run's full mode: every
+-- asset whose exif row carries GPS coordinates (the rows the
+-- in-memory grid can resolve), whatever the row's lifecycle state --
+-- place resolution is metadata, not visibility. The manual-location
+-- guard is the walk's own predicate (see ListGpsAssetPage): a row the
+-- owner located by hand belongs to that decision, so the count and the
+-- walk cover the same rows and a run converges to done = total.
 SELECT count(*)
 FROM assets a
 JOIN exif e ON e.asset_id = a.id
 WHERE e.lat IS NOT NULL
-  AND e.lon IS NOT NULL;
+  AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL;
+
+-- name: CountMissingPlaceAssets :one
+-- The fill-in scope's size: the GPS-bearing rows whose place is
+-- absent -- the subset a missing-only re-resolution walks, exactly
+-- the same row predicate as CountGpsAssets narrowed by place_id
+-- (the manual-location guard included, so the count and the walk
+-- cover the same rows).
+SELECT count(*)
+FROM assets a
+JOIN exif e ON e.asset_id = a.id
+WHERE e.lat IS NOT NULL
+  AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL
+  AND a.place_id IS NULL;
+
+-- name: ListMissingPlaceAssetPage :many
+-- One page of the fill-in scope, keyset-ordered by the asset id (the
+-- same walk shape as ListGpsAssetPage): only the rows whose place is
+-- absent, so a missing-only run rewrites nothing that already
+-- resolved. The manual-location rows stay outside, the walk's own
+-- discipline (the owner's newer decision owns those rows).
+SELECT a.id,
+       e.lat,
+       e.lon
+FROM assets a
+JOIN exif e ON e.asset_id = a.id
+WHERE e.lat IS NOT NULL
+  AND e.lon IS NOT NULL
+  AND a.location_lat IS NULL
+  AND a.place_id IS NULL
+  AND a.id > sqlc.arg('cursor')
+ORDER BY a.id
+LIMIT sqlc.arg('limit_count');
 
 -- name: ListGpsAssetPage :many
 -- One page of the re-resolution scope, keyset-ordered by the asset
