@@ -149,11 +149,18 @@ async function settledPinBox(page: Page): Promise<{ x: number; y: number }> {
 
 /**
  * Save the tile sources through the admin API (the settings' own
- * write): the light style and, when given, the dark one.
+ * write): the light style, the optional dark one, and each source's
+ * coordinate system (WGS-84 unless a scene asks for GCJ-02).
  */
-async function setTileSource(page: Page, tilejsonUrl: string, darkTilejsonUrl = ''): Promise<void> {
+async function setTileSource(
+	page: Page,
+	tilejsonUrl: string,
+	darkTilejsonUrl = '',
+	gcj02 = false,
+	darkGcj02 = false
+): Promise<void> {
 	const response = await page.request.put('/api/v1/admin/settings/tiles', {
-		data: { tilejsonUrl, darkTilejsonUrl }
+		data: { tilejsonUrl, darkTilejsonUrl, gcj02, darkGcj02 }
 	});
 	expect(response.status()).toBe(200);
 }
@@ -215,19 +222,27 @@ test.describe('the signed-in scenes', () => {
 		await expect(tilesCard).toContainText('Recommended sources: OpenFreeMap');
 
 		// Saving both sources through the form (the admin's own path,
-		// not the API seeding the later scenes use).
+		// not the API seeding the later scenes use), with the light
+		// source marked as a GCJ-02 China basemap and the dark one
+		// left on the standard datum: the two flags are per source.
 		await sourceField.fill(TILE_SOURCE);
 		await darkSourceField.fill(TILE_DARK_SOURCE);
+		await page.locator('#admin-tiles-coord').selectOption({ label: 'GCJ-02 (Amap / Tencent)' });
 		await tilesCard.getByRole('button', { name: 'Save' }).click();
 		await expect(tilesCard).toContainText('The map picks it up on its next load');
 
-		// The persisted pair reads back into both fields.
+		// The persisted pair reads back into both fields and both
+		// selectors, flags included.
 		const saved = await page.request.get('/api/v1/admin/settings/tiles');
 		expect(saved.status()).toBe(200);
 		expect(await saved.json()).toMatchObject({
 			tilejsonUrl: TILE_SOURCE,
-			darkTilejsonUrl: TILE_DARK_SOURCE
+			darkTilejsonUrl: TILE_DARK_SOURCE,
+			gcj02: true,
+			darkGcj02: false
 		});
+		await expect(page.locator('#admin-tiles-coord')).toHaveValue('true');
+		await expect(page.locator('#admin-tiles-dark-coord')).toHaveValue('false');
 
 		// The model download policy card: the automatic fill is on by
 		// default, and the copy names the one case it covers.
