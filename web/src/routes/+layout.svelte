@@ -10,12 +10,30 @@
 	import '../lib/theme/theme.css';
 	import { page } from '$app/state';
 	import { initTheme } from '$lib/theme/theme.svelte';
+	import { adoptAccountTheme } from '$lib/theme/accountTheme';
+	import { sessionStatus } from '$lib/auth/session.svelte';
 	import SessionGuard from '$lib/auth/SessionGuard.svelte';
 	import Toasts from '$lib/components/Toasts.svelte';
 
 	let { children } = $props();
 
 	initTheme();
+
+	// The account's theme, once the session resolves: a restored session
+	// is authenticated before the first render (the boot probe), a fresh
+	// sign-in flips the status later -- both land here exactly once. The
+	// account row is the cross-device truth the settings chip renders,
+	// so the page's class must follow it too (a browser with no stored
+	// preference otherwise opens in the OS theme while the chip says
+	// something else).
+	let adoptedAccountTheme = false;
+	$effect(() => {
+		if (adoptedAccountTheme || sessionStatus() !== 'authenticated') {
+			return;
+		}
+		adoptedAccountTheme = true;
+		void adoptAccountTheme();
+	});
 </script>
 
 <SessionGuard currentPath={page.url.pathname + page.url.search} />

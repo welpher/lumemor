@@ -556,12 +556,39 @@ test('a failed appearance patch keeps its line in the appearance section', async
 	expect(toasts()).toHaveLength(0);
 });
 
+test('the account theme is adopted on mount, and a pick of the selected theme still applies', async () => {
+	const fetchMock = stubFetch(
+		defaultReads({
+			'/api/v1/users/me': () => jsonResponse(200, selfBody({ theme: 'dark' }))
+		})
+	);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The row says dark: the page follows it. A browser with no stored
+	// preference (a new device, a cleared profile) otherwise stays in
+	// the OS theme while the chip already reads "dark".
+	expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+	// A pick of the already-selected theme is the user asking for that
+	// theme -- it applies even though the row needs no update.
+	document.documentElement.classList.remove('dark');
+	clickChip('settings-theme-dark');
+	await settle();
+	expect(document.documentElement.classList.contains('dark')).toBe(true);
+	expect(callsOf(fetchMock, 'PATCH', '/users/me')).toHaveLength(0);
+});
+
 test('the theme pick applies immediately and persists the row', async () => {
+	// The PATCH echoes the picked theme back (the real row's answer):
+	// the page adopts every saved document, so a canned answer would
+	// re-apply a stale theme on the next pick.
 	const fetchMock = stubFetch(
 		defaultReads({
 			'/api/v1/users/me': (init?: RequestInit) =>
 				init?.method === 'PATCH'
-					? jsonResponse(200, selfBody({ theme: 'dark' }))
+					? jsonResponse(200, selfBody({ theme: JSON.parse(String(init.body)).theme }))
 					: jsonResponse(200, selfBody())
 		})
 	);
