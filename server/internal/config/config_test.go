@@ -154,3 +154,36 @@ func TestLoadFolderSyncInterval(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadFolderWatch pins the watcher's switch: on when unset (the
+// shipped default -- the accelerator is what makes an active house see a
+// change in seconds), off for the documented falsy spellings, and a boot
+// failure for anything else: an on-by-default switch must not be
+// disarmed by a typo any more than an off-by-default one may be armed.
+func TestLoadFolderWatch(t *testing.T) {
+	cases := []struct {
+		name    string
+		raw     string
+		want    bool
+		wantErr bool
+	}{
+		{"unset keeps the accelerator on", "", true, false},
+		{"on", "on", true, false},
+		{"1", "1", true, false},
+		{"zero disables it", "0", false, false},
+		{"off disables it", "off", false, false},
+		{"nonsense fails the boot", "maybe", false, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(EnvFolderWatch, tc.raw)
+			got, err := loadFolderWatch()
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("loadFolderWatch(%q) error = %v, wantErr %v", tc.raw, err, tc.wantErr)
+			}
+			if got != tc.want {
+				t.Errorf("loadFolderWatch(%q) = %v, want %v", tc.raw, got, tc.want)
+			}
+		})
+	}
+}
