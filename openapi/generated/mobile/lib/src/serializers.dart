@@ -35,6 +35,7 @@ import 'package:lumemor_api/src/model/album_owner_ref.dart';
 import 'package:lumemor_api/src/model/album_patch.dart';
 import 'package:lumemor_api/src/model/album_path_completion.dart';
 import 'package:lumemor_api/src/model/album_path_completions_response.dart';
+import 'package:lumemor_api/src/model/album_rescan_all_response.dart';
 import 'package:lumemor_api/src/model/album_rescan_response.dart';
 import 'package:lumemor_api/src/model/album_share_entry.dart';
 import 'package:lumemor_api/src/model/album_summary.dart';
@@ -78,8 +79,11 @@ import 'package:lumemor_api/src/model/job_run_kind.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
 import 'package:lumemor_api/src/model/job_run_response.dart';
 import 'package:lumemor_api/src/model/job_run_state.dart';
+import 'package:lumemor_api/src/model/job_run_summary.dart';
+import 'package:lumemor_api/src/model/jobs_summary_response.dart';
 import 'package:lumemor_api/src/model/kind_facet_count.dart';
 import 'package:lumemor_api/src/model/label_person_request.dart';
+import 'package:lumemor_api/src/model/latest_job_runs.dart';
 import 'package:lumemor_api/src/model/login_request.dart';
 import 'package:lumemor_api/src/model/map_config_response.dart';
 import 'package:lumemor_api/src/model/media_kind.dart';
@@ -121,6 +125,8 @@ import 'package:lumemor_api/src/model/person_facet_count.dart';
 import 'package:lumemor_api/src/model/person_label.dart';
 import 'package:lumemor_api/src/model/person_label_response.dart';
 import 'package:lumemor_api/src/model/person_summary.dart';
+import 'package:lumemor_api/src/model/pipeline_counts.dart';
+import 'package:lumemor_api/src/model/pipeline_job_counts.dart';
 import 'package:lumemor_api/src/model/place_facet_count.dart';
 import 'package:lumemor_api/src/model/place_summary.dart';
 import 'package:lumemor_api/src/model/places_database_response.dart';
@@ -202,6 +208,7 @@ part 'serializers.g.dart';
   AlbumPatch,
   AlbumPathCompletion,
   AlbumPathCompletionsResponse,
+  AlbumRescanAllResponse,
   AlbumRescanResponse,
   AlbumShareEntry,
   AlbumSummary,$AlbumSummary,
@@ -245,8 +252,11 @@ part 'serializers.g.dart';
   JobRunListResponse,
   JobRunResponse,
   JobRunState,
+  JobRunSummary,
+  JobsSummaryResponse,
   KindFacetCount,
   LabelPersonRequest,
+  LatestJobRuns,
   LoginRequest,
   MapConfigResponse,
   MediaKind,
@@ -288,6 +298,8 @@ part 'serializers.g.dart';
   PersonLabel,
   PersonLabelResponse,
   PersonSummary,
+  PipelineCounts,
+  PipelineJobCounts,
   PlaceFacetCount,
   PlaceSummary,
   PlacesDatabaseResponse,

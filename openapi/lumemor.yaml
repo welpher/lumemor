@@ -11588,6 +11588,257 @@ paths:
                   value:
                     code: INTERNAL
                     message: internal server error
+  /admin/albums/rescan:
+    post:
+      operationId: rescanAllAlbums
+      tags:
+        - admin
+      summary: Start (or join) the instance-wide album rescan run.
+      description: |
+        The task catalog's "rescan all": ONE run that walks every
+        directory album of the instance through the same three-arm
+        diff the per-album rescan performs, album by album. The
+        directory page's own rescan button stays the per-album
+        trigger; this endpoint is the administrator's sweep.
+
+        The run's kind is `album_rescan_all` and its `total` is the
+        number of directory albums across the instance -- a row the
+        walk could not read counts as a failed album, never a
+        disappeared one. The walk reuses the per-album diff
+        untouched (the add, vanish, converge and change arms), so an
+        album's result is exactly what its own rescan would have
+        resolved:
+
+        - `done` counts albums whose diff closed cleanly, `failed`
+          the albums that could not be diffed (a root the walk
+          cannot read, a source that stopped resolving) or whose
+          diff reported failed entries. One album's failure never
+          stops the sweep, and the run closes `failed` when any
+          album failed -- the batch jobs' shared convention.
+        - The cancel flag is honored at album boundaries (the
+          shared chunk-boundary discipline): an album's committed
+          work stays, the run closes `cancelled`.
+        - The run creates NO per-album `job_runs` rows: the history
+          shows the one sweep row ("Album rescan (all)"), while a
+          rescan started on a directory page keeps its own row.
+
+        The endpoint is idempotent the way the rebuild and the place
+        re-resolution are: an `album_rescan_all` run still in flight
+        (`queued` or `running`) answers 200 with its identifier and
+        starts nothing; a finished run never blocks a new one. A
+        per-album rescan running concurrently is not a conflict --
+        every arm is idempotent in the same filesystem and database
+        state.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            An all-albums rescan run is already in flight (`queued`
+            or `running`); its identifier is returned and NO new run
+            is created or enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumRescanAllResponse'
+              examples:
+                inFlight:
+                  summary: The sweep currently running.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '202':
+          description: |
+            The sweep run was created (state `queued`, `total`
+            carrying the instance's directory album count) and its
+            job enqueued. The worker flips the run to `running` when
+            the first album's walk begins.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlbumRescanAllResponse'
+              examples:
+                started:
+                  summary: The freshly created sweep.
+                  value:
+                    jobRunId: 0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f10
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: |
+            The run could not be started: no job queue is wired to
+            the API surface, or creating the run failed. The run
+            itself, once started, reports its own failures through
+            its `job_runs` row.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: the album rescan could not be started
+  /admin/jobs/summary:
+    get:
+      operationId: getJobsSummary
+      tags:
+        - admin
+      summary: Read the fixed task catalog's state.
+      description: |
+        The task catalog's one read: every capability row's state
+        without listing any run. The catalog is fixed (the pipeline
+        classes, the machine learning group and the four batch
+        tasks); the execution history keeps its own listing.
+
+        `pipeline` answers the live queue counts per pipeline kind,
+        straight from the queue's job table: `waiting` sums the jobs
+        available, scheduled for a retry backoff, or waiting out
+        their snooze; `active` counts the jobs a worker is running
+        now; `failed` counts the jobs the queue discarded after
+        their attempts ran out. A count is zero when the kind has no
+        such job.
+
+        `paused` is the run budget's five per-kind pause switches,
+        the same document the settings pair owns -- the catalog's
+        pause actions write through that endpoint, never a second
+        one.
+
+        `runs` carries the most recent `job_runs` row of each batch
+        kind, whatever its state (or null when the instance never
+        started one): the derivative rebuild, the place
+        re-resolution, the all-albums rescan, the folder sweep and
+        the model download. A row is the catalog's "latest" line
+        only -- its progress details belong to the history listing.
+        The folder sweep records no `job_runs` row by design (its
+        own copy states the cadence), so its slot stays null.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: |
+            The catalog's pipeline counts, pause switches and the
+            latest batch runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobsSummaryResponse'
+              examples:
+                working:
+                  summary: A thumbnail queue with work and a paused transcoder.
+                  value:
+                    pipeline:
+                      thumbnail: { waiting: 3, active: 2, failed: 0 }
+                      metadata: { waiting: 0, active: 1, failed: 0 }
+                      transcode: { waiting: 4, active: 0, failed: 0 }
+                      faceDetect: { waiting: 3, active: 0, failed: 0 }
+                      faceRecognize: { waiting: 2, active: 0, failed: 0 }
+                      clipEmbed: { waiting: 0, active: 0, failed: 0 }
+                      ocr: { waiting: 0, active: 0, failed: 0 }
+                    paused:
+                      thumbnail: false
+                      metadata: false
+                      transcode: true
+                      ml: false
+                      places: false
+                    runs:
+                      rebuildDerivatives:
+                        id: 0192f8b0-1c2d-3e4f-5a6b-7c8d9e0f1a2b
+                        state: succeeded
+                        total: 1240
+                        done: 1240
+                        failed: 0
+                        startedAt: '2026-11-19T02:00:00Z'
+                        finishedAt: '2026-11-19T02:04:10Z'
+                      placesRerun:
+                        id: 0192f8c0-2d3e-4f5a-6b7c-8d9e0f1a2b3c
+                        state: succeeded
+                        total: 12847
+                        done: 12847
+                        failed: 0
+                        startedAt: '2026-11-18T02:00:00Z'
+                        finishedAt: '2026-11-18T02:00:31Z'
+                      albumRescanAll:
+                        id: 0192f8d0-3e4f-5a6b-7c8d-9e0f1a2b3c4d
+                        state: succeeded
+                        total: 12
+                        done: 12
+                        failed: 0
+                        startedAt: '2026-11-20T12:14:00Z'
+                        finishedAt: '2026-11-20T12:14:09Z'
+                      folderSync: null
+                      modelDownload:
+                        id: 0192f8e0-4f5a-6b7c-8d9e-0f1a2b3c4d5e
+                        state: succeeded
+                        total: 400371536
+                        done: 400371536
+                        failed: 0
+                        startedAt: '2026-11-10T09:00:00Z'
+                        finishedAt: '2026-11-10T09:03:00Z'
+        '401':
+          description: |
+            Authentication is missing or no longer valid: the cookie
+            or bearer token is absent, expired or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalidCredentials:
+                  value:
+                    code: AUTH_INVALID_CREDENTIALS
+                    message: authentication required
+        '403':
+          description: |
+            The caller is authenticated but their role is not
+            `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                forbidden:
+                  value:
+                    code: AUTH_FORBIDDEN
+                    message: administrator role required
+        '500':
+          description: |
+            The summary could not be read: the queue's counts, the
+            run budget or the latest runs failed to load.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                internal:
+                  value:
+                    code: INTERNAL
+                    message: the task summary could not be read
   /admin/jobs/{runId}/cancel:
     post:
       operationId: cancelJobRun
@@ -14634,6 +14885,24 @@ components:
             UUIDv7 identifier of the run's `job_runs` row. `202`
             carries the freshly created run; `200` the in-flight one
             of THIS album the request joined instead.
+    AlbumRescanAllResponse:
+      type: object
+      description: |
+        The identifier of one all-albums rescan run: the single
+        `job_runs` row the sweep drives and the `job.*` events
+        announce. The run's `total` is the instance's directory
+        album count -- the history shows one row for the whole
+        sweep, never one per album.
+      required:
+        - jobRunId
+      properties:
+        jobRunId:
+          type: string
+          format: uuid
+          description: |
+            UUIDv7 identifier of the run's `job_runs` row. `202`
+            carries the freshly created sweep; `200` the in-flight
+            one the request joined instead.
     ModelDownloadResponse:
       type: object
       description: |
@@ -14778,8 +15047,11 @@ components:
         its own kind, named after the slot it redoes; the place
         re-resolution is the places-data-update path's kind; the
         album rescan is the directory album's source-reconciliation
-        run; the derivative rebuild is the image card's explicit
-        re-derivation of the serving copies at the current settings.
+        run, and the all-albums rescan is the same diff swept over
+        every directory album in ONE run (the catalog's batch, never
+        a per-album row); the derivative rebuild is the image card's
+        explicit re-derivation of the serving copies at the current
+        settings.
       enum:
         - model_download
         - face_detect_rerun
@@ -14788,6 +15060,7 @@ components:
         - ocr_rerun
         - places_rerun
         - album_rescan
+        - album_rescan_all
         - rebuild_derivatives
     JobRunState:
       type: string
@@ -14886,6 +15159,167 @@ components:
           description: The newest job runs, newest first.
           items:
             $ref: '#/components/schemas/JobRunResponse'
+    JobsSummaryResponse:
+      type: object
+      description: |
+        The fixed task catalog's state in one read: the live queue
+        counts per pipeline kind, the run budget's pause switches and
+        the latest run of each batch kind. The catalog never lists
+        runs -- the history listing owns that.
+      required:
+        - pipeline
+        - paused
+        - runs
+      properties:
+        pipeline:
+          $ref: '#/components/schemas/PipelineCounts'
+        paused:
+          $ref: '#/components/schemas/PausedJobsState'
+        runs:
+          $ref: '#/components/schemas/LatestJobRuns'
+    PipelineCounts:
+      type: object
+      description: |
+        The live queue counts of each pipeline kind, read from the
+        queue's job table. The keys name the pipeline workers: the
+        three media jobs and the four machine learning jobs.
+      required:
+        - thumbnail
+        - metadata
+        - transcode
+        - faceDetect
+        - faceRecognize
+        - clipEmbed
+        - ocr
+      properties:
+        thumbnail:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        metadata:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        transcode:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        faceDetect:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        faceRecognize:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        clipEmbed:
+          $ref: '#/components/schemas/PipelineJobCounts'
+        ocr:
+          $ref: '#/components/schemas/PipelineJobCounts'
+    PipelineJobCounts:
+      type: object
+      description: |
+        One pipeline kind's queue counts. The three numbers partition
+        the kind's unfinished work: a job waits, a worker runs it, or
+        the queue discarded it after its attempts ran out.
+      required:
+        - waiting
+        - active
+        - failed
+      properties:
+        waiting:
+          type: integer
+          description: |
+            Jobs waiting for a worker: available, scheduled (a retry
+            backoff or a pause's snooze), or retryable.
+        active:
+          type: integer
+          description: Jobs a worker is running now.
+        failed:
+          type: integer
+          description: |
+            Jobs the queue discarded after their attempts ran out --
+            the failed work the row's danger line counts.
+    LatestJobRuns:
+      type: object
+      description: |
+        The most recent `job_runs` row of each batch kind, whatever
+        its state, or null when the instance never started one. The
+        per-album rescan and the per-slot reruns are not here: they
+        belong to their own pages, not the catalog's batch rows.
+      required:
+        - rebuildDerivatives
+        - placesRerun
+        - albumRescanAll
+        - folderSync
+        - modelDownload
+      properties:
+        rebuildDerivatives:
+          oneOf:
+            - $ref: '#/components/schemas/JobRunSummary'
+            - type: 'null'
+          description: The latest derivative rebuild run, or null.
+        placesRerun:
+          oneOf:
+            - $ref: '#/components/schemas/JobRunSummary'
+            - type: 'null'
+          description: The latest place re-resolution run, or null.
+        albumRescanAll:
+          oneOf:
+            - $ref: '#/components/schemas/JobRunSummary'
+            - type: 'null'
+          description: The latest all-albums rescan sweep, or null.
+        folderSync:
+          oneOf:
+            - $ref: '#/components/schemas/JobRunSummary'
+            - type: 'null'
+          description: |
+            The latest folder sweep run. The folder sweep is the
+            activity-gated periodic diff and records no run row by
+            design, so this slot answers null on every instance; the
+            catalog's row states the cadence instead of a run.
+        modelDownload:
+          oneOf:
+            - $ref: '#/components/schemas/JobRunSummary'
+            - type: 'null'
+          description: The latest model download run, or null.
+    JobRunSummary:
+      type: object
+      description: |
+        One batch run's latest-state summary: enough for the
+        catalog's "latest" line, never the run's whole story (the
+        history listing carries that).
+      required:
+        - id
+        - state
+        - total
+        - done
+        - failed
+        - startedAt
+        - finishedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUIDv7 identifier of the run's `job_runs` row.
+        state:
+          $ref: '#/components/schemas/JobRunState'
+        total:
+          type: integer
+          description: |
+            The run's whole work in its own units: albums for the
+            all-albums rescan, assets for the rebuild and the place
+            re-resolution, pinned bytes for the model download.
+        done:
+          type: integer
+          description: The work completed so far, in the same units.
+        failed:
+          type: integer
+          description: The failed work count, in the same units.
+        startedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: |
+            When the run's driver first picked it up (RFC 3339 UTC).
+            Null while the run sits `queued`.
+        finishedAt:
+          type:
+            - string
+            - 'null'
+          format: date-time
+          description: When the run closed (RFC 3339 UTC). Null until then.
     ModelListResponse:
       type: object
       description: |
