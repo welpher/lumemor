@@ -24,6 +24,7 @@ doc/AlbumOwnerRef.md
 doc/AlbumPatch.md
 doc/AlbumPathCompletion.md
 doc/AlbumPathCompletionsResponse.md
+doc/AlbumRescanAllResponse.md
 doc/AlbumRescanResponse.md
 doc/AlbumShareEntry.md
 doc/AlbumSummary.md
@@ -71,8 +72,11 @@ doc/JobRunKind.md
 doc/JobRunListResponse.md
 doc/JobRunResponse.md
 doc/JobRunState.md
+doc/JobRunSummary.md
+doc/JobsSummaryResponse.md
 doc/KindFacetCount.md
 doc/LabelPersonRequest.md
+doc/LatestJobRuns.md
 doc/LoginRequest.md
 doc/MapConfigResponse.md
 doc/MediaKind.md
@@ -115,6 +119,8 @@ doc/PersonFacetCount.md
 doc/PersonLabel.md
 doc/PersonLabelResponse.md
 doc/PersonSummary.md
+doc/PipelineCounts.md
+doc/PipelineJobCounts.md
 doc/PlaceFacetCount.md
 doc/PlaceSummary.md
 doc/PlacesApi.md
@@ -217,6 +223,7 @@ lib/src/model/album_owner_ref.dart
 lib/src/model/album_patch.dart
 lib/src/model/album_path_completion.dart
 lib/src/model/album_path_completions_response.dart
+lib/src/model/album_rescan_all_response.dart
 lib/src/model/album_rescan_response.dart
 lib/src/model/album_share_entry.dart
 lib/src/model/album_summary.dart
@@ -261,8 +268,11 @@ lib/src/model/job_run_kind.dart
 lib/src/model/job_run_list_response.dart
 lib/src/model/job_run_response.dart
 lib/src/model/job_run_state.dart
+lib/src/model/job_run_summary.dart
+lib/src/model/jobs_summary_response.dart
 lib/src/model/kind_facet_count.dart
 lib/src/model/label_person_request.dart
+lib/src/model/latest_job_runs.dart
 lib/src/model/login_request.dart
 lib/src/model/map_config_response.dart
 lib/src/model/media_kind.dart
@@ -304,6 +314,8 @@ lib/src/model/person_facet_count.dart
 lib/src/model/person_label.dart
 lib/src/model/person_label_response.dart
 lib/src/model/person_summary.dart
+lib/src/model/pipeline_counts.dart
+lib/src/model/pipeline_job_counts.dart
 lib/src/model/place_facet_count.dart
 lib/src/model/place_summary.dart
 lib/src/model/places_database_response.dart
@@ -384,6 +396,7 @@ test/album_owner_ref_test.dart
 test/album_patch_test.dart
 test/album_path_completion_test.dart
 test/album_path_completions_response_test.dart
+test/album_rescan_all_response_test.dart
 test/album_rescan_response_test.dart
 test/album_share_entry_test.dart
 test/album_summary_test.dart
@@ -431,8 +444,11 @@ test/job_run_kind_test.dart
 test/job_run_list_response_test.dart
 test/job_run_response_test.dart
 test/job_run_state_test.dart
+test/job_run_summary_test.dart
+test/jobs_summary_response_test.dart
 test/kind_facet_count_test.dart
 test/label_person_request_test.dart
+test/latest_job_runs_test.dart
 test/login_request_test.dart
 test/map_config_response_test.dart
 test/media_kind_test.dart
@@ -475,6 +491,8 @@ test/person_facet_count_test.dart
 test/person_label_response_test.dart
 test/person_label_test.dart
 test/person_summary_test.dart
+test/pipeline_counts_test.dart
+test/pipeline_job_counts_test.dart
 test/place_facet_count_test.dart
 test/place_summary_test.dart
 test/places_api_test.dart
