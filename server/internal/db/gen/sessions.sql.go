@@ -145,6 +145,28 @@ func (q *Queries) GetSessionByTokenHash(ctx context.Context, tokenHash string) (
 	return i, err
 }
 
+const hasActiveSession = `-- name: HasActiveSession :one
+SELECT EXISTS (
+    SELECT 1 FROM sessions
+    WHERE last_seen_at > $1
+      AND (kind = 'mobile' OR expires_at > now())
+)
+`
+
+// The folder live sync's activity signal: whether anybody was seen
+// after the cutoff. Revoked sessions are deleted rows, so there is
+// nothing to exclude; an expired web row is still a row, and a lapsed
+// cookie is not activity -- mobile (bearer) rows never expire, they
+// are revoked. The cutoff arrives from the caller's clock, the same
+// clock the touch middleware writes last_seen_at with, so the two
+// sides of the comparison never sit in different time frames.
+func (q *Queries) HasActiveSession(ctx context.Context, cutoff pgtype.Timestamptz) (bool, error) {
+	row := q.db.QueryRow(ctx, hasActiveSession, cutoff)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listUserSessions = `-- name: ListUserSessions :many
 SELECT id, user_id, token_hash, kind, device_name, device_id, last_seen_at, expires_at, created_at, updated_at, ip_address FROM sessions
 WHERE user_id = $1

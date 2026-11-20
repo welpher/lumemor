@@ -235,6 +235,9 @@ func run(logger *slog.Logger) error {
 		// (60s unless configured), the e2e harness's shortened one, or
 		// the disabled marker.
 		FolderSyncInterval: cfg.FolderSyncInterval,
+		// The filesystem-watcher accelerator, on unless the deployment
+		// turned it off (LUMEMOR_FOLDER_WATCH=0/off).
+		FolderWatch: cfg.FolderWatch,
 	})
 	if err != nil {
 		return err
