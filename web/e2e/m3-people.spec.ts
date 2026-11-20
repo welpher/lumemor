@@ -40,7 +40,7 @@
 //     card is which person.
 //  3. The unnamed region renders both clusters as cards with their
 //     face counts -- as ENTRANCES: links into the person detail, no
-//     selection surface anywhere (§7.20).
+//     selection surface anywhere.
 //  4. The naming main path moved to the detail's unnamed variant:
 //     the card opens `/people/{id}?state=unnamed`, whose profile row
 //     reads "Unnamed" and whose naming entry lands the named state
@@ -152,7 +152,7 @@ const authStatePath = `${specDir}/.auth/m3b-state.json`;
 let samePersonClusterId = '';
 let samePersonRepFaceId = '';
 
-// The unnamed region's cluster cards are ENTRANCES (§7.20): one link
+// The unnamed region's cluster cards are ENTRANCES: one link
 // per cluster, its accessible name the "Unnamed" slot beside the
 // honest face count (the count is always plural -- the i18n message
 // has no singular form). Addressed by the representative face's crop
@@ -184,7 +184,7 @@ test('scene 1: signing in through the form lands on the empty people page', asyn
 	await expect(page).toHaveURL(/\/people$/);
 	await expect(page).toHaveTitle('People · lumemor');
 
-	// The one-row bar (§7.18): the title with the count, the name
+	// The one-row bar: the title with the count, the name
 	// filter and the unnamed entry (badged with the region's count --
 	// zero, so the badge is absent but the entry stands).
 	await expect(page.getByRole('heading', { level: 1 })).toContainText('People · 0 people');
@@ -313,7 +313,7 @@ test.describe('the signed-in scenes', () => {
 		await page.goto('/people/unnamed');
 		await expect(page).toHaveTitle('Unnamed · lumemor');
 
-		// The one-row bar (§7.18): back, the title and the REGION's
+		// The one-row bar: back, the title and the REGION's
 		// count -- no action, no select switch (the cards are
 		// entrances, never a selection surface).
 		await expect(page.getByRole('link', { name: 'Back to people', exact: true })).toBeVisible();
@@ -384,7 +384,7 @@ test.describe('the signed-in scenes', () => {
 		await page.locator('a.person-card').filter({ hasText: PERSON_A }).click();
 		await expect(page).toHaveURL(new RegExp(`/people/${samePersonClusterId}$`));
 
-		// THE CONTEXT BAR (§7.21): sticky, 53px, back + the icon
+		// THE CONTEXT BAR: sticky, 53px, back + the icon
 		// actions; the shell's own chrome does not render here.
 		await expect(page.locator('.shell-topbar')).toHaveCount(0);
 		const bar = page.locator('.person-bar');
@@ -646,7 +646,7 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.locator('.toasts')).toContainText('Face removed; it is back among the not grouped yet.');
 		await expect(reopen.locator('.faces-panel__name').first()).toContainText('Not grouped yet');
 
-		// THE UNNAME (§7.19): the person detail's action is immediate
+		// THE UNNAME: the person detail's action is immediate
 		// and carries the toast echo; the person leaves the named list
 		// and lands in the unnamed region as one more group.
 		await page.goto('/people');
