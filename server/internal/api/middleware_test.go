@@ -235,6 +235,8 @@ func TestAPIRoutesCoverContract(t *testing.T) {
 		"POST /api/v1/admin/places/reresolve",
 		"GET /api/v1/admin/places",
 		"GET /api/v1/admin/jobs",
+		"GET /api/v1/admin/jobs/summary",
+		"POST /api/v1/admin/albums/rescan",
 		"GET /api/v1/admin/settings/storage",
 		"PUT /api/v1/admin/settings/storage",
 		"GET /api/v1/admin/settings/trash",

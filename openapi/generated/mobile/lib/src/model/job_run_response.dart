@@ -30,7 +30,7 @@ abstract class JobRunResponse implements Built<JobRunResponse, JobRunResponseBui
 
   @BuiltValueField(wireName: r'kind')
   JobRunKind get kind;
-  // enum kindEnum {  model_download,  face_detect_rerun,  face_recognize_rerun,  clip_embed_rerun,  ocr_rerun,  places_rerun,  album_rescan,  rebuild_derivatives,  };
+  // enum kindEnum {  model_download,  face_detect_rerun,  face_recognize_rerun,  clip_embed_rerun,  ocr_rerun,  places_rerun,  album_rescan,  album_rescan_all,  rebuild_derivatives,  };
 
   @BuiltValueField(wireName: r'state')
   JobRunState get state;

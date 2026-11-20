@@ -9,7 +9,7 @@ import 'package:built_value/serializer.dart';
 
 part 'job_run_kind.g.dart';
 
-/// The kinds of job runs the instance records. The model download is one run; each machine learning slot's rerun is its own kind, named after the slot it redoes; the place re-resolution is the places-data-update path's kind; the album rescan is the directory album's source-reconciliation run; the derivative rebuild is the image card's explicit re-derivation of the serving copies at the current settings. 
+/// The kinds of job runs the instance records. The model download is one run; each machine learning slot's rerun is its own kind, named after the slot it redoes; the place re-resolution is the places-data-update path's kind; the album rescan is the directory album's source-reconciliation run, and the all-albums rescan is the same diff swept over every directory album in ONE run (the catalog's batch, never a per-album row); the derivative rebuild is the image card's explicit re-derivation of the serving copies at the current settings. 
 class JobRunKind extends EnumClass {
 
   @BuiltValueEnumConst(wireName: r'model_download')
@@ -26,6 +26,8 @@ class JobRunKind extends EnumClass {
   static const JobRunKind placesRerun = _$placesRerun;
   @BuiltValueEnumConst(wireName: r'album_rescan')
   static const JobRunKind albumRescan = _$albumRescan;
+  @BuiltValueEnumConst(wireName: r'album_rescan_all')
+  static const JobRunKind albumRescanAll = _$albumRescanAll;
   @BuiltValueEnumConst(wireName: r'rebuild_derivatives')
   static const JobRunKind rebuildDerivatives = _$rebuildDerivatives;
 

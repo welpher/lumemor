@@ -105,6 +105,12 @@ type Deps struct {
 	// wired -- tests, wiring order); production passes the jobs
 	// queue, which implements it structurally.
 	AlbumRescans AlbumRescanEnqueuer
+	// AlbumRescanAlls starts the instance-wide album rescan sweeps:
+	// the catalog's "rescan all" enqueues the album_rescan_all job
+	// through this seam. Nil keeps the endpoint answering 500
+	// INTERNAL (no queue wired -- tests, wiring order); production
+	// passes the jobs queue, which implements it structurally.
+	AlbumRescanAlls AlbumRescanAllEnqueuer
 	// DerivativesRebuilds starts the derivative rebuild runs: the
 	// rebuild endpoint enqueues the rebuild_derivatives job through
 	// this seam. Nil keeps the endpoint answering 500 INTERNAL (no
@@ -210,6 +216,17 @@ type AlbumRescanEnqueuer interface {
 	EnqueueAlbumRescan(ctx context.Context, albumID uuid.UUID) (uuid.UUID, error)
 }
 
+// AlbumRescanAllEnqueuer starts one instance-wide album rescan sweep.
+// It is the seam between the sweep endpoint and the job queue:
+// production passes the jobs package's Queue, which implements it
+// structurally.
+type AlbumRescanAllEnqueuer interface {
+	// EnqueueAlbumRescanAll creates the sweep's job_runs row (the
+	// instance's directory album count as its total) and enqueues the
+	// River job in one transaction, returning the run's identifier.
+	EnqueueAlbumRescanAll(ctx context.Context) (uuid.UUID, error)
+}
+
 // NewRouter builds the HTTP routes of the server: the operational
 // endpoints (/healthz, /metrics), the first-run wizard (/setup), the
 // embedded single-page web app (/ and, through the SPA catch-all, its
@@ -300,6 +317,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The album rescan enqueue seam: nil is a valid (no queue)
 		// wiring.
 		albumRescans: deps.AlbumRescans,
+		// The instance-wide sweep's enqueue seam: nil is a valid (no
+		// queue) wiring.
+		albumRescanAlls: deps.AlbumRescanAlls,
 		// The derivative rebuild enqueue seam: nil is a valid (no
 		// queue) wiring.
 		derivativesRebuilds: deps.DerivativesRebuilds,
@@ -720,6 +740,16 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 				r.Get("/admin/places", wrapper.GetPlacesDatabase)
 				r.Post("/admin/places/reresolve", wrapper.ReresolvePlaces)
 				r.Get("/admin/jobs", wrapper.ListJobs)
+				// The fixed task catalog's one read: the queue's
+				// per-kind counts, the budget's pause switches and
+				// the latest batch runs. The catalog never lists
+				// runs -- the history listing above owns that.
+				r.Get("/admin/jobs/summary", wrapper.GetJobsSummary)
+				// The catalog's "rescan all": one sweep run over
+				// every directory album. The handler is one bounded
+				// row read plus one enqueue; the sweep lives on the
+				// queue.
+				r.Post("/admin/albums/rescan", wrapper.RescanAllAlbums)
 				// The task panel's cancel: one bounded row read plus
 				// the stop flag; the boundary close lives on the
 				// queue's drivers, exactly like the listing's own
@@ -838,6 +868,9 @@ type server struct {
 	// no queue is wired and the rescan endpoint answers the generic
 	// internal error.
 	albumRescans AlbumRescanEnqueuer
+	// albumRescanAlls starts the instance-wide album rescan sweeps;
+	// nil means no queue is wired.
+	albumRescanAlls AlbumRescanAllEnqueuer
 	// updateChecks is the release checker; nil means no checker is
 	// wired and the release check endpoints answer the generic
 	// internal error.

@@ -5,16 +5,22 @@ import Page from './+page.svelte';
 import { sessionStatus } from '$lib/auth/session.svelte';
 import { clearToasts, toasts } from '$lib/components/toast.svelte';
 
-// The admin task panel: the job runs listing renders each run's kind,
-// state, progress (the units per kind -- pinned bytes for the model
-// download, asset counts for the reruns) and timestamps; the SSE job
-// events converge the active rows live, with the 5-second polling
-// fallback when the stream stays silent; history rows are static and
-// the unmount unsubscribes. The events module is mocked with a
-// captured handler registry, the same pattern as the trash page test.
+// The admin task panel, reshaped into the fixed catalog plus the
+// history tab: the catalog's rows (counts, pause switches, latest
+// runs, links), the two-tab address, the rescan-all trigger and the
+// catalog cancel, the visible-only summary poll; and the history's
+// unchanged behaviour (per-kind units, SSE convergence, the fallback
+// poll, cancel and retry). The events module is mocked with a
+// captured handler registry, and the route (`$app/state` /
+// `$app/navigation`) with a runes holder, the same patterns the
+// places and viewer pages use.
 
 const { handlers } = vi.hoisted(() => ({
 	handlers: [] as Array<(event: unknown) => void>
+}));
+
+const { gotoMock } = vi.hoisted(() => ({
+	gotoMock: vi.fn(async (..._args: unknown[]) => undefined)
 }));
 
 vi.mock('$lib/events', () => ({
@@ -28,6 +34,19 @@ vi.mock('$lib/events', () => ({
 		};
 	}
 }));
+
+vi.mock('$app/state', async () => ({
+	page: (await import('./jobs-page-state.svelte')).jobsPageState
+}));
+vi.mock('$app/navigation', async () => {
+	const { jobsPageState } = await import('./jobs-page-state.svelte');
+	return {
+		goto: (url: URL | string, options?: { replaceState?: boolean }) => {
+			jobsPageState.url = new URL(String(url), 'http://localhost');
+			return gotoMock(url, options);
+		}
+	};
+});
 
 /** One job run row (the JobRunResponse shape). */
 function jobRun(id: string, overrides: Record<string, unknown> = {}) {
@@ -70,13 +89,10 @@ const queuedRun = jobRun('0192f8d1-2e3f-4a5b-6c7d-8e9f0a1b2c3d', {
 	done: 0,
 	startedAt: null
 });
-// The albums-as-sources seam's pin: the contract's JobRunKind enum carries the
-// rescan and the places kinds, so their rows must validate and
-// render with their own labels -- a kind the validator rejects
-// would collapse the whole listing into the generic failure.
 const rescanRun = jobRun('0192f8e1-4f5a-6b7c-8d9e-0a1b2c3d4e5f', {
 	kind: 'album_rescan',
 	state: 'succeeded',
+	subject: 'Trip 2026',
 	total: 2,
 	done: 2,
 	startedAt: '2026-11-03T12:00:00Z',
@@ -91,6 +107,64 @@ const placesRun = jobRun('0192f8f1-5a6b-7c8d-9e0f-1a2b3c4d5e6a', {
 	finishedAt: '2026-11-03T13:00:12Z'
 });
 
+/** One catalog run summary (the JobRunSummary shape). */
+function runSummary(id: string, overrides: Record<string, unknown> = {}) {
+	return {
+		id,
+		state: 'succeeded',
+		total: 12,
+		done: 12,
+		failed: 0,
+		startedAt: '2026-11-19T02:00:00Z',
+		finishedAt: '2026-11-19T02:04:10Z',
+		...overrides
+	};
+}
+
+/** The catalog's summary document (the JobsSummaryResponse shape). */
+function summaryBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		pipeline: {
+			thumbnail: { waiting: 3, active: 2, failed: 0 },
+			metadata: { waiting: 0, active: 0, failed: 0 },
+			transcode: { waiting: 4, active: 0, failed: 0 },
+			faceDetect: { waiting: 3, active: 0, failed: 0 },
+			faceRecognize: { waiting: 2, active: 0, failed: 0 },
+			clipEmbed: { waiting: 0, active: 0, failed: 0 },
+			ocr: { waiting: 0, active: 0, failed: 0 }
+		},
+		paused: { thumbnail: false, metadata: false, transcode: false, ml: false, places: false },
+		runs: {
+			rebuildDerivatives: runSummary('0192f900-0000-7000-8000-000000000001', { total: 1240, done: 1240 }),
+			placesRerun: runSummary('0192f900-0000-7000-8000-000000000002', { total: 12847, done: 12847 }),
+			albumRescanAll: null,
+			folderSync: null,
+			modelDownload: runSummary('0192f900-0000-7000-8000-000000000003', {
+				total: 400371536,
+				done: 400371536
+			})
+		},
+		...overrides
+	};
+}
+
+/** One model slot row (the SlotStateResponse shape). */
+function slot(slotId: string, state: string) {
+	return { slot: slotId, state, modelId: null, source: null, progress: null };
+}
+
+/** The budget document (the RunBudgetSettingsResponse shape). */
+function budgetBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+	return {
+		concurrencyPreset: 'standard',
+		nightlyEnabled: false,
+		nightlyStart: '02:00',
+		nightlyEnd: '06:00',
+		pausedJobs: { thumbnail: false, metadata: false, transcode: false, ml: false, places: false },
+		...overrides
+	};
+}
+
 function jsonResponse(status: number, body: unknown): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -98,11 +172,9 @@ function jsonResponse(status: number, body: unknown): Response {
 	});
 }
 
-function stubFetch(jobs: unknown[]): ReturnType<typeof vi.fn> {
-	return stubFetchWithModels(jobs, []);
-}
-
-/** One model row (the ModelResponse shape), for the dependency probes. */
+/**
+ * One model row (the ModelResponse shape), for the dependency probes.
+ */
 function model(id: string, overrides: Record<string, unknown> = {}) {
 	return {
 		id,
@@ -120,20 +192,64 @@ function model(id: string, overrides: Record<string, unknown> = {}) {
 	};
 }
 
-/** The jobs listing plus the models read the panel rides along. */
-function stubFetchWithModels(jobs: unknown[], models: unknown[]): ReturnType<typeof vi.fn> {
+/** The full panel's fetch stub: summary, listing, models and budget. */
+function stubFetch(
+	jobs: unknown[],
+	options: {
+		summary?: unknown | ((call: number) => unknown);
+		models?: unknown[];
+		slots?: unknown[];
+		budget?: unknown;
+		extra?: (input: RequestInfo | URL, init?: RequestInit) => Response | undefined;
+	} = {}
+): ReturnType<typeof vi.fn> {
+	let summaryCalls = 0;
+	const summary = options.summary ?? summaryBody();
+	const budget = options.budget ?? budgetBody();
+	const modelSlots = options.slots ?? [
+		slot('face_detect', 'active'),
+		slot('face_recognize', 'active'),
+		slot('clip_embed', 'active'),
+		slot('ocr', 'downloading'),
+		slot('clip_text', 'not_downloaded')
+	];
 	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		if (String(input) === '/api/v1/admin/jobs') {
+		const url = String(input);
+		const extra = options.extra?.(input, init);
+		if (extra !== undefined) {
+			return extra;
+		}
+		if (url === '/api/v1/admin/jobs/summary') {
+			summaryCalls += 1;
+			return jsonResponse(200, typeof summary === 'function' ? summary(summaryCalls) : summary);
+		}
+		if (url === '/api/v1/admin/jobs') {
 			return jsonResponse(200, { jobs });
 		}
-		if (String(input) === '/api/v1/admin/models') {
-			return jsonResponse(200, { models, download: null, slots: [], official: [] });
+		if (url === '/api/v1/admin/models') {
+			return jsonResponse(200, {
+				models: options.models ?? [],
+				download: null,
+				slots: modelSlots,
+				official: []
+			});
 		}
-		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${String(input)}`);
+		if (url === '/api/v1/admin/settings/run-budget') {
+			if (init?.method === 'PUT') {
+				return jsonResponse(200, JSON.parse(String(init.body)));
+			}
+			return jsonResponse(200, budget);
+		}
+		throw new Error(`unexpected fetch ${init?.method ?? 'GET'} ${url}`);
 	});
 }
 
-/** The jobs listing reads only (the models read rides along). */
+/** The summary reads so far. */
+function summaryCalls(fetchMock: ReturnType<typeof vi.fn>): number {
+	return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/jobs/summary').length;
+}
+
+/** The history listing reads so far. */
 function listingCalls(fetchMock: ReturnType<typeof vi.fn>): number {
 	return fetchMock.mock.calls.filter((call) => String(call[0]) === '/api/v1/admin/jobs').length;
 }
@@ -146,10 +262,31 @@ async function settle(): Promise<void> {
 	await tick();
 }
 
-function mountPage(): ReturnType<typeof mount> {
-	const page = mount(Page, { target: document.body, props: {} });
+// The runes holder the mock factory shares: the address decides the
+// face, so a mount sets it first.
+let jobsState: { url: URL };
+
+/** The page mounted by the current test (the unmount helper's handle). */
+let mountedPage: ReturnType<typeof mount> | null = null;
+
+/** Mount the page on one tab (the address carries it). */
+function mountPage(tab: 'tasks' | 'runs' = 'tasks'): ReturnType<typeof mount> {
+	jobsState.url = new URL(`http://localhost/admin/jobs${tab === 'runs' ? '?tab=runs' : ''}`);
+	const mounted = mount(Page, { target: document.body, props: {} });
 	flushSync();
-	return page;
+	// Every mount is tracked: a test that forgets to unmount would
+	// otherwise leave its effects (and the visibility poll's timer)
+	// listening for the NEXT test's events.
+	mountedPage = mounted;
+	return mounted;
+}
+
+/** The current test's page (the tests that unmount through the handle). */
+function page(): ReturnType<typeof mount> {
+	if (mountedPage === null) {
+		throw new Error('no page mounted');
+	}
+	return mountedPage;
 }
 
 function buttonByText(text: string): HTMLButtonElement {
@@ -171,6 +308,15 @@ function runCard(id: string): HTMLElement {
 	return found;
 }
 
+/** One catalog row whose data attribute names the task. */
+function taskRow(task: string): HTMLElement {
+	const row = document.body.querySelector<HTMLElement>(`[data-task="${task}"]`);
+	if (row === null) {
+		throw new Error(`missing task row ${task}`);
+	}
+	return row;
+}
+
 /** Deliver one SSE job event to the page's subscription. */
 function deliverJobEvent(event: {
 	name: string;
@@ -187,6 +333,12 @@ function deliverJobEvent(event: {
 	flushSync();
 }
 
+/** Pin the document's visibility for the poll's test. */
+function setVisibility(value: 'visible' | 'hidden'): void {
+	Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => value });
+	document.dispatchEvent(new Event('visibilitychange'));
+}
+
 beforeEach(async () => {
 	document.body.textContent = '';
 	handlers.length = 0;
@@ -201,75 +353,419 @@ beforeEach(async () => {
 	await import('$lib/auth/session.svelte').then((module) => module.probeSession());
 	expect(sessionStatus()).toBe('unauthenticated');
 	await initI18n();
+	const state = await import('./jobs-page-state.svelte');
+	jobsState = state.jobsPageState;
+	jobsState.url = new URL('http://localhost/admin/jobs');
+	mountedPage = null;
+	Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' });
 });
 
 afterEach(() => {
+	if (mountedPage !== null) {
+		unmount(mountedPage);
+		flushSync();
+		mountedPage = null;
+	}
 	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
 
-test('the listing renders each run with kind, state, per-kind units and times', async () => {
-	vi.stubGlobal('fetch', stubFetch([downloadRun, embedRun, ocrRun, queuedRun, rescanRun, placesRun]));
-	const page = mountPage();
+// ---- the catalog ----
+
+test('the catalog renders every task row with its counts, pauses and latest runs', async () => {
+	const summary = summaryBody({
+		paused: { thumbnail: false, metadata: false, transcode: true, ml: false, places: false },
+		runs: {
+			rebuildDerivatives: runSummary('0192f900-0000-7000-8000-000000000011', {
+				state: 'succeeded',
+				total: 1240,
+				done: 1240
+			}),
+			placesRerun: runSummary('0192f900-0000-7000-8000-000000000012', {
+				state: 'failed',
+				failed: 2,
+				finishedAt: '2026-11-19T03:00:00Z'
+			}),
+			albumRescanAll: null,
+			folderSync: null,
+			modelDownload: runSummary('0192f900-0000-7000-8000-000000000013', { state: 'succeeded' })
+		}
+	});
+	const fetchMock = stubFetch([], {
+		summary,
+		budget: budgetBody({
+			pausedJobs: { thumbnail: false, metadata: false, transcode: true, ml: false, places: false }
+		})
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
 	await settle();
 
-	// The kind labels of the run kinds, and the states.
+	// The queue counts, in the catalog's own words.
+	expect(taskRow('thumbnail').textContent).toContain('Running 2 · Waiting 3 · Failed 0');
+	// A quiet kind says idle; a paused kind leads with the posture.
+	expect(taskRow('metadata').textContent).toContain('Idle');
+	expect(taskRow('transcode').textContent).toContain('Paused');
+	expect(taskRow('transcode').textContent).toContain('Waiting 4');
+	// The pause switch follows the budget document.
+	expect(
+		taskRow('transcode')
+			.querySelector<HTMLButtonElement>('[data-testid="task-pause-transcode"]')
+			?.textContent?.trim()
+	).toBe('Resume');
+	expect(
+		taskRow('thumbnail')
+			.querySelector<HTMLButtonElement>('[data-testid="task-pause-thumbnail"]')
+			?.textContent?.trim()
+	).toBe('Pause');
+
+	// The machine learning group: the shared switch plus the four
+	// per-kind subitems and the models link.
+	const ml = taskRow('ml');
+	expect(ml.textContent).toContain('Machine learning');
+	expect(ml.textContent).toContain('Face detection · Running 0 · Waiting 3');
+	expect(ml.textContent).toContain('Face recognition · Running 0 · Waiting 2');
+	expect(ml.textContent).toContain('Smart search');
+	expect(ml.textContent).toContain('OCR');
+	expect(ml.querySelector('a')?.getAttribute('href')).toBe('/admin/models');
+
+	// The one-off rows: the latest line, the failed line's link to the
+	// history, and the existing surfaces' deep links.
+	expect(taskRow('places').textContent).toContain('Latest: failed');
+	expect(taskRow('places').querySelector('a')?.getAttribute('href')).toBe('/admin/settings?dialog=rebuild-places');
+	expect(taskRow('rebuild').textContent).toContain('Latest: Succeeded');
+	expect(taskRow('rebuild').querySelector('a')?.getAttribute('href')).toBe(
+		'/admin/settings?dialog=rebuild-derivatives'
+	);
+	expect(taskRow('rescan').textContent).toContain('Latest: none');
+	expect(taskRow('rescan').querySelector<HTMLButtonElement>('[data-testid="task-rescan-all"]')).not.toBeNull();
+	expect(taskRow('foldersync').textContent).toContain('Live watch · every 60s');
+	// The model slots' aggregate: three active, one downloading, one
+	// unfilled.
+	expect(taskRow('models').textContent).toContain('3 of 5 slots ready');
+	expect(taskRow('models').textContent).toContain('Downloading');
+	expect(taskRow('models').querySelector('a')?.getAttribute('href')).toBe('/admin/models');
+
+	// The catalog asks for no estimate and copies no dialog: the only
+	// one-off requests are its own read, the listing, the models and
+	// the budget.
+	const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+	expect(urls).not.toContain('/api/v1/admin/derivatives/summary');
+	expect(urls).not.toContain('/api/v1/admin/settings/image');
+});
+
+test('a failed latest run links to the history tab', async () => {
+	const summary = summaryBody({
+		runs: {
+			rebuildDerivatives: runSummary('0192f900-0000-7000-8000-000000000021', { state: 'failed' }),
+			placesRerun: null,
+			albumRescanAll: runSummary('0192f900-0000-7000-8000-000000000022', { state: 'failed', total: 12 }),
+			folderSync: null,
+			modelDownload: null
+		}
+	});
+	vi.stubGlobal('fetch', stubFetch([], { summary }));
+	mountPage();
+	await settle();
+
+	expect(taskRow('rebuild').textContent).toContain('Latest: failed');
+	expect(taskRow('rebuild').querySelectorAll('a')[1]?.getAttribute('href')).toBe('?tab=runs');
+	expect(taskRow('rescan').textContent).toContain('Latest: failed');
+	expect(taskRow('rescan').querySelectorAll('a')[0]?.getAttribute('href') ?? '').toBe('?tab=runs');
+	// A null latest line is the honest "none", never a failed link.
+	expect(taskRow('places').textContent).toContain('Latest: none');
+});
+
+test('the pause switches live in their task rows and save the whole budget', async () => {
+	const fetchMock = stubFetch([], { budget: budgetBody() });
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	// The card no longer carries the five switches; the rows do.
+	expect(document.body.querySelector('[data-testid="run-pause-thumbnail"]')).toBeNull();
+	for (const task of ['thumbnail', 'metadata', 'transcode', 'ml', 'places']) {
+		expect(taskRow(task).querySelector('[data-testid^="task-pause-"]')).not.toBeNull();
+	}
+
+	taskRow('places').querySelector<HTMLButtonElement>('[data-testid="task-pause-places"]')?.click();
+	await settle();
+
+	const put = fetchMock.mock.calls.find(
+		(call) => String(call[0]) === '/api/v1/admin/settings/run-budget' && call[1]?.method === 'PUT'
+	);
+	expect(put).toBeDefined();
+	const saved = JSON.parse(String(put![1].body));
+	expect(saved.pausedJobs.places).toBe(true);
+	expect(saved.concurrencyPreset).toBe('standard');
+	expect(toasts().map((entry) => entry.text)).toContain('Place resolution jobs paused.');
+	// The switch itself now reads the resume posture.
+	expect(
+		taskRow('places').querySelector<HTMLButtonElement>('[data-testid="task-pause-places"]')?.textContent?.trim()
+	).toBe('Resume');
+});
+
+test('rescan all posts the sweep endpoint and toasts the refreshed album count', async () => {
+	const posted: string[] = [];
+	let summaryCall = 0;
+	const fetchMock = stubFetch([], {
+		summary: () => {
+			summaryCall += 1;
+			// The start's refresh sees the fresh sweep's total.
+			return summaryBody({
+				runs: {
+					rebuildDerivatives: null,
+					placesRerun: null,
+					albumRescanAll:
+						summaryCall === 1
+							? null
+							: runSummary('0192f900-0000-7000-8000-000000000031', {
+									state: 'queued',
+									total: 12,
+									done: 0,
+									startedAt: null,
+									finishedAt: null
+								}),
+					folderSync: null,
+					modelDownload: null
+				}
+			});
+		},
+		extra: (input, init) => {
+			if (String(input) === '/api/v1/admin/albums/rescan' && init?.method === 'POST') {
+				posted.push(String(input));
+				return jsonResponse(202, { jobRunId: '0192f900-0000-7000-8000-000000000031' });
+			}
+			return undefined;
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	taskRow('rescan').querySelector<HTMLButtonElement>('[data-testid="task-rescan-all"]')?.click();
+	await settle();
+
+	expect(posted).toEqual(['/api/v1/admin/albums/rescan']);
+	expect(toasts().map((entry) => entry.text)).toContain('Rescanning all 12 albums.');
+	// The refreshed summary now carries the sweep, and its cancel
+	// shows up in the row.
+	expect(taskRow('rescan').textContent).toContain('Latest: all 12 albums');
+	expect(taskRow('rescan').querySelector<HTMLButtonElement>('[data-testid="task-cancel-rescan"]')).not.toBeNull();
+});
+
+test('a refused rescan-all start lands on the catalog error line', async () => {
+	const fetchMock = stubFetch([], {
+		extra: (input, init) => {
+			if (String(input) === '/api/v1/admin/albums/rescan' && init?.method === 'POST') {
+				return jsonResponse(500, { code: 'INTERNAL', message: 'the album rescan could not be started' });
+			}
+			return undefined;
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	taskRow('rescan').querySelector<HTMLButtonElement>('[data-testid="task-rescan-all"]')?.click();
+	await settle();
+
+	expect(document.body.querySelector('[data-testid="catalog-error"]')?.textContent).toContain('Something went wrong');
+	expect(toasts()).toHaveLength(0);
+});
+
+test('a running sweep carries the cancel in its catalog row', async () => {
+	const cancelled: string[] = [];
+	const fetchMock = stubFetch([], {
+		summary: summaryBody({
+			runs: {
+				rebuildDerivatives: null,
+				placesRerun: null,
+				albumRescanAll: runSummary('0192f900-0000-7000-8000-000000000041', {
+					state: 'running',
+					total: 12,
+					done: 4,
+					finishedAt: null
+				}),
+				folderSync: null,
+				modelDownload: null
+			}
+		}),
+		extra: (input, init) => {
+			const url = String(input);
+			if (url.startsWith('/api/v1/admin/jobs/') && url.endsWith('/cancel') && init?.method === 'POST') {
+				cancelled.push(url);
+				return new Response(null, { status: 204 });
+			}
+			return undefined;
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+
+	taskRow('rescan').querySelector<HTMLButtonElement>('[data-testid="task-cancel-rescan"]')?.click();
+	await settle();
+
+	expect(cancelled).toEqual(['/api/v1/admin/jobs/0192f900-0000-7000-8000-000000000041/cancel']);
+	// The honest account: the sweep's done counts ALBUMS.
+	expect(toasts().map((entry) => entry.text)).toContain('Cancelled. The 4 finished items are kept.');
+});
+
+// ---- the tabs ----
+
+test('the tabs: tasks is the default, ?tab=runs opens the history, the switch carries the address', async () => {
+	vi.stubGlobal('fetch', stubFetch([embedRun]));
+	mountPage();
+	await settle();
+
+	// The default face is the catalog.
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="jobs-tab-tasks"]')?.ariaPressed).toBe('true');
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="jobs-tab-runs"]')?.ariaPressed).toBe('false');
+	expect(document.body.querySelector('[data-jobs-panel="tasks"]')?.classList.contains('hidden')).toBe(false);
+	expect(document.body.querySelector('[data-jobs-panel="runs"]')?.classList.contains('hidden')).toBe(true);
+
+	document.body.querySelector<HTMLButtonElement>('[data-testid="jobs-tab-runs"]')?.click();
+	await settle();
+
+	// The address carries the face; the history comes forward.
+	const { jobsPageState } = await import('./jobs-page-state.svelte');
+	expect(jobsPageState.url.searchParams.get('tab')).toBe('runs');
+	expect(document.body.querySelector('[data-jobs-panel="runs"]')?.classList.contains('hidden')).toBe(false);
+	expect(document.body.querySelector('[data-jobs-panel="tasks"]')?.classList.contains('hidden')).toBe(true);
+});
+
+test('a ?tab=runs mount opens the history face directly', async () => {
+	vi.stubGlobal('fetch', stubFetch([embedRun]));
+	mountPage('runs');
+	await settle();
+
+	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="jobs-tab-runs"]')?.ariaPressed).toBe('true');
+	expect(document.body.querySelector('[data-jobs-panel="runs"]')?.classList.contains('hidden')).toBe(false);
+	expect(runCard(embedRun.id).textContent).toContain('Embedding rerun');
+});
+
+// ---- the summary's convergence ----
+
+test('the summary poll runs only while the page is visible', async () => {
+	vi.useFakeTimers();
+	const fetchMock = stubFetch([embedRun]);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await vi.advanceTimersByTimeAsync(0);
+	await tick();
+	expect(summaryCalls(fetchMock)).toBe(1);
+
+	// Visible: one read per 5 seconds.
+	await vi.advanceTimersByTimeAsync(5000);
+	await tick();
+	expect(summaryCalls(fetchMock)).toBe(2);
+
+	// Hidden: the timer stops -- no authenticated request rides a
+	// background tab.
+	setVisibility('hidden');
+	await vi.advanceTimersByTimeAsync(15_000);
+	await tick();
+	expect(summaryCalls(fetchMock)).toBe(2);
+
+	// Visible again: one refresh at once, then the cadence resumes.
+	setVisibility('visible');
+	await vi.advanceTimersByTimeAsync(0);
+	await tick();
+	expect(summaryCalls(fetchMock)).toBe(3);
+	await vi.advanceTimersByTimeAsync(5000);
+	await tick();
+	expect(summaryCalls(fetchMock)).toBe(4);
+});
+
+test('a job.finished event refetches the catalog', async () => {
+	const fetchMock = stubFetch([]);
+	vi.stubGlobal('fetch', fetchMock);
+	mountPage();
+	await settle();
+	expect(summaryCalls(fetchMock)).toBe(1);
+
+	deliverJobEvent({
+		name: 'job.finished',
+		jobRunId: '0192f900-0000-7000-8000-000000000051',
+		kind: 'album_rescan_all',
+		total: '12',
+		done: '12',
+		failed: '0',
+		state: 'succeeded'
+	});
+	await settle();
+	expect(summaryCalls(fetchMock)).toBe(2);
+
+	// A progress event folds into the matching catalog slot without a
+	// read.
+	deliverJobEvent({
+		name: 'job.progress',
+		jobRunId: '0192f900-0000-7000-8000-000000000003',
+		kind: 'model_download',
+		total: '400371536',
+		done: '209715200',
+		failed: '0',
+		state: 'running'
+	});
+	expect(summaryCalls(fetchMock)).toBe(2);
+});
+
+// ---- the history (ported) ----
+
+test('the listing renders each run with kind, state, per-kind units and times', async () => {
+	vi.stubGlobal('fetch', stubFetch([downloadRun, embedRun, ocrRun, queuedRun, rescanRun, placesRun]));
+	mountedPage = mountPage('runs');
+	await settle();
+
 	const text = document.body.textContent ?? '';
 	expect(text).toContain('Model download');
 	expect(text).toContain('Embedding rerun');
 	expect(text).toContain('Text recognition rerun');
 	expect(text).toContain('Face detection rerun');
-	// The albums-as-sources kinds render their own labels, not raw kind
-	// strings (and the listing itself stays ready -- a rejected
-	// kind would have collapsed it into the generic failure).
 	expect(text).toContain('Album rescan');
 	expect(text).toContain('Places rerun');
 	expect(text).toContain('Running');
 	expect(text).toContain('Succeeded');
 	expect(text).toContain('Failed');
 	expect(text).toContain('Queued');
-	// The progress units per kind: bytes formatted MB for the
-	// download, asset counts for the reruns and the rescan.
 	expect(runCard(downloadRun.id).textContent).toContain('100.0 MB of 381.8 MB');
 	expect(runCard(embedRun.id).textContent).toContain('3 of 3 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('4 of 5 assets');
 	expect(runCard(ocrRun.id).textContent).toContain('1 failed');
-	// The rescan's own line (E41): a scan that got through its scope
-	// without a failure reads like a log, not an accountant's pair.
+	// The rescan's own line: a clean scan reads like a log.
 	expect(runCard(rescanRun.id).textContent).toContain('2 photos unchanged');
-	// The start/finish timestamps, locale-formatted; a queued run has
-	// not started (no progress bar to draw either).
 	expect(runCard(embedRun.id).textContent).toContain('Started Nov 3, 2026');
 	expect(runCard(embedRun.id).textContent).toContain('Finished Nov 3, 2026');
 	expect(runCard(embedRun.id).textContent).toContain('took 2:30');
 	expect(runCard(queuedRun.id).textContent).toContain('Waiting for the run ahead to finish');
 	expect(runCard(queuedRun.id).querySelector('[role="progressbar"]')).toBeNull();
-	// A running and a closed row both carry the bar.
 	expect(runCard(downloadRun.id).querySelector('[role="progressbar"]')).not.toBeNull();
 	expect(runCard(embedRun.id).querySelector('[role="progressbar"]')).not.toBeNull();
-	// The state badge carries its color class.
 	expect(runCard(downloadRun.id).querySelector('.jobs__badge--running')).not.toBeNull();
 	expect(runCard(ocrRun.id).querySelector('.jobs__badge--failed')).not.toBeNull();
 
-	unmount(page);
+	unmount(page());
 	flushSync();
+	mountedPage = null;
 });
 
-test('an empty panel states it honestly', async () => {
+test('an empty history states it honestly', async () => {
 	vi.stubGlobal('fetch', stubFetch([]));
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	expect(document.body.textContent).toContain('No job runs yet');
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('SSE progress events converge a running row without a refetch', async () => {
 	const fetchMock = stubFetch([downloadRun]);
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	deliverJobEvent({
@@ -282,18 +778,19 @@ test('SSE progress events converge a running row without a refetch', async () =>
 		state: 'running'
 	});
 	expect(runCard(downloadRun.id).textContent).toContain('200.0 MB of 381.8 MB');
-	// No refetch for a progress event: the row converged in place
-	// (the mount's own two reads -- the listing and the models -- stand).
+	// No refetch for a progress event: the row converged in place.
 	expect(listingCalls(fetchMock)).toBe(1);
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('the job.finished event converges the row through a refetch', async () => {
 	let listed = 0;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/admin/jobs') {
+		const url = String(input);
+		if (url === '/api/v1/admin/jobs') {
 			listed += 1;
 			if (listed === 1) {
 				return jsonResponse(200, { jobs: [downloadRun] });
@@ -308,10 +805,19 @@ test('the job.finished event converges the row through a refetch', async () => {
 				]
 			});
 		}
-		throw new Error(`unexpected fetch ${String(input)}`);
+		if (url === '/api/v1/admin/jobs/summary') {
+			return jsonResponse(200, summaryBody());
+		}
+		if (url === '/api/v1/admin/settings/run-budget') {
+			return jsonResponse(200, budgetBody());
+		}
+		if (url === '/api/v1/admin/models') {
+			return jsonResponse(200, { models: [], download: null, slots: [], official: [] });
+		}
+		throw new Error(`unexpected fetch ${url}`);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	deliverJobEvent({
@@ -328,23 +834,34 @@ test('the job.finished event converges the row through a refetch', async () => {
 	expect(runCard(downloadRun.id).textContent).toContain('Succeeded');
 	expect(runCard(downloadRun.id).textContent).toContain('Finished Nov 3, 2026');
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('a running row polls the listing when the stream stays silent', async () => {
 	vi.useFakeTimers();
 	let listed = 0;
 	const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-		if (String(input) === '/api/v1/admin/jobs') {
+		const url = String(input);
+		if (url === '/api/v1/admin/jobs') {
 			listed += 1;
 			const done = listed === 1 ? 104857600 : 209715200;
 			return jsonResponse(200, { jobs: [jobRun(downloadRun.id, { done })] });
 		}
-		throw new Error(`unexpected fetch ${String(input)}`);
+		if (url === '/api/v1/admin/jobs/summary') {
+			return jsonResponse(200, summaryBody());
+		}
+		if (url === '/api/v1/admin/settings/run-budget') {
+			return jsonResponse(200, budgetBody());
+		}
+		if (url === '/api/v1/admin/models') {
+			return jsonResponse(200, { models: [], download: null, slots: [], official: [] });
+		}
+		throw new Error(`unexpected fetch ${url}`);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await vi.advanceTimersByTimeAsync(0);
 	await tick();
 
@@ -359,15 +876,16 @@ test('a running row polls the listing when the stream stays silent', async () =>
 	expect(runCard(downloadRun.id).textContent).toContain('200.0 MB of 381.8 MB');
 
 	vi.useRealTimers();
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('history rows are static: no polling without an active run', async () => {
 	vi.useFakeTimers();
 	const fetchMock = stubFetch([embedRun, ocrRun]);
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await vi.advanceTimersByTimeAsync(0);
 	await tick();
 
@@ -375,22 +893,23 @@ test('history rows are static: no polling without an active run', async () => {
 	expect(listingCalls(fetchMock)).toBe(1);
 
 	vi.useRealTimers();
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('the unmount unsubscribes and stops the polling', async () => {
 	vi.useFakeTimers();
 	const fetchMock = stubFetch([downloadRun]);
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await vi.advanceTimersByTimeAsync(0);
 	await tick();
 	expect(handlers).toHaveLength(1);
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
-	// The subscription is gone (no listener would converge anything).
+	mountedPage = null;
 	expect(handlers).toHaveLength(0);
 	await vi.advanceTimersByTimeAsync(10_000);
 	expect(listingCalls(fetchMock)).toBe(1);
@@ -404,13 +923,12 @@ test('a failed run states its reason and retries through its own trigger', async
 		const url = String(input);
 		if (init?.method === 'POST') {
 			posted.push(url);
-			return jsonResponse(202, { jobRunId: '0192f900-0000-7000-8000-000000000001' });
+			return jsonResponse(202, { jobRunId: '0192f900-0000-7000-8000-000000000061' });
 		}
 		if (url === '/api/v1/admin/jobs') {
 			return jsonResponse(200, { jobs: [ocrRun] });
 		}
 		if (url === '/api/v1/admin/models') {
-			// The OCR slot's active model is in place: the retry re-runs it.
 			return jsonResponse(200, {
 				models: [model('ppocr-v4-mobile-ch')],
 				download: null,
@@ -418,44 +936,46 @@ test('a failed run states its reason and retries through its own trigger', async
 				official: []
 			});
 		}
+		if (url === '/api/v1/admin/jobs/summary') {
+			return jsonResponse(200, summaryBody());
+		}
+		if (url === '/api/v1/admin/settings/run-budget') {
+			return jsonResponse(200, budgetBody());
+		}
 		throw new Error(`unexpected fetch ${url}`);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
-	// The reason: the failed count in the run's units, and where the
-	// detail lives -- never the bare word "failed".
 	const reason = runCard(ocrRun.id).querySelector('[data-testid="job-reason"]');
 	expect(reason?.textContent).toContain('1 item could not be processed');
 	expect(reason?.textContent).toContain('server log');
 
 	buttonByText('Retry').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
-	// The rerun re-posts through the slot's active model and the
-	// listing converges on the new run.
 	expect(posted).toEqual(['/api/v1/admin/models/ppocr-v4-mobile-ch/rerun']);
 	expect(listingCalls(fetchMock)).toBe(2);
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('a failed run whose model is missing names the download instead of retrying', async () => {
-	const fetchMock = stubFetchWithModels([ocrRun], [model('ppocr-v4-mobile-ch', { isActive: false })]);
+	const fetchMock = stubFetch([ocrRun], { models: [model('ppocr-v4-mobile-ch', { isActive: false })] });
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	const reason = runCard(ocrRun.id).querySelector('[data-testid="job-reason"]');
 	expect(reason?.textContent).toContain('Text recognition has no downloaded model');
 	expect(reason?.querySelector('a')?.getAttribute('href')).toBe('/admin/models');
-	// Nothing to re-run: the slot has no active model, so the row
-	// offers no retry button at all.
 	expect(runCard(ocrRun.id).querySelector('[data-testid="job-retry"]')).toBeNull();
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('a failed download and a failed places run retry through their own endpoints', async () => {
@@ -472,27 +992,20 @@ test('a failed download and a failed places run retry through their own endpoint
 		finishedAt: '2026-11-03T13:10:00Z'
 	});
 	const posted: string[] = [];
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (init?.method === 'POST') {
-			posted.push(url);
-			return jsonResponse(202, { jobRunId: '0192f900-0000-7000-8000-000000000002' });
+	const fetchMock = stubFetch([failedDownload, failedPlaces], {
+		extra: (input, init) => {
+			const url = String(input);
+			if (init?.method === 'POST') {
+				posted.push(url);
+				return jsonResponse(202, { jobRunId: '0192f900-0000-7000-8000-000000000062' });
+			}
+			return undefined;
 		}
-		if (url === '/api/v1/admin/jobs') {
-			return jsonResponse(200, { jobs: [failedDownload, failedPlaces] });
-		}
-		if (url === '/api/v1/admin/models') {
-			return jsonResponse(200, { models: [], download: null });
-		}
-		throw new Error(`unexpected fetch ${url}`);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
-	// The download's failure counts models; the places run stopped
-	// with no per-item failure at all -- the row says that much
-	// instead of inventing a count.
 	expect(runCard(failedDownload.id).querySelector('[data-testid="job-reason"]')?.textContent).toContain(
 		'2 models could not be downloaded'
 	);
@@ -509,8 +1022,9 @@ test('a failed download and a failed places run retry through their own endpoint
 
 	expect(posted).toEqual(['/api/v1/admin/models/download', '/api/v1/admin/places/reresolve']);
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
 test('a failed rescan offers no retry: its album id is not in the listing', async () => {
@@ -520,128 +1034,79 @@ test('a failed rescan offers no retry: its album id is not in the listing', asyn
 		failed: 0,
 		finishedAt: '2026-11-03T12:10:00Z'
 	});
-	const fetchMock = stubFetchWithModels([failedRescan], []);
-	vi.stubGlobal('fetch', fetchMock);
-	const page = mountPage();
+	vi.stubGlobal('fetch', stubFetch([failedRescan]));
+	mountedPage = mountPage('runs');
 	await settle();
 
 	expect(runCard(failedRescan.id).querySelector('[data-testid="job-reason"]')).not.toBeNull();
 	expect(runCard(failedRescan.id).querySelector('[data-testid="job-retry"]')).toBeNull();
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
+});
+
+test('the all-albums sweep row reads its own kind and album units', async () => {
+	const sweep = jobRun('0192f900-0000-7000-8000-000000000063', {
+		kind: 'album_rescan_all',
+		state: 'succeeded',
+		total: 12,
+		done: 12,
+		startedAt: '2026-11-03T12:00:00Z',
+		finishedAt: '2026-11-03T12:05:00Z'
+	});
+	vi.stubGlobal('fetch', stubFetch([sweep]));
+	mountedPage = mountPage('runs');
+	await settle();
+
+	expect(runCard(sweep.id).textContent).toContain('Album rescan (all)');
+	expect(runCard(sweep.id).textContent).toContain('12 of 12 albums');
+
+	unmount(mountedPage);
+	flushSync();
+	mountedPage = null;
 });
 
 test('a rejected retry reports in place, above the row it belongs to', async () => {
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-			const url = String(input);
+	const fetchMock = stubFetch([ocrRun], {
+		models: [model('ppocr-v4-mobile-ch')],
+		extra: (input, init) => {
 			if (init?.method === 'POST') {
 				return jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' });
 			}
-			if (url === '/api/v1/admin/jobs') {
-				return jsonResponse(200, { jobs: [ocrRun] });
-			}
-			if (url === '/api/v1/admin/models') {
-				return jsonResponse(200, {
-					models: [model('ppocr-v4-mobile-ch')],
-					download: null,
-					slots: [],
-					official: []
-				});
-			}
-			throw new Error(`unexpected fetch ${url}`);
-		})
-	);
-	const page = mountPage();
+			return undefined;
+		}
+	});
+	vi.stubGlobal('fetch', fetchMock);
+	mountedPage = mountPage('runs');
 	await settle();
 
 	buttonByText('Retry').dispatchEvent(new MouseEvent('click', { bubbles: true }));
 	await settle();
 
-	// The failure stays in the failed row (no toast, no page-level
-	// alert): the error needs a place to act from.
-	expect(runCard(ocrRun.id).querySelector('[role="alert"]')?.textContent).toContain(
-		"You don't have permission to do this."
-	);
-	expect(document.body.querySelector('.jobs__failure')).toBeNull();
+	expect(runCard(ocrRun.id).textContent).toContain("You don't have permission to do this.");
 
-	unmount(page);
+	unmount(mountedPage);
 	flushSync();
+	mountedPage = null;
 });
 
-test('a non-admin caller sees the mapped auth_forbidden message', async () => {
-	vi.stubGlobal(
-		'fetch',
-		vi.fn(async () => jsonResponse(403, { code: 'AUTH_FORBIDDEN', message: 'administrator role required' }))
-	);
-	const page = mountPage();
-	await settle();
-
-	// The generic AUTH_FORBIDDEN message (the albums branch made
-	// the code cover the album share face too, so the text stopped
-	// naming the admin surface).
-	expect(document.body.querySelector('[role="alert"]')?.textContent).toContain(
-		"You don't have permission to do this."
-	);
-	expect(buttonByText('Try again')).toBeTruthy();
-
-	unmount(page);
-	flushSync();
-});
-
-// THE RUN SETTINGS STRIP AND THE REBUILD'S STOP (E33): the task
-// panel's top card carries the three dials -- the concurrency steps,
-// the night window (its inputs dead while off), the five per-kind
-// pauses -- saving on change, immediately, whole document; and a
-// running rebuild row carries the stop that closes the run at its
-// next breakpoint.
-
-function budgetBody(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-	return {
-		concurrencyPreset: 'standard',
-		nightlyEnabled: false,
-		nightlyStart: '02:00',
-		nightlyEnd: '06:00',
-		pausedJobs: { thumbnail: false, metadata: false, transcode: false, ml: false, places: false },
-		...overrides
-	};
-}
-
-/** The jobs/models stub plus the budget's read and save routes. */
-function stubFetchWithBudget(jobs: unknown[], budget: unknown): ReturnType<typeof vi.fn> {
-	return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (url === '/api/v1/admin/settings/run-budget' && init?.method === 'PUT') {
-			return jsonResponse(200, JSON.parse(String(init.body)));
-		}
-		if (url === '/api/v1/admin/settings/run-budget') {
-			return jsonResponse(200, budget);
-		}
-		const base = stubFetchWithModels(jobs, []);
-		return (base as unknown as (i: RequestInfo | URL, ii?: RequestInit) => Response)(input, init);
-	});
-}
-
-test('the run-settings strip renders the dials and saves the whole document on change', async () => {
-	vi.stubGlobal('fetch', stubFetchWithBudget([downloadRun], budgetBody()));
+test('the run-settings card renders the dials and saves the whole document on change', async () => {
+	const fetchMock = stubFetch([], { budget: budgetBody() });
+	vi.stubGlobal('fetch', fetchMock);
 	mountPage();
 	await settle();
 
-	const strip = document.body.querySelector<HTMLElement>('[data-testid="run-settings"]');
-	expect(strip).not.toBeNull();
-	// The dial's three steps with the current one pressed.
+	const card = document.body.querySelector<HTMLElement>('[data-testid="run-settings"]');
+	expect(card).not.toBeNull();
 	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-standard"]')?.ariaPressed).toBe(
 		'true'
 	);
 	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-light"]')?.ariaPressed).toBe('false');
 
-	// The save is immediate: stepping the dial down PUTs the whole
-	// document with the new preset.
 	document.body.querySelector<HTMLButtonElement>('[data-testid="run-dial-light"]')?.click();
 	await settle();
-	const put = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
+	const put = fetchMock.mock.calls.find(
 		(call) => String(call[0]) === '/api/v1/admin/settings/run-budget' && call[1]?.method === 'PUT'
 	);
 	expect(put).toBeDefined();
@@ -650,45 +1115,27 @@ test('the run-settings strip renders the dials and saves the whole document on c
 	// The whole document rides: the pauses and the window too.
 	expect(saved.pausedJobs).toEqual(budgetBody().pausedJobs);
 	expect(saved.nightlyStart).toBe('02:00');
+
+	unmount(page());
+	mountedPage = null;
 });
 
 test("the night window's time inputs go dead while the switch is off", async () => {
-	vi.stubGlobal('fetch', stubFetchWithBudget([downloadRun], budgetBody({ nightlyEnabled: false })));
+	const fetchMock = stubFetch([], { budget: budgetBody({ nightlyEnabled: false }) });
+	vi.stubGlobal('fetch', fetchMock);
 	mountPage();
 	await settle();
 
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-start"]')?.disabled).toBe(true);
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-end"]')?.disabled).toBe(true);
 
-	// The switch on: the inputs wake.
 	document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-toggle"]')?.click();
 	await settle();
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-start"]')?.disabled).toBe(false);
 	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-nightly-end"]')?.disabled).toBe(false);
-});
 
-test('the five pause switches carry the budget and save on change', async () => {
-	vi.stubGlobal(
-		'fetch',
-		stubFetchWithBudget(
-			[downloadRun],
-			budgetBody({ pausedJobs: { thumbnail: true, metadata: false, transcode: false, ml: false, places: false } })
-		)
-	);
-	mountPage();
-	await settle();
-
-	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-thumbnail"]')?.checked).toBe(true);
-	expect(document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-places"]')?.checked).toBe(false);
-	// Flipping a switch PUTs the whole document with it.
-	document.body.querySelector<HTMLInputElement>('[data-testid="run-pause-places"]')?.click();
-	await settle();
-	const put = (fetch as ReturnType<typeof vi.fn>).mock.calls.find(
-		(call) => String(call[0]) === '/api/v1/admin/settings/run-budget' && call[1]?.method === 'PUT'
-	);
-	const saved = JSON.parse(String(put![1].body));
-	expect(saved.pausedJobs.places).toBe(true);
-	expect(saved.pausedJobs.thumbnail).toBe(true);
+	unmount(page());
+	mountedPage = null;
 });
 
 test('a running row carries the cancel, and cancelling POSTs the run id, toasts and refetches', async () => {
@@ -702,21 +1149,19 @@ test('a running row carries the cancel, and cancelling POSTs the run id, toasts 
 	});
 	let cancels = 0;
 	let cancelUrl = '';
-	const reads = stubFetchWithBudget([rebuildRun], budgetBody()) as unknown as (
-		i: RequestInfo | URL,
-		ii?: RequestInit
-	) => Promise<Response>;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (url === `/api/v1/admin/jobs/${rebuildRun.id}/cancel` && init?.method === 'POST') {
-			cancels += 1;
-			cancelUrl = url;
-			return new Response(null, { status: 204 });
+	const fetchMock = stubFetch([rebuildRun], {
+		extra: (input, init) => {
+			const url = String(input);
+			if (url === `/api/v1/admin/jobs/${rebuildRun.id}/cancel` && init?.method === 'POST') {
+				cancels += 1;
+				cancelUrl = url;
+				return new Response(null, { status: 204 });
+			}
+			return undefined;
 		}
-		return reads(input, init);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	const cancel = document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]');
@@ -725,12 +1170,13 @@ test('a running row carries the cancel, and cancelling POSTs the run id, toasts 
 	await settle();
 	expect(cancels).toBe(1);
 	expect(cancelUrl).toBe(`/api/v1/admin/jobs/${rebuildRun.id}/cancel`);
-	// The honest account, spoken at the click: the finished count is
-	// the row's own.
 	expect(toasts().map((entry) => entry.text)).toContain('Cancelled. The 4 finished items are kept.');
+
+	unmount(page());
+	mountedPage = null;
 });
 
-test('a finished run answers the 409 inline, under its own row', async () => {
+test('a finished run answers with no cancel on its row', async () => {
 	const closedRun = jobRun('0192f8a1-0b1c-2d3e-4f5a-6b7c8d9e0f12', {
 		kind: 'clip_embed_rerun',
 		state: 'succeeded',
@@ -740,28 +1186,15 @@ test('a finished run answers the 409 inline, under its own row', async () => {
 		startedAt: '2026-11-03T14:00:00Z',
 		finishedAt: '2026-11-03T14:03:00Z'
 	});
-	const reads = stubFetchWithBudget([closedRun], budgetBody()) as unknown as (
-		i: RequestInfo | URL,
-		ii?: RequestInit
-	) => Promise<Response>;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (url === `/api/v1/admin/jobs/${closedRun.id}/cancel` && init?.method === 'POST') {
-			// The run finished between the listing and the click: the
-			// server's refusal, mapped inline.
-			return jsonResponse(409, { code: 'JOB_NOT_CANCELLABLE', message: 'this run has already finished' });
-		}
-		return reads(input, init);
-	});
+	const fetchMock = stubFetch([closedRun]);
 	vi.stubGlobal('fetch', fetchMock);
-	mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
-	// A completed row carries NO cancel (honesty -- nothing to do
-	// about finished work). The 409's inline face is rework-tested
-	// through a stale running row below; the completed row's own
-	// discipline is the assertion here.
-	expect(document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]')).toBeNull();
+	expect(runCard(closedRun.id).querySelector('[data-testid="job-cancel"]')).toBeNull();
+
+	unmount(page());
+	mountedPage = null;
 });
 
 test('a queued row carries the cancel too, and a 409 lands under its own row', async () => {
@@ -773,19 +1206,17 @@ test('a queued row carries the cancel too, and a 409 lands under its own row', a
 		done: 0,
 		startedAt: null
 	});
-	const reads = stubFetchWithBudget([queued], budgetBody()) as unknown as (
-		i: RequestInfo | URL,
-		ii?: RequestInit
-	) => Promise<Response>;
-	const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-		const url = String(input);
-		if (url === `/api/v1/admin/jobs/${queued.id}/cancel` && init?.method === 'POST') {
-			return jsonResponse(409, { code: 'JOB_NOT_CANCELLABLE', message: 'this run has already finished' });
+	const fetchMock = stubFetch([queued], {
+		extra: (input, init) => {
+			const url = String(input);
+			if (url === `/api/v1/admin/jobs/${queued.id}/cancel` && init?.method === 'POST') {
+				return jsonResponse(409, { code: 'JOB_NOT_CANCELLABLE', message: 'this run has already finished' });
+			}
+			return undefined;
 		}
-		return reads(input, init);
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	mountPage();
+	mountedPage = mountPage('runs');
 	await settle();
 
 	const cancel = document.body.querySelector<HTMLButtonElement>('[data-testid="job-cancel"]');
@@ -795,6 +1226,8 @@ test('a queued row carries the cancel too, and a 409 lands under its own row', a
 	const inline = document.body.querySelector<HTMLElement>('[data-testid="job-cancel-error"]');
 	expect(inline).not.toBeNull();
 	expect(inline?.textContent).toContain('This run has already finished and cannot be cancelled.');
-	// The refusal stays under its own row: no toast over the listing.
 	expect(document.body.querySelector('.toast')).toBeNull();
+
+	unmount(page());
+	mountedPage = null;
 });

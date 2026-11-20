@@ -199,6 +199,10 @@ func newEnvLogger(t *testing.T, manifest *ml.Manifest, logger *slog.Logger, reru
 		// the rescan tests drive the three arms through the real
 		// worker this env starts.
 		AlbumRescans: queue,
+		// The instance-wide sweep's endpoint enqueues through the same
+		// queue: the sweep tests drive every album through the real
+		// worker this env starts.
+		AlbumRescanAlls: queue,
 		// The derivative rebuild endpoint enqueues through the same
 		// queue: the rebuild tests drive the walk through the real
 		// worker this env starts.
