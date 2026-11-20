@@ -42,6 +42,20 @@ SET last_seen_at = $2,
     updated_at = $2
 WHERE id = $1;
 
+-- name: HasActiveSession :one
+-- The folder live sync's activity signal: whether anybody was seen
+-- after the cutoff. Revoked sessions are deleted rows, so there is
+-- nothing to exclude; an expired web row is still a row, and a lapsed
+-- cookie is not activity -- mobile (bearer) rows never expire, they
+-- are revoked. The cutoff arrives from the caller's clock, the same
+-- clock the touch middleware writes last_seen_at with, so the two
+-- sides of the comparison never sit in different time frames.
+SELECT EXISTS (
+    SELECT 1 FROM sessions
+    WHERE last_seen_at > sqlc.arg('cutoff')
+      AND (kind = 'mobile' OR expires_at > now())
+);
+
 -- name: RevokeSession :one
 -- Owner-scoped deletion: a foreign or unknown id matches nothing, so
 -- the answer of the DELETE /auth/sessions/{id} handler stays 204

@@ -93,6 +93,85 @@ click. Restricted networks set the HuggingFace domain mirror first:
       LUMEMOR_MODELS_HF_MIRROR: hf-mirror.com   # empty = direct upstreams
 ```
 
+## Following your folders (directory albums)
+
+A directory album points at a folder on the host, and the server keeps
+the album's wall equal to that folder with no manual rescan: adds
+appear, removals leave, re-saved files update. The mechanism is a
+periodic directory diff (path, size, mtime against the last scan), so
+it works on every platform, including the mounts that carry no
+filesystem events into the container.
+
+### The activity gate: the photo disk sleeps at night
+
+The periodic walk is the only thing that touches the photo disk when
+nobody is using the server, so it follows the household's attention:
+
+- **Somebody is using the instance** (a session was active within the
+  last five minutes) — the diff runs on its cadence: every 60 seconds
+  unless `LUMEMOR_FOLDER_SYNC_INTERVAL` sets another window.
+- **Nobody is** — the diff runs once a day, in the first hour after
+  local midnight, and the disk stays quiet the rest of the time.
+- **Someone signs in** — the first tick afterwards sweeps immediately
+  (within one cadence window), so nothing waits for the night.
+
+"Local midnight" is the server process's own time zone, which the
+container reads from `TZ`. Set it to where the house is:
+
+```yaml
+    environment:
+      TZ: Asia/Shanghai      # any IANA zone name
+```
+
+Unset or empty means **UTC**, so a household east of Greenwich that
+never sets `TZ` gets its nightly sweep at 08:00 local — harmless, but
+not the "disk sleeps while we sleep" the gate is for.
+
+`LUMEMOR_FOLDER_SYNC_INTERVAL` still tunes the active cadence (a Go
+duration such as `90s`), and `0` or `off` turns the folder sync off
+whole: no diff, no watcher.
+
+### The watcher accelerator
+
+On a native Linux host with the folders on a local disk, the server
+also watches each album's folder and asks for a diff about a second
+and a half after it changes — an active house sees a dropped photo in
+seconds instead of one cadence window. The watcher only says "look at
+this folder again"; the same stamp diff decides, so a temp file, a
+touch without a real change, or a re-save with an unchanged identity
+still lands nothing.
+
+It is on by default. `LUMEMOR_FOLDER_WATCH=0` (or `off`) disables it
+and leaves the gated diff alone:
+
+```yaml
+    environment:
+      LUMEMOR_FOLDER_WATCH: "0"
+```
+
+**Honest caveats — none of them a correctness problem:**
+
+- **Docker Desktop (macOS/Windows) and network shares** do not carry
+  the host's filesystem events into the container. The watcher then
+  never fires; the periodic diff is the coverage. That is a latency
+  difference (up to one cadence window), not a missed change.
+- **Linux inotify has a watch budget**, one watch per directory, and
+  a big family tree can exceed the default (often 8192). When the
+  table fills, the server logs one line and continues with the
+  periodic diff — again a latency difference, never a lost change.
+  Raise the limit and persist it if you want the accelerator at
+  scale:
+
+  ```sh
+  sudo sysctl -w fs.inotify.max_user_watches=524288
+  echo 'fs.inotify.max_user_watches=524288' | sudo tee /etc/sysctl.d/99-lumemor.conf
+  ```
+
+- The watcher is **strictly read-only** on your folders: it never
+  writes a probe file or a marker into them. Whether a mount carries
+  events is not probed either — the diff covers the folders either
+  way.
+
 ## Before exposing it beyond your LAN
 
 Port 8244 speaks **plain HTTP**. The wizard window (before the first

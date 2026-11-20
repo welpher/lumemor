@@ -123,6 +123,19 @@ services:
       # default. The e2e harness shortens it (3s) so a scene observes
       # the diff inside the test's own bounds.
       LUMEMOR_FOLDER_SYNC_INTERVAL: ${LUMEMOR_FOLDER_SYNC_INTERVAL:-}
+      # Optional passthrough: the folder live sync's filesystem
+      # watcher accelerator (on unless set to 0/off). It only marks a
+      # changed folder dirty for the periodic diff; a platform whose
+      # mounts carry no events simply never fires it. See
+      # docs/deploy-docker.md for the inotify limit and the cheat sheet
+      # on which mounts carry events.
+      LUMEMOR_FOLDER_WATCH: ${LUMEMOR_FOLDER_WATCH:-}
+      # The server's local time zone. The folder sync's idle cadence
+      # runs once a day, in the first hour after LOCAL midnight, so a
+      # deployment that wants the nightly sweep to land at its own
+      # 00:00 sets the zone here (an IANA name such as Asia/Shanghai).
+      # Unset or empty means UTC.
+      TZ: ${TZ:-}
       # Optional passthrough: turn the scheduled release check off at
       # the deployment level (the test harness does, so no stack it
       # boots ever reaches the outside world). Unset or empty keeps the

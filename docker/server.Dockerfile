@@ -226,7 +226,13 @@ RUN set -eux; \
 #   explicitly because the jobs fail without it;
 # - ca-certificates: the M1 distroless/static runtime shipped a CA
 #   bundle; keeping one preserves the image's outbound-TLS capability
-#   (a database with sslmode != disable, future model downloads).
+#   (a database with sslmode != disable, future model downloads);
+# - tzdata: the zoneinfo database Go reads when TZ names a zone. The
+#   folder sync's idle cadence is anchored to the process's LOCAL
+#   midnight, so a deployment that sets TZ (the documented way to say
+#   when the house is asleep) needs the zone to resolve -- without
+#   the files Go silently falls back to UTC and the documented TZ is
+#   a knob that does nothing.
 FROM debian:trixie-slim
 
 # Same optional mirror override as the builder stage.
@@ -246,6 +252,7 @@ RUN if [ -n "$APT_MIRROR" ]; then \
         exiftool \
         util-linux \
         ca-certificates \
+        tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/lumemor /lumemor

@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/bbrks/go-blurhash v1.2.0
 	github.com/davidbyttow/govips/v2 v2.20.0
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.11.0
