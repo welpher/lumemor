@@ -7,16 +7,30 @@
 // truth on every platform, and it is the only decider: the walk's
 // stamp set against the baseline, nothing else.
 //
-// The activity gate sits on top of that comparison, and does not
-// replace it. A family's photo disk is a spinning HDD behind an
-// SSD-resident database, and the periodic walk is its one idle
-// toucher. So the walk follows the house's attention: while somebody
-// is using the instance (a session seen in the last five minutes --
-// the middleware's own throttled touch is the signal), the configured
-// cadence runs; while nobody is, the sweep runs once a day, in the
-// first hour after local midnight, and the disk sleeps the rest of
-// the time. The first tick after the house wakes sweeps immediately
-// (one cadence window of lag), because an active tick always sweeps.
+// Two layers sit on top of that comparison, and neither replaces it:
+//
+//   - The activity gate. A family's photo disk is a spinning HDD
+//     behind an SSD-resident database, and the periodic walk is its
+//     one idle toucher. So the walk follows the house's attention:
+//     while somebody is using the instance (a session seen in the
+//     last five minutes -- the middleware's own throttled touch is
+//     the signal), the configured cadence runs; while nobody is, the
+//     sweep runs once a day, in the first hour after local midnight,
+//     and the disk sleeps the rest of the time. The first tick after
+//     the house wakes sweeps immediately (one cadence window of
+//     lag), because an active tick always sweeps.
+//
+//   - The filesystem watcher accelerator. Where the platform carries
+//     events (native Linux with the folders on a local disk), a
+//     change marks the album dirty and a debounced wake runs the same
+//     diff over those albums at once, so an active house sees a
+//     dropped photo in seconds instead of a cadence window. The
+//     watcher never ingests and never enqueues a scan: it only says
+//     "look at this folder again". A mount that carries no events
+//     (the container bind mounts on desktop runtimes, network
+//     shares) simply never says anything, and the periodic diff is
+//     the coverage -- the watcher is an accelerator, never a
+//     precondition. See foldersync_watch.go.
 //
 // The diff's whole job is the DECISION. The walk's stamp set (path,
 // size, mtime) is compared against the baseline the last resolving
@@ -272,6 +286,18 @@ type FolderSyncCounts struct {
 // on the strength of an I/O error. The listing itself failing fails
 // the sweep -- the caller retries it, and nothing was decided.
 func RunFolderSync(ctx context.Context, pool *pgxpool.Pool, snapshots *AlbumSnapshots, enqueue FolderSyncEnqueueFunc, logger *slog.Logger) (FolderSyncCounts, error) {
+	return runFolderSync(ctx, pool, snapshots, enqueue, logger, nil)
+}
+
+// runFolderSync is the sweep with an optional album scope: only == nil
+// walks every directory album (the periodic tick), a non-empty set
+// walks just those albums (the watcher's dirty wake). The scope is a
+// cost bound, never a semantic one -- every arm below is the same
+// comparison and the same enqueue, so a scoped sweep is exactly the
+// part of a full sweep that has a reason to run. It is also why a
+// scoped sweep does not prune the baseline store: it never saw the
+// other albums, so it cannot speak for them.
+func runFolderSync(ctx context.Context, pool *pgxpool.Pool, snapshots *AlbumSnapshots, enqueue FolderSyncEnqueueFunc, logger *slog.Logger, only map[uuid.UUID]struct{}) (FolderSyncCounts, error) {
 	var counts FolderSyncCounts
 	if snapshots == nil || enqueue == nil {
 		// A wiring gap, not a runtime state: the sweep has nothing to
@@ -279,9 +305,18 @@ func RunFolderSync(ctx context.Context, pool *pgxpool.Pool, snapshots *AlbumSnap
 		return counts, errors.New("jobs: the folder sync needs a baseline store and an enqueue seam")
 	}
 	queries := dbgen.New(pool)
-	albums, err := queries.ListDirectoryAlbums(ctx)
+	all, err := queries.ListDirectoryAlbums(ctx)
 	if err != nil {
 		return counts, fmt.Errorf("list the directory albums: %w", err)
+	}
+	albums := all
+	if only != nil {
+		albums = make([]dbgen.ListDirectoryAlbumsRow, 0, len(only))
+		for _, album := range all {
+			if _, ok := only[uuid.UUID(album.ID.Bytes)]; ok {
+				albums = append(albums, album)
+			}
+		}
 	}
 	counts.Albums = len(albums)
 	live := make(map[uuid.UUID]struct{}, len(albums))
@@ -347,7 +382,9 @@ func RunFolderSync(ctx context.Context, pool *pgxpool.Pool, snapshots *AlbumSnap
 		}
 		counts.Enqueued++
 	}
-	snapshots.Prune(live)
+	if only == nil {
+		snapshots.Prune(live)
+	}
 	return counts, nil
 }
 
@@ -379,6 +416,11 @@ type FolderSyncWorker struct {
 	// gate remembers the last nightly sweep; see folderSyncGate. It is
 	// touched only under tick.
 	gate folderSyncGate
+	// watch is the filesystem-watcher accelerator: its dirty set
+	// scopes the sweep a watcher event woke, and its Sync keeps the
+	// watch set equal to the album list. Nil is the watcher-off
+	// wiring (and the diff tests, which drive the sweep directly).
+	watch *folderWatcher
 	// tick is the sweep's single-flight: a tick that overlaps the
 	// previous one is dropped whole. River's periodic scheduler
 	// inserts a job per tick and would happily run two sweeps at
@@ -396,12 +438,14 @@ func (w *FolderSyncWorker) Timeout(job *river.Job[FolderSyncArgs]) time.Duration
 // clean: the tick it skipped is the running sweep's own work, not a
 // failure to record.
 //
-// The gate decides first: an active tick sweeps every album on the
-// configured cadence, and an idle tick sweeps once a day, in the
-// nightly slot. Nothing is logged for a skipped or uneventful sweep --
-// one line per minute per process would be the only noise the feature
-// makes -- while the nightly slot logs its run (once a day is worth
-// seeing) and a sweep that decided something logs its counts.
+// The gate decides first, then the sweep runs at the scope the tick
+// earned: an active tick sweeps every album on the configured
+// cadence, the nightly tick sweeps every album once, and a tick with
+// a watcher's dirty albums sweeps those albums alone. Nothing is
+// logged for a skipped or uneventful sweep -- one line per minute per
+// process would be the only noise the feature makes -- while the
+// nightly slot logs its run (once a day is worth seeing) and a sweep
+// that decided something logs its counts.
 func (w *FolderSyncWorker) Work(ctx context.Context, job *river.Job[FolderSyncArgs]) error {
 	if !w.tick.TryLock() {
 		w.logger.Debug("the folder sync tick skipped: the previous sweep is still walking")
@@ -423,16 +467,34 @@ func (w *FolderSyncWorker) Work(ctx context.Context, job *river.Job[FolderSyncAr
 		active = true
 	}
 	sweep, nightly := w.gate.allow(now(), active)
-	if !sweep {
-		w.logger.Debug("the folder sync tick skipped: the house is idle and the nightly slot has not opened", "active", active)
+	var dirty map[uuid.UUID]struct{}
+	if w.watch != nil {
+		dirty = w.watch.SwapDirty()
+	}
+	switch {
+	case sweep:
+		// A full sweep covers every dirty album too.
+		dirty = nil
+	case len(dirty) == 0:
+		w.logger.Debug("the folder sync tick skipped: the house is idle and nothing is dirty", "active", active)
 		return nil
 	}
 
-	counts, err := RunFolderSync(ctx, w.pool, w.snapshots, w.enqueue, w.logger)
+	counts, err := runFolderSync(ctx, w.pool, w.snapshots, w.enqueue, w.logger, dirty)
 	if err != nil {
 		w.logger.Error("the folder sync sweep failed",
 			"error", err, "albums", counts.Albums, "enqueued", counts.Enqueued)
 		return fmt.Errorf("folder sync: %w", err)
+	}
+	if w.watch != nil {
+		// The sweep is the watch set's sync point: it just listed
+		// every directory album and its root, so a created or removed
+		// album lands here without a second trigger. A failure is not
+		// the sweep's failure -- the diff decides with or without the
+		// accelerator.
+		if err := w.watch.Sync(ctx, dbgen.New(w.pool)); err != nil {
+			w.logger.Warn("the folder sync could not refresh the watch set", "error", err)
+		}
 	}
 	if nightly {
 		w.logger.Info("the folder sync ran its daily idle sweep",

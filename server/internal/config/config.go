@@ -57,6 +57,16 @@ const EnvUpdateCheckDisabled = "LUMEMOR_UPDATE_CHECK_DISABLED"
 // test's bounds.
 const EnvFolderSyncInterval = "LUMEMOR_FOLDER_SYNC_INTERVAL"
 
+// EnvFolderWatch is the environment variable that turns the folder
+// live sync's filesystem-watcher accelerator off: the watcher only
+// marks an album dirty when its source folder changes, and the
+// periodic diff remains the decider either way. On by default -- the
+// accelerator is what makes an active house see a dropped photo in
+// seconds instead of one cadence window -- and "0" or "off" leaves a
+// deployment with the gated diff alone (the shape a platform whose
+// mounts carry no events behaves like anyway).
+const EnvFolderWatch = "LUMEMOR_FOLDER_WATCH"
+
 // DefaultListen is the listen address used when EnvListen is unset or empty.
 const DefaultListen = ":8244"
 
@@ -100,6 +110,12 @@ type Config struct {
 	// the job queue's default window (60s); a negative value means
 	// disabled, the shape the queue's periodic bundle reads.
 	FolderSyncInterval time.Duration
+	// FolderWatch turns the folder live sync's filesystem watcher on:
+	// the accelerator that marks a changed album dirty so the sweep
+	// runs within seconds instead of one cadence window. It never
+	// ingests anything itself; the diff's stamp comparison stays the
+	// only decider. False leaves the gated diff alone.
+	FolderWatch bool
 }
 
 // Load reads the configuration from the environment. It returns an
@@ -138,6 +154,11 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	folderWatch, err := loadFolderWatch()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Listen:              listen,
 		DatabaseURL:         databaseURL,
@@ -147,6 +168,7 @@ func Load() (Config, error) {
 		UploadLimitBytes:    uploadLimitBytes,
 		UpdateCheckDisabled: parseTruthyEnv(EnvUpdateCheckDisabled),
 		FolderSyncInterval:  folderSyncInterval,
+		FolderWatch:         folderWatch,
 	}, nil
 }
 
@@ -185,6 +207,22 @@ func loadFolderSyncInterval() (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a positive duration, got %q", EnvFolderSyncInterval, raw)
 	}
 	return interval, nil
+}
+
+// loadFolderWatch parses EnvFolderWatch. The accelerator is on when the
+// variable is unset or empty (the shipped default), "0"/"off" (and the
+// common falsy spellings) turn it off, and anything else fails the boot
+// loudly: an on-by-default switch must not be disarmed by a typo any
+// more than an off-by-default one may be armed by it.
+func loadFolderWatch() (bool, error) {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(EnvFolderWatch)))
+	switch raw {
+	case "", "1", "true", "yes", "on":
+		return true, nil
+	case "0", "off", "false", "no":
+		return false, nil
+	}
+	return false, fmt.Errorf("%s: parse %q: want 0/off to disable the folder watcher, or 1/on to enable it", EnvFolderWatch, raw)
 }
 
 // loadUploadLimitBytes parses EnvUploadLimitBytes. An unset or empty

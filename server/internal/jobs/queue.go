@@ -121,6 +121,15 @@ type Config struct {
 	// the e2e harness shortens it so a scene observes the diff inside
 	// the test's own bounds.
 	FolderSyncInterval time.Duration
+	// FolderWatch turns the folder live sync's filesystem watcher on:
+	// the accelerator that marks a changed album dirty so the sweep
+	// runs within seconds instead of one cadence window. It never
+	// ingests anything; the diff's stamp comparison stays the only
+	// decider, and a platform whose mounts carry no events simply
+	// never wakes it. The deployment knob is LUMEMOR_FOLDER_WATCH
+	// (0/off disables it); a deployment that turned the sweep itself
+	// off gets no watcher either -- there would be nothing to wake.
+	FolderWatch bool
 	// Places is the in-memory place grid the metadata job's GPS step
 	// and the places re-resolution run resolve against, built once at
 	// boot from the baked GeoNames data (geodata.Prepare). Nil is the
@@ -156,6 +165,10 @@ type Queue struct {
 	// halves that touch it: the rescan workers record what their walks
 	// saw, the periodic sweep compares against it.
 	snapshots *AlbumSnapshots
+	// watch is the folder sync's filesystem-watcher accelerator (nil
+	// when the deployment turned it off or the platform had no
+	// watcher to give): Stop releases it with the client.
+	watch *folderWatcher
 	// logger is the queue's own diagnostics sink: the automatic model
 	// fill's policy read and the missing-weights lines land here.
 	logger *slog.Logger
@@ -457,7 +470,30 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 			Valid: true,
 		})
 	}
+	// The watcher accelerator: it only marks albums dirty; the sweep
+	// decides. It starts with the same listing the sweep reads, so an
+	// album created just before a boot is watched from the first
+	// second. A platform without a watcher (or a deployment that
+	// turned the accelerator off, or one whose sweep is off entirely)
+	// runs the gated diff alone -- the supported shape, not a
+	// degraded one.
+	if cfg.FolderWatch && folderSyncCadence(cfg.FolderSyncInterval) > 0 {
+		watch, watchErr := newFSNotifyWatcher(folderWatchDebounce, logger, queue.enqueueFolderSyncNow)
+		if watchErr != nil {
+			logger.Warn("the folder watcher could not start; the periodic diff covers the folders", "error", watchErr)
+		} else {
+			folderSyncWorker.watch = watch
+			queue.watch = watch
+			if err := watch.Sync(ctx, queries); err != nil {
+				logger.Warn("the folder watcher could not read its initial watch set", "error", err)
+			}
+		}
+	}
+
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
+		if queue.watch != nil {
+			_ = queue.watch.Close()
+		}
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
 	}
 
@@ -525,7 +561,27 @@ func (q *Queue) enqueueMotionJobs(ctx context.Context, assetID uuid.UUID) {
 // Stop drains the queue gracefully: producers stop fetching new jobs,
 // in-flight jobs finish, and after softStopTimeout their contexts are
 // cancelled. ctx bounds the wait; on its expiry Stop returns the
-// context's error and shutdown proceeds.
+// context's error and shutdown proceeds. The folder watcher closes
+// first, so its last debounce cannot insert a job into a stopping
+// client.
 func (q *Queue) Stop(ctx context.Context) error {
+	if q.watch != nil {
+		if err := q.watch.Close(); err != nil {
+			q.logger.Warn("close the folder watcher", "error", err)
+		}
+	}
 	return q.client.Stop(ctx)
+}
+
+// enqueueFolderSyncNow asks for one sweep now: the watcher's settled
+// batch inserts the very job the periodic schedule inserts, so the
+// accelerator rides the worker's gate, try-lock and single diff.
+// There is no second sweep path, and an insert failure costs only the
+// latency (the next tick converges).
+func (q *Queue) enqueueFolderSyncNow() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := q.client.Insert(ctx, FolderSyncArgs{}, nil); err != nil {
+		q.logger.Warn("the folder watcher could not request a sweep", "error", err)
+	}
 }
