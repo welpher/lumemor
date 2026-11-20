@@ -401,7 +401,7 @@ paths:
                 freshToken:
                   summary: A token valid for five minutes.
                   value:
-                    token: q73x9QmV2pZ8sL4wR6tY0A
+                    token: example-pairing-token-not-a-secret
                     expiresAt: '2026-10-29T09:00:00Z'
         '401':
           description: |
@@ -481,7 +481,7 @@ paths:
                 pairedPhone:
                   summary: A phone that just paired.
                   value:
-                    token: 8N3Jz5xqKv2RtW9mY4bC7dFgH1jL6p0s
+                    token: example-session-token-not-a-secret
                     session:
                       id: 0192f3b2-4c5d-7e8f-8a9b-0c1d2e3f4a5b
                       kind: mobile
