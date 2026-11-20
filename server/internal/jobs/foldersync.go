@@ -3,13 +3,20 @@
 // references -- a file dropped into the source reaches the wall, a
 // file removed from it leaves, no manual rescan.
 //
-// The mechanism is a periodic full-listing comparison, not a
-// filesystem watcher. The source roots arrive as container bind
-// mounts, and a mount boundary does not carry the host's filesystem
-// events into the container: a watcher would sit silent on the one
-// deployment shape this product ships. A periodic walk sees the
-// truth on every platform, and the comparison is free on an idle
-// folder -- no watcher to keep, no handle to leak, no schema.
+// The mechanism is a periodic full-listing comparison. It is the
+// truth on every platform, and it is the only decider: the walk's
+// stamp set against the baseline, nothing else.
+//
+// The activity gate sits on top of that comparison, and does not
+// replace it. A family's photo disk is a spinning HDD behind an
+// SSD-resident database, and the periodic walk is its one idle
+// toucher. So the walk follows the house's attention: while somebody
+// is using the instance (a session seen in the last five minutes --
+// the middleware's own throttled touch is the signal), the configured
+// cadence runs; while nobody is, the sweep runs once a day, in the
+// first hour after local midnight, and the disk sleeps the rest of
+// the time. The first tick after the house wakes sweeps immediately
+// (one cadence window of lag), because an active tick always sweeps.
 //
 // The diff's whole job is the DECISION. The walk's stamp set (path,
 // size, mtime) is compared against the baseline the last resolving
@@ -89,6 +96,68 @@ const defaultFolderSyncInterval = time.Minute
 // function of the same filesystem).
 const folderSyncTimeout = 10 * time.Minute
 
+// folderActivityWindow is the gate's definition of an active house: a
+// session seen within the last five minutes. The session middleware
+// already refreshes last_seen_at on a request (throttled to one write
+// a minute), so this reuses the existing activity signal and adds no
+// per-request tracking of its own.
+const folderActivityWindow = 5 * time.Minute
+
+// FolderActivityFunc reports whether anybody used the instance within
+// the gate's window: the seam the queue wires to the sessions table
+// (the HasActiveSession query) and the tests inject. A nil func means
+// active -- the always-sweep behaviour a caller with no gate gets.
+type FolderActivityFunc func(ctx context.Context) (bool, error)
+
+// folderSyncGate decides whether a tick sweeps. It carries one piece
+// of state -- the local date of the last nightly sweep -- and is
+// touched only by the worker under its tick lock, so it needs no lock
+// of its own.
+//
+// The decision is deliberately that small: active sweeps on the
+// configured cadence (the tick IS the cadence), idle sweeps in the
+// first hour after local midnight and once per local day. The
+// idle-to-active transition needs no state either: the first tick
+// after somebody signs in is an active tick, and active ticks sweep.
+//
+// Midnight is the process's local time -- the deployment sets TZ, and
+// an unset TZ means UTC. A host whose zone jumps over the 0 hour
+// (a DST change) misses that day's idle sweep; the next one is a day
+// later, and no data is at stake (the sweep converges, it never
+// deletes on a schedule).
+type folderSyncGate struct {
+	// nightly is the local date (any instant of it) of the last
+	// nightly sweep this process ran; the zero value means none yet.
+	nightly time.Time
+}
+
+// allow answers one tick's decision. active is the activity signal;
+// sweep is whether the walk runs this tick; nightly marks the daily
+// idle slot, so the caller can say why an otherwise silent sweep ran.
+func (g *folderSyncGate) allow(now time.Time, active bool) (sweep, nightly bool) {
+	if active {
+		return true, false
+	}
+	if now.Hour() != 0 {
+		return false, false
+	}
+	if !g.nightly.IsZero() && sameLocalDay(g.nightly, now) {
+		// The slot already ran today: the once-a-day pin.
+		return false, false
+	}
+	g.nightly = now
+	return true, true
+}
+
+// sameLocalDay reports whether two instants fall on the same calendar
+// day of their own location: the gate's nightly bookkeeping, which
+// must follow the local date rather than any fixed zone.
+func sameLocalDay(a, b time.Time) bool {
+	ay, am, ad := a.Date()
+	by, bm, bd := b.Date()
+	return ay == by && am == bm && ad == bd
+}
+
 // fileStamp is one file's identity in the folder sync's comparison:
 // the size and the mtime at the same microsecond precision the scan
 // compares at (the PostgreSQL timestamptz round-trip), so a stamp
@@ -106,7 +175,7 @@ type fileStamp struct {
 // The value is a derived cache of a filesystem the process does not
 // own, and its only truthful state after a restart is "unknown": the
 // process was down, the folders may have changed without a witness,
-// so the first tick after a boot re-scans every album once
+// so the first sweep after a boot re-scans every album once
 // (the enqueue is idempotent and the unchanged re-scan writes
 // nothing) and re-baselines. A table would persist exactly the value
 // nobody may trust at that moment, and it would turn the idle folder
@@ -301,6 +370,15 @@ type FolderSyncWorker struct {
 	snapshots *AlbumSnapshots
 	enqueue   FolderSyncEnqueueFunc
 	logger    *slog.Logger
+	// activity reads the instance's activity signal. Nil means active
+	// (the always-sweep wiring, and the diff tests' own worker).
+	activity FolderActivityFunc
+	// now is the gate's clock: the nightly slot and the local-date
+	// bookkeeping. Nil is time.Now.
+	now func() time.Time
+	// gate remembers the last nightly sweep; see folderSyncGate. It is
+	// touched only under tick.
+	gate folderSyncGate
 	// tick is the sweep's single-flight: a tick that overlaps the
 	// previous one is dropped whole. River's periodic scheduler
 	// inserts a job per tick and would happily run two sweeps at
@@ -314,11 +392,16 @@ func (w *FolderSyncWorker) Timeout(job *river.Job[FolderSyncArgs]) time.Duration
 	return folderSyncTimeout
 }
 
-// Work executes one sweep. The try-lock's loser logs and returns
+// Work executes one tick. The try-lock's loser logs and returns
 // clean: the tick it skipped is the running sweep's own work, not a
-// failure to record. Nothing is logged for an idle sweep -- one
-// line per minute per process would be the only noise the feature
-// makes -- and one line per sweep that decided something is.
+// failure to record.
+//
+// The gate decides first: an active tick sweeps every album on the
+// configured cadence, and an idle tick sweeps once a day, in the
+// nightly slot. Nothing is logged for a skipped or uneventful sweep --
+// one line per minute per process would be the only noise the feature
+// makes -- while the nightly slot logs its run (once a day is worth
+// seeing) and a sweep that decided something logs its counts.
 func (w *FolderSyncWorker) Work(ctx context.Context, job *river.Job[FolderSyncArgs]) error {
 	if !w.tick.TryLock() {
 		w.logger.Debug("the folder sync tick skipped: the previous sweep is still walking")
@@ -326,11 +409,35 @@ func (w *FolderSyncWorker) Work(ctx context.Context, job *river.Job[FolderSyncAr
 	}
 	defer w.tick.Unlock()
 
+	now := time.Now
+	if w.now != nil {
+		now = w.now
+	}
+	active, err := w.instanceActive(ctx)
+	if err != nil {
+		// An unreadable activity signal must never stall the
+		// convergence: the sweep falls back to the plain configured
+		// cadence -- the behaviour before the gate existed -- and the
+		// warning names the query that failed.
+		w.logger.Warn("the folder sync could not read the activity signal; sweeping on the configured cadence", "error", err)
+		active = true
+	}
+	sweep, nightly := w.gate.allow(now(), active)
+	if !sweep {
+		w.logger.Debug("the folder sync tick skipped: the house is idle and the nightly slot has not opened", "active", active)
+		return nil
+	}
+
 	counts, err := RunFolderSync(ctx, w.pool, w.snapshots, w.enqueue, w.logger)
 	if err != nil {
 		w.logger.Error("the folder sync sweep failed",
 			"error", err, "albums", counts.Albums, "enqueued", counts.Enqueued)
 		return fmt.Errorf("folder sync: %w", err)
+	}
+	if nightly {
+		w.logger.Info("the folder sync ran its daily idle sweep",
+			"albums", counts.Albums, "unchanged", counts.Unchanged,
+			"skipped", counts.Skipped, "enqueued", counts.Enqueued)
 	}
 	if counts.Enqueued > 0 {
 		w.logger.Info("the folder sync enqueued the scans of changed folders",
@@ -338,6 +445,16 @@ func (w *FolderSyncWorker) Work(ctx context.Context, job *river.Job[FolderSyncAr
 			"skipped", counts.Skipped, "enqueued", counts.Enqueued)
 	}
 	return nil
+}
+
+// instanceActive reads the gate's activity signal. A nil seam is the
+// always-sweep wiring, so a caller that has no gate keeps the plain
+// cadence by construction.
+func (w *FolderSyncWorker) instanceActive(ctx context.Context) (bool, error) {
+	if w.activity == nil {
+		return true, nil
+	}
+	return w.activity(ctx)
 }
 
 // folderSyncCadence resolves the configured sweep interval: the
@@ -353,11 +470,12 @@ func folderSyncCadence(configured time.Duration) time.Duration {
 
 // folderSyncPeriodicJobs returns the sweep's periodic registration on
 // the configured cadence. RunOnStart is ON here (unlike the hourly
-// maintenance jobs): a boot's first sweep is what converges the
-// folders that changed while the server was down, and there is no
-// boot-time equivalent running the same function -- the empty
-// baseline store already makes that first sweep a full convergence
-// pass by construction.
+// maintenance jobs): a boot's first tick is what lets the gate decide,
+// and the empty baseline store makes that first full sweep a
+// convergence pass by construction. Whether it actually walks is the
+// gate's call -- an idle house at 03:00 defers the convergence to the
+// nightly slot, and the first active tick after somebody signs in runs
+// it then.
 func folderSyncPeriodicJobs(interval time.Duration) []*river.PeriodicJob {
 	return []*river.PeriodicJob{
 		river.NewPeriodicJob(folderSyncSchedule(interval), folderSyncJobConstructor,
