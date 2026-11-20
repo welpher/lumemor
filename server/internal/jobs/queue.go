@@ -318,6 +318,13 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 		logger:    logger,
 	}
 	river.AddWorker(workers, rescanWorker)
+	albumRescanAllWorker := &AlbumRescanAllWorker{
+		pool:      cfg.Pool,
+		bus:       cfg.Bus,
+		snapshots: snapshots,
+		logger:    logger,
+	}
+	river.AddWorker(workers, albumRescanAllWorker)
 	folderSyncWorker := &FolderSyncWorker{
 		pool:      cfg.Pool,
 		snapshots: snapshots,
@@ -453,6 +460,9 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	} else {
 		rescanWorker.dispatch = queue.dispatchRescan
 	}
+	// The sweep shares the per-album diff's dispatch: one ingest
+	// pipeline for the single scan and the instance-wide sweep.
+	albumRescanAllWorker.dispatch = rescanWorker.dispatch
 	// The folder sync's enqueue: the periodic diff starts an album's
 	// scan through the queue's own enqueue (the job_runs row and the
 	// River job in one transaction), the same call the rescan endpoint

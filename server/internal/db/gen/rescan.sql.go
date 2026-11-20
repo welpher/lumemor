@@ -60,6 +60,26 @@ func (q *Queries) ConvergeAlbumMembersToPositionRows(ctx context.Context, arg Co
 	return result.RowsAffected(), nil
 }
 
+const countDirectoryAlbums = `-- name: CountDirectoryAlbums :one
+SELECT count(*)
+FROM albums
+WHERE type = 'directory'
+  AND root_path IS NOT NULL
+`
+
+// The all-albums rescan's enqueue-time total: the number of
+// directory albums the sweep walks, over the instance's whole
+// album table. The scope arms mirror ListDirectoryAlbums exactly (a
+// row without a resolved root is outside the sweep), so the run's
+// announced total and the walk's own listing agree -- the walk
+// resizes the row when the two ever diverge.
+func (q *Queries) CountDirectoryAlbums(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countDirectoryAlbums)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countLiveAlbumExternalMembers = `-- name: CountLiveAlbumExternalMembers :one
 SELECT count(*)
 FROM album_items ai
