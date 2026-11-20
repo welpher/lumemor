@@ -50,3 +50,6 @@ data/
 /lumemor/
 *.log
 tools/models/cache/
+
+# The agent sessions' untracked execution reports
+.superpowers/

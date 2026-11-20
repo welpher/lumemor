@@ -17,6 +17,9 @@ services:
     image: pgvector/pgvector:pg17
     environment:
       POSTGRES_USER: lumemor
+      # The local development stack's credentials. Production deployments
+      # set their own (see docs/deploy-docker.md); nothing here reaches a
+      # published image.
       POSTGRES_PASSWORD: lumemor
       POSTGRES_DB: lumemor
     volumes:
