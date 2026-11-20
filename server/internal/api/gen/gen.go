@@ -623,6 +623,7 @@ func (e ImageSettingsUpdateRequestTileSize) Valid() bool {
 // Defines values for JobRunKind.
 const (
 	AlbumRescan        JobRunKind = "album_rescan"
+	AlbumRescanAll     JobRunKind = "album_rescan_all"
 	ClipEmbedRerun     JobRunKind = "clip_embed_rerun"
 	FaceDetectRerun    JobRunKind = "face_detect_rerun"
 	FaceRecognizeRerun JobRunKind = "face_recognize_rerun"
@@ -636,6 +637,8 @@ const (
 func (e JobRunKind) Valid() bool {
 	switch e {
 	case AlbumRescan:
+		return true
+	case AlbumRescanAll:
 		return true
 	case ClipEmbedRerun:
 		return true
@@ -2005,6 +2008,18 @@ type AlbumPathCompletionsResponse struct {
 	Completions []AlbumPathCompletion `json:"completions"`
 }
 
+// AlbumRescanAllResponse The identifier of one all-albums rescan run: the single
+// `job_runs` row the sweep drives and the `job.*` events
+// announce. The run's `total` is the instance's directory
+// album count -- the history shows one row for the whole
+// sweep, never one per album.
+type AlbumRescanAllResponse struct {
+	// JobRunId UUIDv7 identifier of the run's `job_runs` row. `202`
+	// carries the freshly created sweep; `200` the in-flight
+	// one the request joined instead.
+	JobRunId openapi_types.UUID `json:"jobRunId"`
+}
+
 // AlbumRescanResponse The identifier of one directory album rescan run: the
 // `job_runs` row the rescan job drives and the `job.*` events
 // announce.
@@ -3279,8 +3294,11 @@ type ImageSettingsUpdateRequestTileSize int
 // its own kind, named after the slot it redoes; the place
 // re-resolution is the places-data-update path's kind; the
 // album rescan is the directory album's source-reconciliation
-// run; the derivative rebuild is the image card's explicit
-// re-derivation of the serving copies at the current settings.
+// run, and the all-albums rescan is the same diff swept over
+// every directory album in ONE run (the catalog's batch, never
+// a per-album row); the derivative rebuild is the image card's
+// explicit re-derivation of the serving copies at the current
+// settings.
 type JobRunKind string
 
 // JobRunListResponse The task panel listing: the instance's job runs, newest
@@ -3315,8 +3333,11 @@ type JobRunResponse struct {
 	// its own kind, named after the slot it redoes; the place
 	// re-resolution is the places-data-update path's kind; the
 	// album rescan is the directory album's source-reconciliation
-	// run; the derivative rebuild is the image card's explicit
-	// re-derivation of the serving copies at the current settings.
+	// run, and the all-albums rescan is the same diff swept over
+	// every directory album in ONE run (the catalog's batch, never
+	// a per-album row); the derivative rebuild is the image card's
+	// explicit re-derivation of the serving copies at the current
+	// settings.
 	Kind JobRunKind `json:"kind"`
 
 	// StartedAt When the run's driver first picked it up (RFC 3339
@@ -3353,6 +3374,62 @@ type JobRunResponse struct {
 // admin's own deliberate ending, never a broken one).
 type JobRunState string
 
+// JobRunSummary One batch run's latest-state summary: enough for the
+// catalog's "latest" line, never the run's whole story (the
+// history listing carries that).
+type JobRunSummary struct {
+	// Done The work completed so far, in the same units.
+	Done int `json:"done"`
+
+	// Failed The failed work count, in the same units.
+	Failed int `json:"failed"`
+
+	// FinishedAt When the run closed (RFC 3339 UTC). Null until then.
+	FinishedAt *time.Time `json:"finishedAt"`
+
+	// Id UUIDv7 identifier of the run's `job_runs` row.
+	Id openapi_types.UUID `json:"id"`
+
+	// StartedAt When the run's driver first picked it up (RFC 3339 UTC).
+	// Null while the run sits `queued`.
+	StartedAt *time.Time `json:"startedAt"`
+
+	// State The lifecycle of a job run: `queued` from creation until the
+	// driver picks it up, `running` while it works, then
+	// `succeeded`, `failed` -- or `cancelled` when the
+	// administrator's cancel ended it at a chunk boundary (the
+	// committed portion keeps its counts; a cancelled run is the
+	// admin's own deliberate ending, never a broken one).
+	State JobRunState `json:"state"`
+
+	// Total The run's whole work in its own units: albums for the
+	// all-albums rescan, assets for the rebuild and the place
+	// re-resolution, pinned bytes for the model download.
+	Total int `json:"total"`
+}
+
+// JobsSummaryResponse The fixed task catalog's state in one read: the live queue
+// counts per pipeline kind, the run budget's pause switches and
+// the latest run of each batch kind. The catalog never lists
+// runs -- the history listing owns that.
+type JobsSummaryResponse struct {
+	// Paused The five per-kind pause switches. A paused kind's NEW jobs sit
+	// held and the one already running finishes; the switches never
+	// touch an upload request or a serving read.
+	Paused PausedJobsState `json:"paused"`
+
+	// Pipeline The live queue counts of each pipeline kind, read from the
+	// queue's job table. The keys name the pipeline workers: the
+	// three media jobs and the four machine learning jobs.
+	Pipeline PipelineCounts `json:"pipeline"`
+
+	// Runs The most recent `job_runs` row of each batch kind, whatever
+	// its state, or null when the instance never started one. The
+	// per-album rescan and the per-slot reruns are not here: they
+	// belong to their own pages, not the catalog's batch rows.
+	Runs LatestJobRuns `json:"runs"`
+}
+
 // KindFacetCount One media family of the kinds facet.
 type KindFacetCount struct {
 	// AssetCount The number of assets of the current filtered set (minus
@@ -3371,6 +3448,30 @@ type KindFacetCount struct {
 type LabelPersonRequest struct {
 	// Name The caller's name for the person, trimmed.
 	Name string `json:"name"`
+}
+
+// LatestJobRuns The most recent `job_runs` row of each batch kind, whatever
+// its state, or null when the instance never started one. The
+// per-album rescan and the per-slot reruns are not here: they
+// belong to their own pages, not the catalog's batch rows.
+type LatestJobRuns struct {
+	// AlbumRescanAll The latest all-albums rescan sweep, or null.
+	AlbumRescanAll *JobRunSummary `json:"albumRescanAll"`
+
+	// FolderSync The latest folder sweep run. The folder sweep is the
+	// activity-gated periodic diff and records no run row by
+	// design, so this slot answers null on every instance; the
+	// catalog's row states the cadence instead of a run.
+	FolderSync *JobRunSummary `json:"folderSync"`
+
+	// ModelDownload The latest model download run, or null.
+	ModelDownload *JobRunSummary `json:"modelDownload"`
+
+	// PlacesRerun The latest place re-resolution run, or null.
+	PlacesRerun *JobRunSummary `json:"placesRerun"`
+
+	// RebuildDerivatives The latest derivative rebuild run, or null.
+	RebuildDerivatives *JobRunSummary `json:"rebuildDerivatives"`
 }
 
 // LoginRequest Credentials of `POST /auth/login`.
@@ -4186,6 +4287,62 @@ type PersonSummary struct {
 	//
 	// Examples: /api/v1/faces/0192f4a1-5b6c-7d8e-9f0a-2b3c4d5e6f71/thumbnail
 	Thumbnail string `json:"thumbnail"`
+}
+
+// PipelineCounts The live queue counts of each pipeline kind, read from the
+// queue's job table. The keys name the pipeline workers: the
+// three media jobs and the four machine learning jobs.
+type PipelineCounts struct {
+	// ClipEmbed One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	ClipEmbed PipelineJobCounts `json:"clipEmbed"`
+
+	// FaceDetect One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	FaceDetect PipelineJobCounts `json:"faceDetect"`
+
+	// FaceRecognize One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	FaceRecognize PipelineJobCounts `json:"faceRecognize"`
+
+	// Metadata One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	Metadata PipelineJobCounts `json:"metadata"`
+
+	// Ocr One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	Ocr PipelineJobCounts `json:"ocr"`
+
+	// Thumbnail One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	Thumbnail PipelineJobCounts `json:"thumbnail"`
+
+	// Transcode One pipeline kind's queue counts. The three numbers partition
+	// the kind's unfinished work: a job waits, a worker runs it, or
+	// the queue discarded it after its attempts ran out.
+	Transcode PipelineJobCounts `json:"transcode"`
+}
+
+// PipelineJobCounts One pipeline kind's queue counts. The three numbers partition
+// the kind's unfinished work: a job waits, a worker runs it, or
+// the queue discarded it after its attempts ran out.
+type PipelineJobCounts struct {
+	// Active Jobs a worker is running now.
+	Active int `json:"active"`
+
+	// Failed Jobs the queue discarded after their attempts ran out --
+	// the failed work the row's danger line counts.
+	Failed int `json:"failed"`
+
+	// Waiting Jobs waiting for a worker: available, scheduled (a retry
+	// backoff or a pause's snooze), or retryable.
+	Waiting int `json:"waiting"`
 }
 
 // PlaceFacetCount One place of the places facet.
@@ -6057,6 +6214,9 @@ type ChangeUserPasswordJSONRequestBody = PasswordChangeRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// RescanAllAlbums Start (or join) the instance-wide album rescan run.
+	// (POST /admin/albums/rescan)
+	RescanAllAlbums(w http.ResponseWriter, r *http.Request)
 	// RebuildDerivatives Start a derivative rebuild run.
 	// (POST /admin/derivatives/rebuild)
 	RebuildDerivatives(w http.ResponseWriter, r *http.Request)
@@ -6069,6 +6229,9 @@ type ServerInterface interface {
 	// ListJobs List the job runs of the task panel.
 	// (GET /admin/jobs)
 	ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams)
+	// GetJobsSummary Read the fixed task catalog's state.
+	// (GET /admin/jobs/summary)
+	GetJobsSummary(w http.ResponseWriter, r *http.Request)
 	// CancelJobRun Cancel one in-flight job run.
 	// (POST /admin/jobs/{runId}/cancel)
 	CancelJobRun(w http.ResponseWriter, r *http.Request, runId openapi_types.UUID)
@@ -6384,6 +6547,12 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// RescanAllAlbums Start (or join) the instance-wide album rescan run.
+// (POST /admin/albums/rescan)
+func (_ Unimplemented) RescanAllAlbums(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RebuildDerivatives Start a derivative rebuild run.
 // (POST /admin/derivatives/rebuild)
 func (_ Unimplemented) RebuildDerivatives(w http.ResponseWriter, r *http.Request) {
@@ -6405,6 +6574,12 @@ func (_ Unimplemented) GetDerivativesSummary(w http.ResponseWriter, r *http.Requ
 // ListJobs List the job runs of the task panel.
 // (GET /admin/jobs)
 func (_ Unimplemented) ListJobs(w http.ResponseWriter, r *http.Request, params ListJobsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// GetJobsSummary Read the fixed task catalog's state.
+// (GET /admin/jobs/summary)
+func (_ Unimplemented) GetJobsSummary(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -7035,6 +7210,20 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// RescanAllAlbums operation middleware
+func (siw *ServerInterfaceWrapper) RescanAllAlbums(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RescanAllAlbums(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RebuildDerivatives operation middleware
 func (siw *ServerInterfaceWrapper) RebuildDerivatives(w http.ResponseWriter, r *http.Request) {
 
@@ -7101,6 +7290,20 @@ func (siw *ServerInterfaceWrapper) ListJobs(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListJobs(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetJobsSummary operation middleware
+func (siw *ServerInterfaceWrapper) GetJobsSummary(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetJobsSummary(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9931,6 +10134,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/derivatives/rebuild/stop", wrapper.StopDerivativesRebuild)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/admin/albums/rescan", wrapper.RescanAllAlbums)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/admin/jobs/summary", wrapper.GetJobsSummary)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/admin/jobs/{runId}/cancel", wrapper.CancelJobRun)

@@ -175,6 +175,18 @@ WHERE type = 'directory'
   AND root_path IS NOT NULL
 ORDER BY created_at, id;
 
+-- name: CountDirectoryAlbums :one
+-- The all-albums rescan's enqueue-time total: the number of
+-- directory albums the sweep walks, over the instance's whole
+-- album table. The scope arms mirror ListDirectoryAlbums exactly (a
+-- row without a resolved root is outside the sweep), so the run's
+-- announced total and the walk's own listing agree -- the walk
+-- resizes the row when the two ever diverge.
+SELECT count(*)
+FROM albums
+WHERE type = 'directory'
+  AND root_path IS NOT NULL;
+
 -- name: GetExternalAssetByOwnerFilePath :one
 -- The position key's lookup: the owner's external row at one source
 -- path. The add arm reaches it only after the insert violated

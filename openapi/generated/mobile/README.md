@@ -95,6 +95,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**downloadModels**](doc/AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [*AdminApi*](doc/AdminApi.md) | [**getDerivativesSummary**](doc/AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
 [*AdminApi*](doc/AdminApi.md) | [**getImageSettings**](doc/AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
+[*AdminApi*](doc/AdminApi.md) | [**getJobsSummary**](doc/AdminApi.md#getjobssummary) | **GET** /admin/jobs/summary | Read the fixed task catalog&#39;s state.
 [*AdminApi*](doc/AdminApi.md) | [**getModelProbe**](doc/AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [*AdminApi*](doc/AdminApi.md) | [**getModelSettings**](doc/AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
 [*AdminApi*](doc/AdminApi.md) | [**getPlacesDatabase**](doc/AdminApi.md#getplacesdatabase) | **GET** /admin/places | Read the loaded place database and the re-resolution scopes&#39; sizes.
@@ -112,6 +113,7 @@ Class | Method | HTTP request | Description
 [*AdminApi*](doc/AdminApi.md) | [**rebuildDerivatives**](doc/AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
 [*AdminApi*](doc/AdminApi.md) | [**reresolvePlaces**](doc/AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a place re-resolution run over the chosen mode.
 [*AdminApi*](doc/AdminApi.md) | [**rerunModel**](doc/AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
+[*AdminApi*](doc/AdminApi.md) | [**rescanAllAlbums**](doc/AdminApi.md#rescanallalbums) | **POST** /admin/albums/rescan | Start (or join) the instance-wide album rescan run.
 [*AdminApi*](doc/AdminApi.md) | [**runUpdateCheck**](doc/AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [*AdminApi*](doc/AdminApi.md) | [**scanModels**](doc/AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [*AdminApi*](doc/AdminApi.md) | [**stopDerivativesRebuild**](doc/AdminApi.md#stopderivativesrebuild) | **POST** /admin/derivatives/rebuild/stop | Stop the in-flight derivative rebuild run.
@@ -219,6 +221,7 @@ Class | Method | HTTP request | Description
  - [AlbumPatch](doc/AlbumPatch.md)
  - [AlbumPathCompletion](doc/AlbumPathCompletion.md)
  - [AlbumPathCompletionsResponse](doc/AlbumPathCompletionsResponse.md)
+ - [AlbumRescanAllResponse](doc/AlbumRescanAllResponse.md)
  - [AlbumRescanResponse](doc/AlbumRescanResponse.md)
  - [AlbumShareEntry](doc/AlbumShareEntry.md)
  - [AlbumSummary](doc/AlbumSummary.md)
@@ -262,8 +265,11 @@ Class | Method | HTTP request | Description
  - [JobRunListResponse](doc/JobRunListResponse.md)
  - [JobRunResponse](doc/JobRunResponse.md)
  - [JobRunState](doc/JobRunState.md)
+ - [JobRunSummary](doc/JobRunSummary.md)
+ - [JobsSummaryResponse](doc/JobsSummaryResponse.md)
  - [KindFacetCount](doc/KindFacetCount.md)
  - [LabelPersonRequest](doc/LabelPersonRequest.md)
+ - [LatestJobRuns](doc/LatestJobRuns.md)
  - [LoginRequest](doc/LoginRequest.md)
  - [MapConfigResponse](doc/MapConfigResponse.md)
  - [MediaKind](doc/MediaKind.md)
@@ -305,6 +311,8 @@ Class | Method | HTTP request | Description
  - [PersonLabel](doc/PersonLabel.md)
  - [PersonLabelResponse](doc/PersonLabelResponse.md)
  - [PersonSummary](doc/PersonSummary.md)
+ - [PipelineCounts](doc/PipelineCounts.md)
+ - [PipelineJobCounts](doc/PipelineJobCounts.md)
  - [PlaceFacetCount](doc/PlaceFacetCount.md)
  - [PlaceSummary](doc/PlaceSummary.md)
  - [PlacesDatabaseResponse](doc/PlacesDatabaseResponse.md)

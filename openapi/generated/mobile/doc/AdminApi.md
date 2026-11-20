@@ -17,6 +17,7 @@ Method | HTTP request | Description
 [**downloadModels**](AdminApi.md#downloadmodels) | **POST** /admin/models/download | Start the default model group&#39;s download.
 [**getDerivativesSummary**](AdminApi.md#getderivativessummary) | **GET** /admin/derivatives/summary | Read the derivative library&#39;s size and rebuild estimate.
 [**getImageSettings**](AdminApi.md#getimagesettings) | **GET** /admin/settings/image | Read the derivative image settings.
+[**getJobsSummary**](AdminApi.md#getjobssummary) | **GET** /admin/jobs/summary | Read the fixed task catalog&#39;s state.
 [**getModelProbe**](AdminApi.md#getmodelprobe) | **GET** /admin/models/probes/{probeId} | Read one model source probe&#39;s result.
 [**getModelSettings**](AdminApi.md#getmodelsettings) | **GET** /admin/settings/models | Read the model download settings.
 [**getPlacesDatabase**](AdminApi.md#getplacesdatabase) | **GET** /admin/places | Read the loaded place database and the re-resolution scopes&#39; sizes.
@@ -34,6 +35,7 @@ Method | HTTP request | Description
 [**rebuildDerivatives**](AdminApi.md#rebuildderivatives) | **POST** /admin/derivatives/rebuild | Start a derivative rebuild run.
 [**reresolvePlaces**](AdminApi.md#reresolveplaces) | **POST** /admin/places/reresolve | Start a place re-resolution run over the chosen mode.
 [**rerunModel**](AdminApi.md#rerunmodel) | **POST** /admin/models/{id}/rerun | Start a manual rerun of the active model&#39;s slot.
+[**rescanAllAlbums**](AdminApi.md#rescanallalbums) | **POST** /admin/albums/rescan | Start (or join) the instance-wide album rescan run.
 [**runUpdateCheck**](AdminApi.md#runupdatecheck) | **POST** /server/update-check | Run the release check now.
 [**scanModels**](AdminApi.md#scanmodels) | **POST** /admin/models/scan | Register the custom models found in the models dir.
 [**stopDerivativesRebuild**](AdminApi.md#stopderivativesrebuild) | **POST** /admin/derivatives/rebuild/stop | Stop the in-flight derivative rebuild run.
@@ -403,6 +405,49 @@ This endpoint does not need any parameter.
 ### Return type
 
 [**ImageSettingsResponse**](ImageSettingsResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **getJobsSummary**
+> JobsSummaryResponse getJobsSummary()
+
+Read the fixed task catalog's state.
+
+The task catalog's one read: every capability row's state without listing any run. The catalog is fixed (the pipeline classes, the machine learning group and the four batch tasks); the execution history keeps its own listing.  `pipeline` answers the live queue counts per pipeline kind, straight from the queue's job table: `waiting` sums the jobs available, scheduled for a retry backoff, or waiting out their snooze; `active` counts the jobs a worker is running now; `failed` counts the jobs the queue discarded after their attempts ran out. A count is zero when the kind has no such job.  `paused` is the run budget's five per-kind pause switches, the same document the settings pair owns -- the catalog's pause actions write through that endpoint, never a second one.  `runs` carries the most recent `job_runs` row of each batch kind, whatever its state (or null when the instance never started one): the derivative rebuild, the place re-resolution, the all-albums rescan, the folder sweep and the model download. A row is the catalog's \"latest\" line only -- its progress details belong to the history listing. The folder sweep records no `job_runs` row by design (its own copy states the cadence), so its slot stays null. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.getJobsSummary();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->getJobsSummary: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**JobsSummaryResponse**](JobsSummaryResponse.md)
 
 ### Authorization
 
@@ -1166,6 +1211,49 @@ Name | Type | Description  | Notes
 ### Return type
 
 [**ModelRerunResponse**](ModelRerunResponse.md)
+
+### Authorization
+
+[cookieAuth](../README.md#cookieAuth), [bearerAuth](../README.md#bearerAuth)
+
+### HTTP request headers
+
+ - **Content-Type**: Not defined
+ - **Accept**: application/json
+
+[[Back to top]](#) [[Back to API list]](../README.md#documentation-for-api-endpoints) [[Back to Model list]](../README.md#documentation-for-models) [[Back to README]](../README.md)
+
+# **rescanAllAlbums**
+> AlbumRescanAllResponse rescanAllAlbums()
+
+Start (or join) the instance-wide album rescan run.
+
+The task catalog's \"rescan all\": ONE run that walks every directory album of the instance through the same three-arm diff the per-album rescan performs, album by album. The directory page's own rescan button stays the per-album trigger; this endpoint is the administrator's sweep.  The run's kind is `album_rescan_all` and its `total` is the number of directory albums across the instance -- a row the walk could not read counts as a failed album, never a disappeared one. The walk reuses the per-album diff untouched (the add, vanish, converge and change arms), so an album's result is exactly what its own rescan would have resolved:  - `done` counts albums whose diff closed cleanly, `failed`   the albums that could not be diffed (a root the walk   cannot read, a source that stopped resolving) or whose   diff reported failed entries. One album's failure never   stops the sweep, and the run closes `failed` when any   album failed -- the batch jobs' shared convention. - The cancel flag is honored at album boundaries (the   shared chunk-boundary discipline): an album's committed   work stays, the run closes `cancelled`. - The run creates NO per-album `job_runs` rows: the history   shows the one sweep row (\"Album rescan (all)\"), while a   rescan started on a directory page keeps its own row.  The endpoint is idempotent the way the rebuild and the place re-resolution are: an `album_rescan_all` run still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; a finished run never blocks a new one. A per-album rescan running concurrently is not a conflict -- every arm is idempotent in the same filesystem and database state. 
+
+### Example
+```dart
+import 'package:lumemor_api/api.dart';
+// TODO Configure API key authorization: cookieAuth
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKey = 'YOUR_API_KEY';
+// uncomment below to setup prefix (e.g. Bearer) for API key, if needed
+//defaultApiClient.getAuthentication<ApiKeyAuth>('cookieAuth').apiKeyPrefix = 'Bearer';
+
+final api = LumemorApi().getAdminApi();
+
+try {
+    final response = api.rescanAllAlbums();
+    print(response);
+} on DioException catch (e) {
+    print('Exception when calling AdminApi->rescanAllAlbums: $e\n');
+}
+```
+
+### Parameters
+This endpoint does not need any parameter.
+
+### Return type
+
+[**AlbumRescanAllResponse**](AlbumRescanAllResponse.md)
 
 ### Authorization
 

@@ -79,6 +79,15 @@ void main() {
       // TODO
     });
 
+    // Read the fixed task catalog's state.
+    //
+    // The task catalog's one read: every capability row's state without listing any run. The catalog is fixed (the pipeline classes, the machine learning group and the four batch tasks); the execution history keeps its own listing.  `pipeline` answers the live queue counts per pipeline kind, straight from the queue's job table: `waiting` sums the jobs available, scheduled for a retry backoff, or waiting out their snooze; `active` counts the jobs a worker is running now; `failed` counts the jobs the queue discarded after their attempts ran out. A count is zero when the kind has no such job.  `paused` is the run budget's five per-kind pause switches, the same document the settings pair owns -- the catalog's pause actions write through that endpoint, never a second one.  `runs` carries the most recent `job_runs` row of each batch kind, whatever its state (or null when the instance never started one): the derivative rebuild, the place re-resolution, the all-albums rescan, the folder sweep and the model download. A row is the catalog's \"latest\" line only -- its progress details belong to the history listing. The folder sweep records no `job_runs` row by design (its own copy states the cadence), so its slot stays null. 
+    //
+    //Future<JobsSummaryResponse> getJobsSummary() async
+    test('test getJobsSummary', () async {
+      // TODO
+    });
+
     // Read one model source probe's result.
     //
     // The probe the switch dialog polls. A source probe -- the download-to-staging of a URL, or the accept of an uploaded file, then the sha256 check when one was given, the sandbox load of the ONNX graph and the slot contract's shape and dimension checks -- runs in the server's background after the probe POST answered 202; this read answers the probe's current state, whatever it is: running (with its download progress), ok (with the facts the dialog renders), error (with the reason that names the exact check that failed) or warn (the checks passed, the host is not on the download sources list, and the save may still proceed).  A probe is transient: its record lives for a few minutes after it settles, then it is gone -- an unknown or expired probeId answers 404 and the dialog simply probes again. 
@@ -229,6 +238,15 @@ void main() {
     //
     //Future<ModelRerunResponse> rerunModel(String id) async
     test('test rerunModel', () async {
+      // TODO
+    });
+
+    // Start (or join) the instance-wide album rescan run.
+    //
+    // The task catalog's \"rescan all\": ONE run that walks every directory album of the instance through the same three-arm diff the per-album rescan performs, album by album. The directory page's own rescan button stays the per-album trigger; this endpoint is the administrator's sweep.  The run's kind is `album_rescan_all` and its `total` is the number of directory albums across the instance -- a row the walk could not read counts as a failed album, never a disappeared one. The walk reuses the per-album diff untouched (the add, vanish, converge and change arms), so an album's result is exactly what its own rescan would have resolved:  - `done` counts albums whose diff closed cleanly, `failed`   the albums that could not be diffed (a root the walk   cannot read, a source that stopped resolving) or whose   diff reported failed entries. One album's failure never   stops the sweep, and the run closes `failed` when any   album failed -- the batch jobs' shared convention. - The cancel flag is honored at album boundaries (the   shared chunk-boundary discipline): an album's committed   work stays, the run closes `cancelled`. - The run creates NO per-album `job_runs` rows: the history   shows the one sweep row (\"Album rescan (all)\"), while a   rescan started on a directory page keeps its own row.  The endpoint is idempotent the way the rebuild and the place re-resolution are: an `album_rescan_all` run still in flight (`queued` or `running`) answers 200 with its identifier and starts nothing; a finished run never blocks a new one. A per-album rescan running concurrently is not a conflict -- every arm is idempotent in the same filesystem and database state. 
+    //
+    //Future<AlbumRescanAllResponse> rescanAllAlbums() async
+    test('test rescanAllAlbums', () async {
       // TODO
     });
 

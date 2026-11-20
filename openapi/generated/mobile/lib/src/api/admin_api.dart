@@ -16,12 +16,14 @@ import 'package:lumemor_api/src/model/admin_user_delete_request.dart';
 import 'package:lumemor_api/src/model/admin_user_list_response.dart';
 import 'package:lumemor_api/src/model/admin_user_patch.dart';
 import 'package:lumemor_api/src/model/admin_user_response.dart';
+import 'package:lumemor_api/src/model/album_rescan_all_response.dart';
 import 'package:lumemor_api/src/model/delete_model200_response.dart';
 import 'package:lumemor_api/src/model/derivatives_summary_response.dart';
 import 'package:lumemor_api/src/model/error.dart';
 import 'package:lumemor_api/src/model/image_settings_response.dart';
 import 'package:lumemor_api/src/model/image_settings_update_request.dart';
 import 'package:lumemor_api/src/model/job_run_list_response.dart';
+import 'package:lumemor_api/src/model/jobs_summary_response.dart';
 import 'package:lumemor_api/src/model/model_activate_response.dart';
 import 'package:lumemor_api/src/model/model_download_response.dart';
 import 'package:lumemor_api/src/model/model_list_response.dart';
@@ -740,6 +742,90 @@ class AdminApi {
     }
 
     return Response<ImageSettingsResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Read the fixed task catalog&#39;s state.
+  /// The task catalog&#39;s one read: every capability row&#39;s state without listing any run. The catalog is fixed (the pipeline classes, the machine learning group and the four batch tasks); the execution history keeps its own listing.  &#x60;pipeline&#x60; answers the live queue counts per pipeline kind, straight from the queue&#39;s job table: &#x60;waiting&#x60; sums the jobs available, scheduled for a retry backoff, or waiting out their snooze; &#x60;active&#x60; counts the jobs a worker is running now; &#x60;failed&#x60; counts the jobs the queue discarded after their attempts ran out. A count is zero when the kind has no such job.  &#x60;paused&#x60; is the run budget&#39;s five per-kind pause switches, the same document the settings pair owns -- the catalog&#39;s pause actions write through that endpoint, never a second one.  &#x60;runs&#x60; carries the most recent &#x60;job_runs&#x60; row of each batch kind, whatever its state (or null when the instance never started one): the derivative rebuild, the place re-resolution, the all-albums rescan, the folder sweep and the model download. A row is the catalog&#39;s \&quot;latest\&quot; line only -- its progress details belong to the history listing. The folder sweep records no &#x60;job_runs&#x60; row by design (its own copy states the cadence), so its slot stays null. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [JobsSummaryResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<JobsSummaryResponse>> getJobsSummary({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/jobs/summary';
+    final _options = Options(
+      method: r'GET',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    JobsSummaryResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(JobsSummaryResponse),
+      ) as JobsSummaryResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<JobsSummaryResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,
@@ -2257,6 +2343,90 @@ class AdminApi {
     }
 
     return Response<ModelRerunResponse>(
+      data: _responseData,
+      headers: _response.headers,
+      isRedirect: _response.isRedirect,
+      requestOptions: _response.requestOptions,
+      redirects: _response.redirects,
+      statusCode: _response.statusCode,
+      statusMessage: _response.statusMessage,
+      extra: _response.extra,
+    );
+  }
+
+  /// Start (or join) the instance-wide album rescan run.
+  /// The task catalog&#39;s \&quot;rescan all\&quot;: ONE run that walks every directory album of the instance through the same three-arm diff the per-album rescan performs, album by album. The directory page&#39;s own rescan button stays the per-album trigger; this endpoint is the administrator&#39;s sweep.  The run&#39;s kind is &#x60;album_rescan_all&#x60; and its &#x60;total&#x60; is the number of directory albums across the instance -- a row the walk could not read counts as a failed album, never a disappeared one. The walk reuses the per-album diff untouched (the add, vanish, converge and change arms), so an album&#39;s result is exactly what its own rescan would have resolved:  - &#x60;done&#x60; counts albums whose diff closed cleanly, &#x60;failed&#x60;   the albums that could not be diffed (a root the walk   cannot read, a source that stopped resolving) or whose   diff reported failed entries. One album&#39;s failure never   stops the sweep, and the run closes &#x60;failed&#x60; when any   album failed -- the batch jobs&#39; shared convention. - The cancel flag is honored at album boundaries (the   shared chunk-boundary discipline): an album&#39;s committed   work stays, the run closes &#x60;cancelled&#x60;. - The run creates NO per-album &#x60;job_runs&#x60; rows: the history   shows the one sweep row (\&quot;Album rescan (all)\&quot;), while a   rescan started on a directory page keeps its own row.  The endpoint is idempotent the way the rebuild and the place re-resolution are: an &#x60;album_rescan_all&#x60; run still in flight (&#x60;queued&#x60; or &#x60;running&#x60;) answers 200 with its identifier and starts nothing; a finished run never blocks a new one. A per-album rescan running concurrently is not a conflict -- every arm is idempotent in the same filesystem and database state. 
+  ///
+  /// Parameters:
+  /// * [cancelToken] - A [CancelToken] that can be used to cancel the operation
+  /// * [headers] - Can be used to add additional headers to the request
+  /// * [extras] - Can be used to add flags to the request
+  /// * [validateStatus] - A [ValidateStatus] callback that can be used to determine request success based on the HTTP status of the response
+  /// * [onSendProgress] - A [ProgressCallback] that can be used to get the send progress
+  /// * [onReceiveProgress] - A [ProgressCallback] that can be used to get the receive progress
+  ///
+  /// Returns a [Future] containing a [Response] with a [AlbumRescanAllResponse] as data
+  /// Throws [DioException] if API call or serialization fails
+  Future<Response<AlbumRescanAllResponse>> rescanAllAlbums({ 
+    CancelToken? cancelToken,
+    Map<String, dynamic>? headers,
+    Map<String, dynamic>? extra,
+    ValidateStatus? validateStatus,
+    ProgressCallback? onSendProgress,
+    ProgressCallback? onReceiveProgress,
+  }) async {
+    final _path = r'/admin/albums/rescan';
+    final _options = Options(
+      method: r'POST',
+      headers: <String, dynamic>{
+        ...?headers,
+      },
+      extra: <String, dynamic>{
+        'secure': <Map<String, String>>[
+          {
+            'type': 'apiKey',
+            'name': 'cookieAuth',
+            'keyName': 'lumemor_session',
+            'where': '',
+          },{
+            'type': 'http',
+            'scheme': 'bearer',
+            'name': 'bearerAuth',
+          },
+        ],
+        ...?extra,
+      },
+      validateStatus: validateStatus,
+    );
+
+    final _response = await _dio.request<Object>(
+      _path,
+      options: _options,
+      cancelToken: cancelToken,
+      onSendProgress: onSendProgress,
+      onReceiveProgress: onReceiveProgress,
+    );
+
+    AlbumRescanAllResponse? _responseData;
+
+    try {
+      final rawResponse = _response.data;
+      _responseData = rawResponse == null ? null : _serializers.deserialize(
+        rawResponse,
+        specifiedType: const FullType(AlbumRescanAllResponse),
+      ) as AlbumRescanAllResponse;
+
+    } catch (error, stackTrace) {
+      throw DioException(
+        requestOptions: _response.requestOptions,
+        response: _response,
+        type: DioExceptionType.unknown,
+        error: error,
+        stackTrace: stackTrace,
+      );
+    }
+
+    return Response<AlbumRescanAllResponse>(
       data: _responseData,
       headers: _response.headers,
       isRedirect: _response.isRedirect,

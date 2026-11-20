@@ -188,56 +188,82 @@ type rescanMember struct {
 	hasSnap bool
 }
 
-// Work executes one rescan run: the row flips to running and
-// job.started fires (echoing the enqueue-time total), the source
-// root is walked (never following symlinks), the row's total is
-// sized to the full diff, the three arms resolve every unit, and
-// the run closes with the converged counts and job.finished --
-// failed when any unit failed, succeeded otherwise. A vanished or
-// repointed source root fails the run honestly: an empty walk
-// would mark every member vanished, and a source the album no
-// longer truthfully points at is a state for the owner to see, not
-// a mass soft-delete to perform silently.
-func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescanArgs]) error {
-	jobRunID := job.Args.JobRunID
-	albumID := job.Args.AlbumID
-	queries := dbgen.New(w.pool)
+// albumDiffer carries the shared diff's dependencies. The single
+// album worker and the instance-wide sweep both project their fields
+// into one (see differ) and run the same code, so an album resolves
+// identically whichever run asked.
+type albumDiffer struct {
+	pool      *pgxpool.Pool
+	bus       *events.Bus
+	dispatch  RescanDispatchFunc
+	snapshots *AlbumSnapshots
+	logger    *slog.Logger
+}
 
-	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
-	if err != nil {
-		return fmt.Errorf("mark the rescan run %s running: %w", jobRunID, err)
+// differ projects the single-album worker's dependencies for the
+// shared diff.
+func (w *AlbumRescanWorker) differ() *albumDiffer {
+	return &albumDiffer{
+		pool:      w.pool,
+		bus:       w.bus,
+		dispatch:  w.dispatch,
+		snapshots: w.snapshots,
+		logger:    w.logger,
 	}
-	if flagged == 0 {
-		// Two ways the pickup matched nothing: the cancel closed the
-		// run while it sat queued (E41 -- the row stays cancelled,
-		// this driver never starts, no started event for a run that
-		// ended before its first chunk), or this attempt IS a retry
-		// resuming an interrupted run (the interrupted attempt left
-		// the row running; the work proceeds below).
-		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
-		if err != nil {
-			return fmt.Errorf("load the rescan run %s: %w", jobRunID, err)
-		}
-		if run.State == dbgen.JobStateCancelled {
-			return nil
-		}
-	}
-	// The started event echoes the row's enqueue-time total -- the
-	// durable truth the endpoint handed out -- not a recount; the
-	// sizing write below completes it once the walk listed the root.
-	run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
-	if err != nil {
-		return fmt.Errorf("load the rescan run %s: %w", jobRunID, err)
-	}
-	w.bus.Publish("job.started", jobEventPayload(jobRunID, AlbumRescanKind, int(run.Total), 0, 0, dbgen.JobStateRunning))
+}
+
+// albumDiffOptions carries the caller's run wiring for one directory
+// album's diff. The single-album worker and the all-albums sweep run
+// the SAME diff (diffAlbum below): only the bookkeeping around it
+// differs -- the single run sizes its row to the diff's units, the
+// sweep counts albums.
+type albumDiffOptions struct {
+	// jobRunID correlates the diff's log lines and names the run whose
+	// stop flag the walk honors.
+	jobRunID uuid.UUID
+	// currentTotal is the run row's total as the caller announced it.
+	// The diff compares its sized total against it and writes through
+	// sizeRun only when the two diverge.
+	currentTotal int
+	// sizeRun writes the sized diff total to the caller's run row. The
+	// single-album run passes it (its row's units ARE the diff's); the
+	// all-albums sweep passes nil (its total counts albums).
+	sizeRun func(ctx context.Context, total int) error
+	// progress records one batch of resolved units on the caller's run
+	// row and announces it on the stream. The single-album run passes
+	// it; the sweep passes nil (its own driver counts albums).
+	progress func(ctx context.Context, done, failed, total int)
+	// stopRequested reads the caller's run stop flag at the unit-batch
+	// cadence. Nil honors no stop (a directly constructed caller).
+	stopRequested func(ctx context.Context) (bool, error)
+}
+
+// albumDiffOutcome is one album's diff result: the converged unit
+// counts, whether the walk stopped at its cancel boundary, and
+// whether the album could not be diffed at all. The caller decides
+// what a fatal outcome means for its run.
+type albumDiffOutcome struct {
+	total     int
+	done      int
+	failed    int
+	cancelled bool
+	fatal     bool
+}
+
+// diffAlbum executes the three-arm diff of one directory album -- the
+// single-album worker's own work, shared with the all-albums sweep so
+// the two can never disagree about an album's resolution.
+func (d *albumDiffer) diffAlbum(ctx context.Context, albumID uuid.UUID, opts albumDiffOptions) (albumDiffOutcome, error) {
+	jobRunID := opts.jobRunID
+	queries := dbgen.New(d.pool)
 
 	// The dispatch seam: no dispatcher wired means the run cannot
 	// start any ingest's pipeline (only a directly constructed
 	// worker gets here -- the queue wires the real one).
-	if w.dispatch == nil {
-		w.logger.Error("rescan run started without a pipeline dispatch wired",
+	if d.dispatch == nil {
+		d.logger.Error("rescan run started without a pipeline dispatch wired",
 			"job_run_id", jobRunID, "album_id", albumID)
-		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+		return albumDiffOutcome{fatal: true}, nil
 	}
 
 	// The subject: the album's owner (whose assets the arms write)
@@ -247,11 +273,11 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// no longer claims.
 	album, err := queries.GetRescanAlbum(ctx, pgUUID(albumID))
 	if errors.Is(err, pgx.ErrNoRows) {
-		w.logger.Error("rescan run found no directory album", "job_run_id", jobRunID, "album_id", albumID)
-		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+		d.logger.Error("rescan run found no directory album", "job_run_id", jobRunID, "album_id", albumID)
+		return albumDiffOutcome{fatal: true}, nil
 	}
 	if err != nil {
-		return fmt.Errorf("load the rescan album %s: %w", albumID, err)
+		return albumDiffOutcome{}, fmt.Errorf("load the rescan album %s: %w", albumID, err)
 	}
 	owner := uuid.UUID(album.OwnerID.Bytes)
 	root := album.RootPath.String
@@ -266,21 +292,21 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// scan's to perform.
 	resolved, err := filepath.EvalSymlinks(root)
 	if err != nil {
-		w.logger.Error("the rescan source root cannot be resolved", "job_run_id", jobRunID,
+		d.logger.Error("the rescan source root cannot be resolved", "job_run_id", jobRunID,
 			"album_id", albumID, "root", root, "error", err)
-		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+		return albumDiffOutcome{fatal: true}, nil
 	}
 	if resolved != root {
-		w.logger.Error("the rescan source root was replaced by a symlink", "job_run_id", jobRunID,
+		d.logger.Error("the rescan source root was replaced by a symlink", "job_run_id", jobRunID,
 			"album_id", albumID, "root", root, "resolves_to", resolved)
-		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+		return albumDiffOutcome{fatal: true}, nil
 	}
 
 	// The database half of the diff: every live external member,
 	// keyed by the path the walk matches on.
 	memberRows, err := queries.ListAlbumExternalMembers(ctx, pgUUID(albumID))
 	if err != nil {
-		return fmt.Errorf("list the members of the rescan album %s: %w", albumID, err)
+		return albumDiffOutcome{}, fmt.Errorf("list the members of the rescan album %s: %w", albumID, err)
 	}
 	members := make(map[string]rescanMember, len(memberRows))
 	for _, row := range memberRows {
@@ -319,9 +345,9 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		// An unreadable subtree (or a vanished root racing the
 		// guard above) fails the run: the diff would be a lie about
 		// half its inputs.
-		w.logger.Error("the rescan walk failed", "job_run_id", jobRunID,
+		d.logger.Error("the rescan walk failed", "job_run_id", jobRunID,
 			"album_id", albumID, "root", root, "error", err)
-		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+		return albumDiffOutcome{fatal: true}, nil
 	}
 	// The folder sync's baseline, recorded at the walk's own moment
 	// and BEFORE any arm moves: a file that arrives (or changes) while
@@ -329,8 +355,8 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// as a difference and enqueues the scan that resolves it. The
 	// conservative direction on purpose -- a redundant scan, never a
 	// missed file.
-	if w.snapshots != nil {
-		w.snapshots.Store(albumID, stampsOf(files))
+	if d.snapshots != nil {
+		d.snapshots.Store(albumID, stampsOf(files))
 	}
 
 	// The sizing write: the enqueue-time total was the database's
@@ -347,12 +373,9 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		}
 	}
 	total := len(files) + (len(members) - matched)
-	if total != int(run.Total) {
-		if err := queries.SetJobRunTotal(ctx, dbgen.SetJobRunTotalParams{
-			ID:    pgUUID(jobRunID),
-			Total: int32(total),
-		}); err != nil {
-			return fmt.Errorf("size the rescan run %s: %w", jobRunID, err)
+	if opts.sizeRun != nil && total != opts.currentTotal {
+		if err := opts.sizeRun(ctx, total); err != nil {
+			return albumDiffOutcome{}, fmt.Errorf("size the rescan run %s: %w", jobRunID, err)
 		}
 	}
 
@@ -367,23 +390,14 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// idempotence pin keeps an unchanged re-scan free of every
 	// write).
 	resolvedUnits, done, failed := 0, 0, 0
-	lastEvent := time.Now()
 	liveSetChanged := false
 	diffChanged := false
 	progress := func() {
 		if resolvedUnits%albumRescanProgressBatch != 0 {
 			return
 		}
-		if err := dbgen.New(w.pool).UpdateJobRunProgress(ctx, dbgen.UpdateJobRunProgressParams{
-			ID:   pgUUID(jobRunID),
-			Done: int32(done),
-		}); err != nil {
-			w.logger.Warn("record the rescan progress", "job_run_id", jobRunID, "error", err)
-		}
-		if now := time.Now(); now.Sub(lastEvent) >= albumRescanProgressInterval {
-			lastEvent = now
-			w.bus.Publish("job.progress",
-				jobEventPayload(jobRunID, AlbumRescanKind, total, done, failed, dbgen.JobStateRunning))
+		if opts.progress != nil {
+			opts.progress(ctx, done, failed, total)
 		}
 	}
 
@@ -401,9 +415,12 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			return false
 		}
 		unitsSinceStopCheck = 0
-		stop, err := queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		if opts.stopRequested == nil {
+			return false
+		}
+		stop, err := opts.stopRequested(ctx)
 		if err != nil {
-			w.logger.Warn("check the rescan run's stop flag", "job_run_id", jobRunID, "error", err)
+			d.logger.Warn("check the rescan run's stop flag", "job_run_id", jobRunID, "error", err)
 			return false
 		}
 		return stop
@@ -420,7 +437,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		info, err := os.Stat(path)
 		if err != nil {
 			failed++
-			w.logger.Warn("the rescan could not stat a source file", "job_run_id", jobRunID,
+			d.logger.Warn("the rescan could not stat a source file", "job_run_id", jobRunID,
 				"album_id", albumID, "path", path, "error", err)
 			progress()
 			continue
@@ -437,10 +454,10 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 				progress()
 				continue
 			}
-			wrote, err := w.changeArm(ctx, queries, owner, member, path, mtime, info.Size())
+			wrote, err := d.changeArm(ctx, queries, owner, member, path, mtime, info.Size())
 			if err != nil {
 				failed++
-				w.logger.Warn("the rescan change arm failed", "job_run_id", jobRunID,
+				d.logger.Warn("the rescan change arm failed", "job_run_id", jobRunID,
 					"album_id", albumID, "asset_id", member.id, "path", path, "error", err)
 			} else {
 				done++
@@ -452,10 +469,10 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			continue
 		}
 
-		added, err := w.addArm(ctx, queries, jobRunID, albumID, owner, path, mtime)
+		added, err := d.addArm(ctx, queries, jobRunID, albumID, owner, path, mtime)
 		if err != nil {
 			failed++
-			w.logger.Warn("the rescan add arm failed", "job_run_id", jobRunID,
+			d.logger.Warn("the rescan add arm failed", "job_run_id", jobRunID,
 				"album_id", albumID, "path", path, "error", err)
 		} else {
 			done++
@@ -488,7 +505,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 		})
 		if err != nil {
 			failed++
-			w.logger.Warn("the rescan vanish arm failed", "job_run_id", jobRunID,
+			d.logger.Warn("the rescan vanish arm failed", "job_run_id", jobRunID,
 				"album_id", albumID, "asset_id", member.id, "path", path, "error", err)
 			progress()
 			continue
@@ -501,7 +518,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			// own event discipline, applied per arm.
 			diffChanged = true
 			liveSetChanged = true
-			w.bus.Publish("asset.trashed", map[string]string{
+			d.bus.Publish("asset.trashed", map[string]string{
 				"assetId": member.id.String(),
 				"kind":    string(member.kind),
 			})
@@ -525,12 +542,12 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			OwnerID: pgUUID(owner),
 		})
 		if err != nil {
-			return fmt.Errorf("converge the album's memberships onto its position rows: %w", err)
+			return albumDiffOutcome{}, fmt.Errorf("converge the album's memberships onto its position rows: %w", err)
 		}
 		if converged > 0 {
 			liveSetChanged = true
 			diffChanged = true
-			w.logger.Info("the rescan converged borrowed memberships onto the album's own copies",
+			d.logger.Info("the rescan converged borrowed memberships onto the album's own copies",
 				"job_run_id", jobRunID, "album_id", albumID, "converged", converged)
 		}
 	}
@@ -547,7 +564,7 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 	// either way -- the payload is the album id and its owner, never
 	// state.
 	if liveSetChanged {
-		w.bus.Publish("album.items-changed", map[string]string{
+		d.bus.Publish("album.items-changed", map[string]string{
 			"albumId": albumID.String(),
 			"userId":  owner.String(),
 		})
@@ -561,28 +578,114 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 			// The diff's writes already committed; the clock is
 			// bookkeeping, so its failure logs and the run still
 			// closes on its real counts.
-			w.logger.Warn("stamp the album's scan clock", "job_run_id", jobRunID, "album_id", albumID, "error", err)
+			d.logger.Warn("stamp the album's scan clock", "job_run_id", jobRunID, "album_id", albumID, "error", err)
 		}
 	}
 
+	return albumDiffOutcome{
+		total:     total,
+		done:      done,
+		failed:    failed,
+		cancelled: cancelledWalk,
+	}, nil
+}
+
+// Work executes one rescan run: the row flips to running and
+// job.started fires (echoing the enqueue-time total), the source
+// root is walked (never following symlinks), the row's total is
+// sized to the full diff, the three arms resolve every unit, and
+// the run closes with the converged counts and job.finished --
+// failed when any unit failed, succeeded otherwise. A vanished or
+// repointed source root fails the run honestly: an empty walk
+// would mark every member vanished, and a source the album no
+// longer truthfully points at is a state for the owner to see, not
+// a mass soft-delete to perform silently.
+func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescanArgs]) error {
+	jobRunID := job.Args.JobRunID
+	albumID := job.Args.AlbumID
+	queries := dbgen.New(w.pool)
+
+	flagged, err := queries.MarkJobRunRunning(ctx, pgUUID(jobRunID))
+	if err != nil {
+		return fmt.Errorf("mark the rescan run %s running: %w", jobRunID, err)
+	}
+	if flagged == 0 {
+		// Two ways the pickup matched nothing: the cancel closed the
+		// run while it sat queued (E41 -- the row stays cancelled,
+		// this driver never starts, no started event for a run that
+		// ended before its first chunk), or this attempt IS a retry
+		// resuming an interrupted run (the interrupted attempt left
+		// the row running; the work proceeds below).
+		run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+		if err != nil {
+			return fmt.Errorf("load the rescan run %s: %w", jobRunID, err)
+		}
+		if run.State == dbgen.JobStateCancelled {
+			return nil
+		}
+	}
+	// The started event echoes the row's enqueue-time total -- the
+	// durable truth the endpoint handed out -- not a recount; the
+	// sizing write completes it once the walk listed the root.
+	run, err := queries.GetJobRun(ctx, pgUUID(jobRunID))
+	if err != nil {
+		return fmt.Errorf("load the rescan run %s: %w", jobRunID, err)
+	}
+	w.bus.Publish("job.started", jobEventPayload(jobRunID, AlbumRescanKind, int(run.Total), 0, 0, dbgen.JobStateRunning))
+
+	// The run's own progress record: the row write on every batch,
+	// the event throttled onto the activity stream.
+	lastEvent := time.Now()
+	outcome, err := w.differ().diffAlbum(ctx, albumID, albumDiffOptions{
+		jobRunID:     jobRunID,
+		currentTotal: int(run.Total),
+		sizeRun: func(ctx context.Context, total int) error {
+			return dbgen.New(w.pool).SetJobRunTotal(ctx, dbgen.SetJobRunTotalParams{
+				ID:    pgUUID(jobRunID),
+				Total: int32(total),
+			})
+		},
+		progress: func(ctx context.Context, done, failed, total int) {
+			if err := dbgen.New(w.pool).UpdateJobRunProgress(ctx, dbgen.UpdateJobRunProgressParams{
+				ID:   pgUUID(jobRunID),
+				Done: int32(done),
+			}); err != nil {
+				w.logger.Warn("record the rescan progress", "job_run_id", jobRunID, "error", err)
+			}
+			if now := time.Now(); now.Sub(lastEvent) >= albumRescanProgressInterval {
+				lastEvent = now
+				w.bus.Publish("job.progress",
+					jobEventPayload(jobRunID, AlbumRescanKind, total, done, failed, dbgen.JobStateRunning))
+			}
+		},
+		stopRequested: func(ctx context.Context) (bool, error) {
+			return queries.GetJobRunStopRequested(ctx, pgUUID(jobRunID))
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if outcome.fatal {
+		// The album itself cannot be diffed: the run closes failed on
+		// the enqueue-time total, exactly as it announced it.
+		return w.closeRescan(ctx, jobRunID, int(run.Total), 0, 0, dbgen.JobStateFailed)
+	}
+
 	state := dbgen.JobStateSucceeded
-	if cancelledWalk {
-		// The admin's own deliberate ending: the committed blocks
-		// keep their counts, the state reads cancelled (E41) -- never
-		// a broken run, the panel says who asked for this ending.
+	if outcome.cancelled {
 		state = dbgen.JobStateCancelled
-	} else if failed > 0 {
+	} else if outcome.failed > 0 {
 		state = dbgen.JobStateFailed
 	}
 	// The final progress write lands the converged counts even when
 	// the last batch was partial.
 	if err := dbgen.New(w.pool).UpdateJobRunProgress(ctx, dbgen.UpdateJobRunProgressParams{
 		ID:   pgUUID(jobRunID),
-		Done: int32(done),
+		Done: int32(outcome.done),
 	}); err != nil {
 		w.logger.Warn("record the rescan's final progress", "job_run_id", jobRunID, "error", err)
 	}
-	return w.closeRescan(ctx, jobRunID, total, done, failed, state)
+	return w.closeRescan(ctx, jobRunID, outcome.total, outcome.done, outcome.failed, state)
 }
 
 // addArm ingests one walked file by reference: the format gates the
@@ -601,14 +704,14 @@ func (w *AlbumRescanWorker) Work(ctx context.Context, job *river.Job[AlbumRescan
 // position joined, or an orphan mark revived); the asset event fires
 // for the rows that (re)entered the library, the link arm staying
 // silent like every idempotent convergence.
-func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, jobRunID, albumID, owner uuid.UUID, path string, mtime time.Time) (bool, error) {
+func (d *albumDiffer) addArm(ctx context.Context, queries *dbgen.Queries, jobRunID, albumID, owner uuid.UUID, path string, mtime time.Time) (bool, error) {
 	ext := extensionOf(path)
 	format, known := storage.LookupUploadFormat(ext)
 	if !known {
 		// Unreachable through the worker's own walk (the candidate
 		// filter applied the same whitelist); the guard keeps the
 		// arm total for any directly constructed caller.
-		w.logger.Debug("the rescan skips a non-media source file", "job_run_id", jobRunID, "path", path)
+		d.logger.Debug("the rescan skips a non-media source file", "job_run_id", jobRunID, "path", path)
 		return false, nil
 	}
 
@@ -630,7 +733,7 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 		pendingJobs = 3
 	}
 
-	tx, err := w.pool.Begin(ctx)
+	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return false, fmt.Errorf("begin the ingest transaction: %w", err)
 	}
@@ -665,7 +768,7 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 			// path. The row never landed (the transaction rolls
 			// back); the three-state resolution owns the answer.
 			_ = tx.Rollback(ctx)
-			return w.resolvePositionCollision(ctx, queries, albumID, owner, ingest, jobRunID)
+			return d.resolvePositionCollision(ctx, queries, albumID, owner, ingest, jobRunID)
 		}
 		return false, fmt.Errorf("insert the external asset: %w", err)
 	}
@@ -691,11 +794,11 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 	// discipline). The context is detached from the job's own so an
 	// envelope expiring mid-run cannot cancel the enqueue of the
 	// work the commit already made durable.
-	if err := w.dispatch(context.WithoutCancel(ctx), assetID, kind); err != nil {
+	if err := d.dispatch(context.WithoutCancel(ctx), assetID, kind); err != nil {
 		return false, fmt.Errorf("enqueue the pipeline of the ingested asset: %w", err)
 	}
 
-	w.bus.Publish("asset.added", map[string]string{
+	d.bus.Publish("asset.added", map[string]string{
 		"assetId": assetID.String(),
 		"kind":    string(kind),
 	})
@@ -724,7 +827,7 @@ func (w *AlbumRescanWorker) addArm(ctx context.Context, queries *dbgen.Queries, 
 // answered is the membership signal: a live link is a new tile, a
 // revival is a row back in the library (the asset event fires), and
 // the unreachable arm stays silent.
-func (w *AlbumRescanWorker) resolvePositionCollision(ctx context.Context, queries *dbgen.Queries, albumID, owner uuid.UUID, ingest dbgen.CreateExternalAssetParams, jobRunID uuid.UUID) (bool, error) {
+func (d *albumDiffer) resolvePositionCollision(ctx context.Context, queries *dbgen.Queries, albumID, owner uuid.UUID, ingest dbgen.CreateExternalAssetParams, jobRunID uuid.UUID) (bool, error) {
 	path := ingest.FilePath
 	row, err := queries.GetExternalAssetByOwnerFilePath(ctx, dbgen.GetExternalAssetByOwnerFilePathParams{
 		OwnerID:  pgUUID(owner),
@@ -744,7 +847,7 @@ func (w *AlbumRescanWorker) resolvePositionCollision(ctx context.Context, querie
 		return true, nil
 	}
 	if row.TrashPath.Valid {
-		w.logger.Info("the rescan add arm matched a trashed copy's position; leaving it in the trash",
+		d.logger.Info("the rescan add arm matched a trashed copy's position; leaving it in the trash",
 			"job_run_id", jobRunID, "asset_id", uuid.UUID(row.ID.Bytes), "path", path)
 		return false, nil
 	}
@@ -773,10 +876,10 @@ func (w *AlbumRescanWorker) resolvePositionCollision(ctx context.Context, querie
 	}); err != nil {
 		return false, fmt.Errorf("rejoin the revived row at %s to the album: %w", path, err)
 	}
-	if err := w.dispatch(context.WithoutCancel(ctx), uuid.UUID(row.ID.Bytes), ingest.MediaKind); err != nil {
+	if err := d.dispatch(context.WithoutCancel(ctx), uuid.UUID(row.ID.Bytes), ingest.MediaKind); err != nil {
 		return false, fmt.Errorf("re-enqueue the pipeline of the revived asset: %w", err)
 	}
-	w.bus.Publish("asset.added", map[string]string{
+	d.bus.Publish("asset.added", map[string]string{
 		"assetId": uuid.UUID(row.ID.Bytes).String(),
 		"kind":    string(ingest.MediaKind),
 	})
@@ -795,7 +898,7 @@ func (w *AlbumRescanWorker) resolvePositionCollision(ctx context.Context, querie
 // (the row vanished or trashed mid-run) resolves as a no-op, not a
 // failure -- there is no row left to re-run -- and answers wrote
 // false accordingly.
-func (w *AlbumRescanWorker) changeArm(ctx context.Context, queries *dbgen.Queries, owner uuid.UUID, member rescanMember, path string, mtime time.Time, size int64) (bool, error) {
+func (d *albumDiffer) changeArm(ctx context.Context, queries *dbgen.Queries, owner uuid.UUID, member rescanMember, path string, mtime time.Time, size int64) (bool, error) {
 	checksum, _, _, err := storage.ReadExternalFile(path)
 	if err != nil {
 		return false, fmt.Errorf("re-read the changed source file: %w", err)
@@ -813,10 +916,10 @@ func (w *AlbumRescanWorker) changeArm(ctx context.Context, queries *dbgen.Querie
 	if rows == 0 {
 		return false, nil
 	}
-	if err := w.dispatch(context.WithoutCancel(ctx), member.id, member.kind); err != nil {
+	if err := d.dispatch(context.WithoutCancel(ctx), member.id, member.kind); err != nil {
 		return true, fmt.Errorf("re-enqueue the pipeline of the changed asset: %w", err)
 	}
-	w.bus.Publish("asset.updated", map[string]string{
+	d.bus.Publish("asset.updated", map[string]string{
 		"assetId": member.id.String(),
 		"kind":    string(member.kind),
 	})
@@ -945,7 +1048,7 @@ func (q *Queue) dispatchRescan(ctx context.Context, assetID uuid.UUID, kind dbge
 // fails halfway leaves neither behind. The row starts queued; the
 // worker flips it to running when the walk begins. The endpoint's
 // in-flight guard (the album-scoped lookup over the kind) runs
-// BEFORE the enqueue; a racing double-enqueue produces two
+// BEFORE the enqueue; a racing double-enqueue prowuces two
 // convergent walks, not corruption -- every arm is idempotent.
 func (q *Queue) EnqueueAlbumRescan(ctx context.Context, albumID uuid.UUID) (uuid.UUID, error) {
 	id, err := uuid.NewV7()

@@ -342,6 +342,9 @@ func run(logger *slog.Logger) error {
 			// The album rescan endpoint enqueues through the same
 			// queue.
 			AlbumRescans: queue,
+			// The instance-wide rescan sweep's endpoint enqueues
+			// through the same queue.
+			AlbumRescanAlls: queue,
 			// The release check face reads and runs the checker the
 			// schedule above drives.
 			UpdateChecks: releaseChecker,
