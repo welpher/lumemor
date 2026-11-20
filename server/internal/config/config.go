@@ -3,6 +3,8 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -67,6 +69,25 @@ const EnvFolderSyncInterval = "LUMEMOR_FOLDER_SYNC_INTERVAL"
 // mounts carry no events behaves like anyway).
 const EnvFolderWatch = "LUMEMOR_FOLDER_WATCH"
 
+// EnvPublicURL is the deployment's canonical public origin -- the
+// address browsers actually use, scheme and host only, for example
+// "https://photos.example.com". It is the deployment's own input
+// because a reverse proxy can terminate TLS and rewrite the Host
+// header, which the request alone cannot reveal. Setting it to an
+// https origin makes the session cookie Secure and turns on HSTS;
+// unset or empty keeps the request's own TLS state (the LAN HTTP
+// deployment is unchanged).
+const EnvPublicURL = "LUMEMOR_PUBLIC_URL"
+
+// EnvTrustedProxies is the deployment's list of reverse-proxy peers:
+// a comma-separated CIDR list (an address without a prefix names that
+// single host). A request whose socket peer matches may assert its
+// client address through X-Forwarded-For and its scheme through
+// X-Forwarded-Proto; a peer outside the list is trusted for neither,
+// so a direct client cannot forge either header. Unset or empty
+// trusts the socket peer only (the LAN HTTP deployment is unchanged).
+const EnvTrustedProxies = "LUMEMOR_TRUSTED_PROXIES"
+
 // DefaultListen is the listen address used when EnvListen is unset or empty.
 const DefaultListen = ":8244"
 
@@ -116,13 +137,23 @@ type Config struct {
 	// ingests anything itself; the diff's stamp comparison stays the
 	// only decider. False leaves the gated diff alone.
 	FolderWatch bool
+	// PublicURL is the deployment's canonical public origin
+	// ("https://photos.example.com"), or empty when the instance is
+	// reached directly. It is already normalized: scheme and host
+	// only, no trailing slash.
+	PublicURL string
+	// TrustedProxies are the reverse-proxy peers allowed to assert a
+	// forwarded client address and scheme. Empty trusts the socket
+	// peer only.
+	TrustedProxies []netip.Prefix
 }
 
 // Load reads the configuration from the environment. It returns an
 // error when EnvDatabaseURL is missing or when EnvUploadLimitBytes is
 // not a non-negative integer. Listen, DataDir and ConfigDir fall back
 // to their defaults when the corresponding environment variables are
-// unset or empty.
+// unset or empty; EnvPublicURL and EnvTrustedProxies are validated
+// where set and stay empty otherwise.
 func Load() (Config, error) {
 	databaseURL := os.Getenv(EnvDatabaseURL)
 	if databaseURL == "" {
@@ -159,6 +190,16 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	publicURL, err := loadPublicURL()
+	if err != nil {
+		return Config{}, err
+	}
+
+	trustedProxies, err := loadTrustedProxies()
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
 		Listen:              listen,
 		DatabaseURL:         databaseURL,
@@ -169,6 +210,8 @@ func Load() (Config, error) {
 		UpdateCheckDisabled: parseTruthyEnv(EnvUpdateCheckDisabled),
 		FolderSyncInterval:  folderSyncInterval,
 		FolderWatch:         folderWatch,
+		PublicURL:           publicURL,
+		TrustedProxies:      trustedProxies,
 	}, nil
 }
 
@@ -241,4 +284,67 @@ func loadUploadLimitBytes() (int64, error) {
 		return 0, fmt.Errorf("%s must not be negative, got %d", EnvUploadLimitBytes, limit)
 	}
 	return limit, nil
+}
+
+// loadPublicURL parses EnvPublicURL. An unset or empty variable stays
+// empty (the direct/LAN deployment, where the request's own TLS state
+// decides). A set value must be a bare absolute http(s) origin --
+// scheme, host, optional port, and nothing else: a path, query,
+// fragment or embedded credentials cannot name an origin, and
+// silently dropping one would make the cookie/HSTS answer disagree
+// with the address the browser actually uses.
+func loadPublicURL() (string, error) {
+	raw := strings.TrimSpace(os.Getenv(EnvPublicURL))
+	if raw == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("%s: parse %q: %w", EnvPublicURL, raw, err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("%s must be an absolute http(s) origin, got %q", EnvPublicURL, raw)
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("%s must name a host, got %q", EnvPublicURL, raw)
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("%s must not embed credentials, got %q", EnvPublicURL, raw)
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return "", fmt.Errorf("%s must be a bare origin (scheme://host), got %q", EnvPublicURL, raw)
+	}
+	return parsed.Scheme + "://" + parsed.Host, nil
+}
+
+// loadTrustedProxies parses EnvTrustedProxies. An unset or empty
+// variable trusts the socket peer only. Otherwise every comma-separated
+// entry must be a CIDR prefix (v4 or v6), or a bare address naming a
+// single host; a malformed entry fails the boot instead of silently
+// shrinking or widening the trust set -- trusting a proxy that is not
+// one lets a direct client forge its address, and the wrong prefix
+// would collapse every client into one bucket.
+func loadTrustedProxies() ([]netip.Prefix, error) {
+	raw := strings.TrimSpace(os.Getenv(EnvTrustedProxies))
+	if raw == "" {
+		return nil, nil
+	}
+	entries := strings.Split(raw, ",")
+	prefixes := make([]netip.Prefix, 0, len(entries))
+	for i, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			return nil, fmt.Errorf("%s: entry %d is empty", EnvTrustedProxies, i+1)
+		}
+		if prefix, err := netip.ParsePrefix(entry); err == nil {
+			prefixes = append(prefixes, prefix.Masked())
+			continue
+		}
+		addr, err := netip.ParseAddr(entry)
+		if err != nil {
+			return nil, fmt.Errorf("%s: parse %q as a CIDR prefix or address: %w", EnvTrustedProxies, entry, err)
+		}
+		prefixes = append(prefixes, netip.PrefixFrom(addr, addr.BitLen()))
+	}
+	return prefixes, nil
 }
