@@ -721,7 +721,10 @@ test.describe('the administrator scenes', () => {
 		const row = page.locator('article.jobs__row').filter({ hasText: 'Album rescan' }).first();
 		await expect(row).toBeVisible();
 		await expect(row.getByText('Succeeded', { exact: true })).toBeVisible();
-		await expect(row.getByText('2 of 2 assets')).toBeVisible();
+		// The completed rescan's row reads its current copy: a clean
+		// scan reports the unchanged count (the assets/queued wording
+		// predates the row-that-speaks pass).
+		await expect(row.getByText('2 photos unchanged')).toBeVisible();
 	});
 
 	test("scene 7: the edit dialog's autonomy block rides the audience grant", async ({ page }) => {
