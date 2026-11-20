@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
@@ -444,7 +445,18 @@ func Start(ctx context.Context, cfg Config) (*Queue, error) {
 	// River job in one transaction), the same call the rescan endpoint
 	// makes. Wired before the client starts, like every other seam.
 	folderSyncWorker.enqueue = queue.EnqueueAlbumRescan
-
+	// The folder sync's activity gate: a session seen within the
+	// window is what "somebody is using the instance" means, and the
+	// throttled touch middleware already writes it. One query per
+	// tick, on the database's disk -- the photo disk is what the gate
+	// protects.
+	queries := dbgen.New(cfg.Pool)
+	folderSyncWorker.activity = func(ctx context.Context) (bool, error) {
+		return queries.HasActiveSession(ctx, pgtype.Timestamptz{
+			Time:  time.Now().Add(-folderActivityWindow),
+			Valid: true,
+		})
+	}
 	if err := client.Start(context.WithoutCancel(ctx)); err != nil {
 		return nil, fmt.Errorf("jobs: start river client: %w", err)
 	}
