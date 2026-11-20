@@ -188,16 +188,6 @@ type rescanMember struct {
 	hasSnap bool
 }
 
-// Work executes one rescan run: the row flips to running and
-// job.started fires (echoing the enqueue-time total), the source
-// root is walked (never following symlinks), the row's total is
-// sized to the full diff, the three arms resolve every unit, and
-// the run closes with the converged counts and job.finished --
-// failed when any unit failed, succeeded otherwise. A vanished or
-// repointed source root fails the run honestly: an empty walk
-// would mark every member vanished, and a source the album no
-// longer truthfully points at is a state for the owner to see, not
-// a mass soft-delete to perform silently.
 // albumDiffer carries the shared diff's dependencies. The single
 // album worker and the instance-wide sweep both project their fields
 // into one (see differ) and run the same code, so an album resolves
@@ -592,20 +582,11 @@ func (d *albumDiffer) diffAlbum(ctx context.Context, albumID uuid.UUID, opts alb
 		}
 	}
 
-	state := dbgen.JobStateSucceeded
-	if cancelledWalk {
-		// The admin's own deliberate ending: the committed blocks
-		// keep their counts, the state reads cancelled (E41) -- never
-		// a broken run, the panel says who asked for this ending.
-		state = dbgen.JobStateCancelled
-	} else if failed > 0 {
-		state = dbgen.JobStateFailed
-	}
 	return albumDiffOutcome{
 		total:     total,
 		done:      done,
 		failed:    failed,
-		cancelled: state == dbgen.JobStateCancelled,
+		cancelled: cancelledWalk,
 	}, nil
 }
 
