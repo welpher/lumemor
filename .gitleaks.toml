@@ -1,0 +1,13 @@
+# Secret-scanning policy. The default rules apply everywhere; the
+# allowlist below covers the contract's illustrative token examples
+# (fake values that document the shape, never credentials) including
+# the two that predate their placeholder form in the history.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "OpenAPI examples: illustrative tokens, not credentials"
+regexes = [
+  '''q73x9QmV2pZ8sL4wR6tY0A''',
+  '''8N3Jz5xqKv2RtW9mY4bC7dFgH1jL6p0s''',
+]
