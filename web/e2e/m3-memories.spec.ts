@@ -228,10 +228,6 @@ const COVER_SEED_FILES = [
 	{ file: path.join(repoRoot, 'server/internal/ml/testdata/ocr-zh-text.png'), name: 'IMG_M3M_G.png' }
 ];
 
-// The skip-note honesty line (the picker's report face).
-const SKIP_NOTE =
-	"1 photo is not visible right now and stayed out — a shared photo's visibility is re-checked at add time.";
-
 // The download bound: the cold upstream transfer of the group is
 // minutes, the warm re-verification is seconds; both allow the cold
 // bound.
@@ -672,41 +668,31 @@ test.describe('the creator scenes', () => {
 		expect(detailBody.itemCount).toBe(3);
 	});
 
-	test('scene 7: the archived wall answers the honest skip note', async ({ page }) => {
+	test('scene 7: the archived wall offers no memory entry, and the server still refuses an archived row', async ({
+		page
+	}) => {
 		// The archived wall carries the archived photo -- a row the
 		// creator cannot currently see.
 		await page.goto('/archived');
 		await expect(page.getByRole('link', { name: OWN_C_NAME, exact: true })).toBeVisible();
 
-		// The same wall-selection entry rides the archived wall's bar.
+		// The bar's subset is the unarchive action alone: an archived
+		// row has left the family flows, so no memory entry is offered
+		// (it would be a dead action -- the server rejects the row).
 		await page.getByRole('checkbox', { name: `Select: ${OWN_C_NAME}`, exact: true }).click();
 		const bar = page.getByRole('toolbar', { name: '1 selected' });
 		await expect(bar).toBeVisible();
-		await expect(bar.getByRole('button', { name: 'Add to memory', exact: true })).toBeVisible();
-		await bar.getByRole('button', { name: 'Add to memory', exact: true }).click();
+		await expect(bar.getByRole('button', { name: 'Unarchive', exact: true })).toBeVisible();
+		await expect(bar.getByRole('button', { name: 'Add to memory', exact: true })).toHaveCount(0);
 
-		const dialog = page.getByRole('dialog', { name: 'Add to memory', exact: true });
-		await expect(dialog).toBeVisible();
-		await expect(dialog.getByText('1 photo is selected — pick a memory, or create one.')).toBeVisible();
-
-		// The pick POSTs the captured id; the write answers the
-		// honest counts-only report -- the archived row never lands.
-		const addPosted = page.waitForRequest(
-			(request) => request.method() === 'POST' && request.url().endsWith(`/api/v1/albums/${memoryId}/items`)
-		);
-		await dialog.locator('.add-memory__row').filter({ hasText: MEMORY_TITLE }).click();
-		const add = await addPosted;
-		expect(add.postDataJSON()).toEqual({ assetIds: [ownCId] });
-		const addResponse = await add.response();
-		expect(addResponse?.status()).toBe(200);
-		expect(await addResponse?.json()).toEqual({ added: 0, skipped: 1 });
-
-		// The skip-note honesty line: the write's own answer, with
-		// the ground it enforced.
-		await expect(dialog.getByText(SKIP_NOTE)).toBeVisible();
-
-		await dialog.getByRole('button', { name: 'Done', exact: true }).click();
-		await expect(dialog).toHaveCount(0);
+		// The server's own family-flow filter still holds for any
+		// caller that posts the archived id directly: the write
+		// answers the honest counts-only report, the row never lands.
+		const add = await page.request.post(`/api/v1/albums/${memoryId}/items`, {
+			data: { assetIds: [ownCId] }
+		});
+		expect(add.status()).toBe(200);
+		expect(await add.json()).toEqual({ added: 0, skipped: 1 });
 
 		// The memory's count is unchanged: the row never landed.
 		const detail = await page.request.get(`/api/v1/albums/${memoryId}`);

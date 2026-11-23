@@ -199,11 +199,11 @@ test('the selection bar carries exactly the unhide action, and it ends the membe
 	flushSync();
 	clickTile(0);
 	expect(document.body.querySelector('.batchbar')).not.toBeNull();
-	// The subset: only the unhide action of the timeline's set, and
-	// the wall-selection entry (an archived row is still in the
-	// caller's sight here -- the entry's ground).
+	// The subset: the unhide action alone. An archived row has left
+	// the family flows, so the memory add is not offered (the server
+	// would reject it) -- the bar carries no dead action.
 	expect(hasButtonByLabel('Unarchive')).toBe(true);
-	expect(hasButtonByLabel('Add to memory')).toBe(true);
+	expect(hasButtonByLabel('Add to memory')).toBe(false);
 	expect(hasButtonByLabel('Favorite')).toBe(false);
 	expect(hasButtonByLabel('Archive')).toBe(false);
 	expect(hasButtonByLabel('Trash')).toBe(false);
