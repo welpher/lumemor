@@ -272,8 +272,11 @@ func (w *RebuildWorker) Work(ctx context.Context, job *river.Job[RebuildArgs]) e
 		}); err != nil {
 			return fmt.Errorf("record the rebuild progress of run %s: %w", jobRunID, err)
 		}
-		// The breakpoint write: the cursor persists AFTER the page's
-		// assets, so a re-entry past it re-derives nothing.
+		// The breakpoint write: the cursor is the page walk's own
+		// position -- it persists AFTER the page's assets. A re-entry
+		// resumes at the next page, so an interruption mid-page redoes
+		// at most that one page (bounded by rebuildPageSize), never the
+		// pages already behind the cursor.
 		if err := queries.SetJobRunResumeFrom(ctx, dbgen.SetJobRunResumeFromParams{
 			ID:         pgUUID(jobRunID),
 			ResumeFrom: cursor,
