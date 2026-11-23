@@ -63,6 +63,13 @@ lumemor is self-hosted and works offline. Three things reach the network, each o
 - **Release check** — the server asks a release feed for its newest version tag once a day (configurable, and switchable off in admin → settings). Only the version is compared; the request carries no photo, no library information and no instance identifier, private and loopback addresses are refused, and redirects are never followed. A failed check stays quiet. Set `LUMEMOR_UPDATE_CHECK_DISABLED=1` to turn it off at the deployment level, and `https_proxy` / `http_proxy` / `no_proxy` to route the request through your proxy.
 - **Model downloads** — the AI model weights are fetched once, pinned by checksum, from the manifest's upstreams or your mirror (`LUMEMOR_MODELS_HF_MIRROR`). An instance that never downloads them simply runs without AI.
 
+## Known limitations
+
+The boundaries this release ships with on purpose — one family per
+instance, an optional AI download, a tile source you choose, read-only
+directory sources — are collected in
+[`docs/known-limitations.md`](docs/known-limitations.md).
+
 ## Translations
 
 `en` (source) and `zh-Hans` are officially maintained. Translations are flat JSON in [`i18n/`](i18n/) — contributions welcome once development starts (guide coming soon).
