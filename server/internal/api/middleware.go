@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -92,40 +91,6 @@ func limitJSONBody(next http.Handler) http.Handler {
 	})
 }
 
-// setSecurityHeaders stamps the two response headers every response
-// of the server carries: API, pages, static assets and the SPA shell
-// alike (NewRouter mounts it at the router root, so every route --
-// hand-mounted or catch-all -- passes through it). HSTS and the
-// dynamic CSP arrive with the map feature (the CSP must know the
-// tile origins first, and the app shell's pre-paint script needs a
-// hash); CORS stays closed by design -- the SPA is same-origin
-// inside the single binary and external tools authenticate as
-// bearers, which CORS never constrains.
-func setSecurityHeaders(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		next.ServeHTTP(w, r)
-	})
-}
-
-// checkOrigin implements the CSRF defense of an all-JSON API: a
-// state-changing request that declares a foreign Origin is refused
-// outright. Requests without an Origin header pass -- they are
-// non-browser clients (the mobile app, curl), which are not part of
-// the browser CSRF threat model. Reads (GET/HEAD/OPTIONS) are exempt.
-func checkOrigin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isStateChanging(r.Method) {
-			if origin := r.Header.Get("Origin"); origin != "" && !sameOrigin(r, origin) {
-				http.Error(w, "cross-origin request rejected", http.StatusForbidden)
-				return
-			}
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
 // isStateChanging reports whether the method mutates server state.
 func isStateChanging(method string) bool {
 	switch method {
@@ -134,20 +99,6 @@ func isStateChanging(method string) bool {
 	default:
 		return true
 	}
-}
-
-// sameOrigin reports whether the declared Origin matches the request's
-// own host. Only host and port are compared, not the scheme: behind a
-// TLS-terminating reverse proxy the forwarded request is plain HTTP
-// while the browser's Origin is HTTPS, and that deployment must keep
-// working. A malformed Origin (including the literal "null") never
-// matches.
-func sameOrigin(r *http.Request, origin string) bool {
-	originURL, err := url.Parse(origin)
-	if err != nil || originURL.Host == "" {
-		return false
-	}
-	return strings.EqualFold(originURL.Host, r.Host)
 }
 
 // authContextKey is the unexported context key for the authenticated
