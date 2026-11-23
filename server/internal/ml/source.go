@@ -14,7 +14,11 @@
 //     refused) and check against the slot's contract -- the output
 //     dimension the slot needs, read off the graph and named when it
 //     disagrees. An undeclared host does NOT fail: the probe answers
-//     its warn and the save stays the administrator's own act.
+//     its warn and the save stays the administrator's own act. The
+//     fetch is bounded (a wedged source cannot pin the goroutine,
+//     the staging file or the running record) and its redirect chain
+//     is gated hop by hop like the download chain, with the declared
+//     flag recording the host that actually served the bytes.
 //   - REGISTER: a passing probe's bytes move into the models dir
 //     under the content's own name (the model id carries the digest's
 //     first eight chars -- the same bytes land in one directory no
@@ -37,6 +41,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -81,6 +86,50 @@ const probeMaxFileBytes = int64(2 * 1024 * 1024 * 1024)
 // digest's short form.
 var probeIDSlug = regexp.MustCompile(`[^a-z0-9]+`)
 
+// The probe's bounds against a wedged or hostile source. The probe runs
+// in a background goroutine nobody waits on, so an unbounded fetch
+// would pin that goroutine, its staging file and its running record for
+// as long as the source feels like holding the connection. The phases
+// are bounded separately: the dial, the TLS handshake and the wait for
+// the response headers are each a wedged-source symptom, while the body
+// transfer is legitimately long (a 2 GiB candidate on a slow link) and
+// is bounded by the request's overall deadline instead.
+const (
+	// probeConnectTimeout bounds the TCP connect.
+	probeConnectTimeout = 10 * time.Second
+	// probeTLSHandshakeTimeout bounds the TLS handshake.
+	probeTLSHandshakeTimeout = 10 * time.Second
+	// probeResponseHeaderTimeout bounds the wait for the response
+	// headers: a source that accepts the connection and then says
+	// nothing is wedged, not slow.
+	probeResponseHeaderTimeout = 30 * time.Second
+	// probeDeadline bounds the whole probe (connect, transfer and the
+	// hand-off to the inspect): generous enough for the 2 GiB cap on a
+	// slow line, finite so a stalled transfer cannot pin the record.
+	probeDeadline = 2 * time.Hour
+)
+
+// newProbeClient builds the bounded client the probe fetches with. The
+// transport timeouts cover the phases a source can stretch before any
+// byte arrives; the transfer itself rides the request context's
+// deadline (a client-level timeout would abort a legitimate large
+// download on a slow link).
+func newProbeClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   probeConnectTimeout,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+			TLSHandshakeTimeout:   probeTLSHandshakeTimeout,
+			ResponseHeaderTimeout: probeResponseHeaderTimeout,
+			ExpectContinueTimeout: time.Second,
+			MaxIdleConns:          4,
+		},
+	}
+}
+
 // ProbeSnapshot is one probe's state at a read: the facts the listing
 // endpoint maps onto the contract's probe answer, copied under the
 // manager's lock. StagingPath is the manager-internal pointer the
@@ -123,17 +172,20 @@ type ProbeManager struct {
 	hosts       probeHosts
 	requireDims probeDims
 	now         func() time.Time
+	// deadline bounds one URL probe's whole fetch; production pins
+	// probeDeadline, tests shorten it to exercise the timeout.
+	deadline time.Duration
 }
 
 // NewProbeManager builds the manager over the models dir. hosts
 // answers the allowed hosts for the declared-host check (nil admits
 // every host, the unconfigured gate); requireDims answers the
 // dimension a custom import must match (nil lifts the requirement);
-// client fetches the URL candidates (nil falls back to a plain
-// client); now drives the TTL (nil falls back to time.Now).
+// client fetches the URL candidates (nil falls back to the bounded
+// default client); now drives the TTL (nil falls back to time.Now).
 func NewProbeManager(modelsDir string, hosts probeHosts, requireDims probeDims, client *http.Client, now func() time.Time) *ProbeManager {
 	if client == nil {
-		client = &http.Client{}
+		client = newProbeClient()
 	}
 	if now == nil {
 		now = time.Now
@@ -145,6 +197,7 @@ func NewProbeManager(modelsDir string, hosts probeHosts, requireDims probeDims, 
 		hosts:       hosts,
 		requireDims: requireDims,
 		now:         now,
+		deadline:    probeDeadline,
 	}
 }
 
@@ -255,7 +308,28 @@ var ErrProbeNotPassed = errors.New("ml: the probe did not finish ok")
 // runURL stages a URL candidate: the download streams into the
 // record's staging file with progress, then the inspect runs. The
 // digest, when the caller pinned one, gates before the sandbox load.
+//
+// The fetch is bounded twice over: the manager's client bounds the
+// connect/handshake/header phases, and the request carries a context
+// deadline for the whole transfer. Every failure path -- including the
+// deadline -- settles the record as the usual error state and removes
+// the staging file, so a wedged source leaves nothing running and
+// nothing on disk. The redirect policy re-checks the allowed-host list
+// on every hop, exactly like the download chain: a redirect to an
+// undeclared host aborts the transfer with the host named instead of
+// landing bytes from it.
 func (pm *ProbeManager) runURL(record *ProbeSnapshot, rawURL, pinnedSHA string) {
+	ctx, cancel := context.WithTimeout(context.Background(), pm.deadline)
+	defer cancel()
+
+	var hosts []string
+	if pm.hosts != nil {
+		hosts = pm.hosts()
+	}
+	// The gate rides a copy of the client, so the manager's own client
+	// keeps its transport and the policy is per fetch.
+	client := clientWithHostGate(pm.client, hosts)
+
 	stagingDir, err := pm.stagingDir(record.ID)
 	if err != nil {
 		pm.fail(record, err.Error())
@@ -267,12 +341,12 @@ func (pm *ProbeManager) runURL(record *ProbeSnapshot, rawURL, pinnedSHA string) 
 	}
 	target := filepath.Join(stagingDir, name+".onnx")
 
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		pm.fail(record, "build the request: "+err.Error())
 		return
 	}
-	resp, err := pm.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		pm.fail(record, "fetch: "+err.Error())
 		return
@@ -281,6 +355,12 @@ func (pm *ProbeManager) runURL(record *ProbeSnapshot, rawURL, pinnedSHA string) 
 	if resp.StatusCode != http.StatusOK {
 		pm.fail(record, fmt.Sprintf("the source answered status %d", resp.StatusCode))
 		return
+	}
+	// The declared flag is the final hop's fact: a redirect may have
+	// left the list the first hop was checked against, and the honest
+	// record names the host that actually serves the bytes.
+	if finalHost, err := URLHost(resp.Request.URL.String()); err == nil {
+		pm.setDeclared(record, HostAllowed(hosts, finalHost))
 	}
 	if size := resp.ContentLength; size > 0 {
 		pm.setTotals(record, int(size))
@@ -329,6 +409,14 @@ func (pm *ProbeManager) runURL(record *ProbeSnapshot, rawURL, pinnedSHA string) 
 	}
 	if err := file.Close(); err != nil {
 		pm.fail(record, "close the staging file: "+err.Error())
+		return
+	}
+	// A transfer that only finished after its deadline is the wedged
+	// source the deadline exists for: settle it now instead of handing
+	// the bytes to the (slow) sandbox load.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		_ = os.Remove(target)
+		pm.fail(record, "the fetch did not finish in time: "+ctxErr.Error())
 		return
 	}
 	got := hex.EncodeToString(digest.Sum(nil))
@@ -647,6 +735,14 @@ func (pm *ProbeManager) setProgress(record *ProbeSnapshot, done int) {
 func (pm *ProbeManager) setTotals(record *ProbeSnapshot, total int) {
 	pm.mu.Lock()
 	record.Total = total
+	pm.mu.Unlock()
+}
+
+// setDeclared records the declared-host answer of the host that serves
+// the bytes (the final redirect hop).
+func (pm *ProbeManager) setDeclared(record *ProbeSnapshot, declared bool) {
+	pm.mu.Lock()
+	record.Declared = declared
 	pm.mu.Unlock()
 }
 
