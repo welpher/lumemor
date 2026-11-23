@@ -145,6 +145,14 @@ services:
       # check under the admin settings switch alone; the proxy
       # environment below is what the check's request travels through.
       LUMEMOR_UPDATE_CHECK_DISABLED: ${LUMEMOR_UPDATE_CHECK_DISABLED:-}
+      # The deployment's public origin and reverse-proxy peers: set
+      # these when TLS terminates at a reverse proxy (the setup is in
+      # docs/deploy-docker.md). The origin decides the Secure cookie,
+      # HSTS and the CSRF host set; the proxy list makes the forwarded
+      # client address and scheme trustworthy for those peers only.
+      # Empty keeps the direct/LAN behaviour.
+      LUMEMOR_PUBLIC_URL: ${LUMEMOR_PUBLIC_URL:-}
+      LUMEMOR_TRUSTED_PROXIES: ${LUMEMOR_TRUSTED_PROXIES:-}
       # The forward proxy the instance's outbound requests travel
       # through (the release check), when the deployment reaches the
       # outside world through one; Docker Desktop reaches the host's
