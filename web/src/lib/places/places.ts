@@ -104,6 +104,28 @@ export function selectionName(selected: readonly PlaceSummary[], activeLocale: s
 	return areaLabel;
 }
 
+/**
+ * A count-only bubble's tooltip facts: the bubble shows the number
+ * alone, so its sentence must say where and how much -- the shared
+ * country's display name (null when the group spans countries) plus
+ * the city and photo counts. A single place answers null: a named pin
+ * already says its own name and count.
+ */
+export function clusterLabelValues(
+	group: readonly PlaceSummary[],
+	activeLocale: string
+): { name: string | null; cities: number; photos: number } | null {
+	if (group.length < 2) {
+		return null;
+	}
+	const name = selectionName(group, activeLocale, '');
+	return {
+		name: name === '' ? null : name,
+		cities: group.length,
+		photos: group.reduce((sum, place) => sum + place.assetCount, 0)
+	};
+}
+
 /** The selection's photo count: the sum of its places' honest counts. */
 export function selectionCount(selected: readonly PlaceSummary[]): number {
 	return selected.reduce((sum, place) => sum + place.assetCount, 0);

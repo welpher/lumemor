@@ -56,6 +56,20 @@
 		selected?: readonly number[] | null;
 		/** A cluster or pin click hands back the place ids it stands for. */
 		onselect?: (placeIds: number[]) => void;
+		/**
+		 * The count-only bubble's sentence: where and how much. The
+		 * page owns the place facts (the shared country's name, the
+		 * city count, the photo count) and the localized wording; a
+		 * named pin needs none, so this answers null there.
+		 */
+		describeCluster?: (placeIds: readonly number[]) => string | null;
+		/**
+		 * The focus hand-back after the panel closes: the place ids of
+		 * the marker that opened it. The token makes a repeated
+		 * hand-back to the same marker a fresh request.
+		 */
+		returnFocus?: readonly number[] | null;
+		returnFocusToken?: number;
 		/** The base layer's state (bindable: the page states it too). */
 		tiles?: MapState;
 		/** The tile host's attribution line (bindable for the page's footer). */
@@ -73,6 +87,9 @@
 		focus = null,
 		selected = null,
 		onselect,
+		describeCluster,
+		returnFocus = null,
+		returnFocusToken = 0,
 		tiles = $bindable<MapState>('loading'),
 		attribution = $bindable('')
 	}: Props = $props();
@@ -196,6 +213,40 @@
 			{ padding: 64, maxZoom: 8, animate: true }
 		);
 	}
+
+	/** The pin buttons by marker key: the focus hand-back's target. */
+	let pinEls: Record<string, HTMLButtonElement> = {};
+	/** The pending hand-back's place ids (null = nothing to focus). */
+	let pendingFocus = $state<readonly number[] | null>(null);
+	let lastReturnToken = 0;
+
+	// The focus hand-back: the page closes its panel and names the
+	// marker that opened it. The request waits for the reset view's
+	// markers -- the camera re-frames after the close, so the world
+	// view's bubble appears a frame or two later.
+	$effect(() => {
+		if (returnFocusToken === lastReturnToken) {
+			return;
+		}
+		lastReturnToken = returnFocusToken;
+		pendingFocus = returnFocus;
+	});
+
+	$effect(() => {
+		const wanted = pendingFocus;
+		if (wanted === null || markers.length === 0) {
+			return;
+		}
+		const marker = markers.find(
+			(candidate) =>
+				candidate.placeIds.length === wanted.length && candidate.placeIds.every((id) => wanted.includes(id))
+		);
+		if (marker === undefined) {
+			return;
+		}
+		pinEls[marker.key]?.focus();
+		pendingFocus = null;
+	});
 
 	/** Whether one marker is the current selection (the aria state). */
 	function isSelected(marker: Marker): boolean {
@@ -507,8 +558,15 @@
 			<!-- A city pin: the count pill with the city's name beneath it
 			     (the name is ours, never the basemap's). A bubble: the
 			     same pill in the accent tone, the group's photo count. -->
+			{@const bubbleSentence = marker.name === null ? (describeCluster?.(marker.placeIds) ?? null) : null}
+			{@const pinLabel =
+				bubbleSentence ??
+				(marker.name === null
+					? $_('places_map_pin_count', { values: { count: marker.count } })
+					: $_('places_map_pin_label', { values: { name: marker.name, count: marker.count } }))}
 			<button
-				class="map__pin map__pin--{marker.name === null
+				bind:this={pinEls[marker.key]}
+				class="map__pin group map__pin--{marker.name === null
 					? 'cluster'
 					: 'place'} pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 inline-flex flex-col items-center gap-1 border-0 bg-transparent p-0 whitespace-nowrap cursor-pointer"
 				style="left: {marker.x}px; top: {marker.y}px"
@@ -516,12 +574,8 @@
 				data-place-count={marker.count}
 				data-place-ids={marker.placeIds.join(',')}
 				aria-pressed={isSelected(marker)}
-				aria-label={marker.name === null
-					? $_('places_map_pin_count', { values: { count: marker.count } })
-					: $_('places_map_pin_label', { values: { name: marker.name, count: marker.count } })}
-				title={marker.name === null
-					? $_('places_map_pin_count', { values: { count: marker.count } })
-					: $_('places_map_pin_label', { values: { name: marker.name, count: marker.count } })}
+				aria-label={pinLabel}
+				title={pinLabel}
 				onclick={() => pick(marker)}
 			>
 				<!-- Only the number: a map point already says "photos
@@ -548,6 +602,17 @@
 					<span
 						class="map__pin-name font-body font-semibold text-[12px] leading-[1.4] text-text [text-shadow:0_1px_2px_var(--color-card)]"
 						>{marker.name}</span
+					>
+				{/if}
+				{#if bubbleSentence !== null}
+					<!-- A count-only bubble says where and how much on
+					     hover or keyboard focus (the named pins already
+					     carry their own name); title and aria-label hold
+					     the same sentence for touch and screen readers. -->
+					<span
+						aria-hidden="true"
+						class="pointer-events-none absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 whitespace-nowrap rounded-control border border-border bg-card px-2 py-1 font-body font-medium text-[12px] leading-[1.4] text-text opacity-0 shadow-overlay transition-opacity duration-(--motion-fast) ease-standard group-hover:opacity-100 group-focus-visible:opacity-100"
+						>{bubbleSentence}</span
 					>
 				{/if}
 			</button>

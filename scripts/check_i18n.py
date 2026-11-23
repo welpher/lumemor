@@ -818,6 +818,8 @@ NON_ERROR_KEYS = {
     "places_map_label",
     "places_map_pin_label",
     "places_map_pin_count",
+    "places_map_pin_cluster",
+    "places_map_pin_cluster_unnamed",
     "places_map_loading",
     "places_map_tiles_unconfigured",
     "places_map_tiles_unavailable",

@@ -203,6 +203,46 @@ test('the locale join rides the request and the country labels', async () => {
 	flushSync();
 });
 
+test('closing the panel from inside hands the keyboard back to the opening marker', async () => {
+	placesPageState.url = new URL('http://localhost/places?mode=map');
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => jsonResponse(200, [beijing, paris]))
+	);
+	const page = mountPage();
+	await settle();
+
+	const map = document.body.querySelector<HTMLElement>('.map-stub');
+	expect(map?.getAttribute('data-return-focus-token')).toBe('0');
+
+	const pin = document.body.querySelector<HTMLButtonElement>('.map__pin-stub[data-place-id="1816670"]');
+	pin?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+
+	// Closing from inside the panel (the focus is on its close button)
+	// hands the keyboard back to the pin: the request names the marker
+	// that opened it.
+	const close = document.body.querySelector<HTMLButtonElement>('.places__panel-close');
+	close?.focus();
+	expect(document.activeElement).toBe(close);
+	close?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(document.body.querySelector('[data-testid="places-panel"]')).toBeNull();
+	expect(map?.getAttribute('data-return-focus')).toBe('1816670');
+	expect(map?.getAttribute('data-return-focus-token')).toBe('1');
+
+	// A click on the pin itself needs no hand-back: the focus is
+	// already there, and the token stays put.
+	pin?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	pin?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+	flushSync();
+	expect(map?.getAttribute('data-return-focus-token')).toBe('1');
+
+	unmount(page);
+	flushSync();
+});
+
 test('an empty grouping renders the empty state', async () => {
 	vi.stubGlobal(
 		'fetch',

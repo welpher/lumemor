@@ -72,6 +72,7 @@
 	class="places__panel flex h-1/2 min-h-0 w-full flex-none flex-col overflow-hidden rounded-card border border-border bg-card shadow-card sm:h-full sm:w-[30%] sm:min-w-[300px] sm:max-w-[600px]"
 	aria-label={$_('places_panel_label')}
 	data-testid="places-panel"
+	data-place-panel
 >
 	<header class="places__panel-head flex flex-none items-center gap-2 px-3 py-2 border-b border-border">
 		<h2

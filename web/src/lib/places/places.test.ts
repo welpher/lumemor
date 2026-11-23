@@ -1,6 +1,14 @@
 import { describe, expect, test } from 'vitest';
 import type { PlaceSummary } from '$lib/api/places';
-import { countryName, placeYearSpan, placeYearsText, selectedPlaces, selectionCount, selectionName } from './places';
+import {
+	clusterLabelValues,
+	countryName,
+	placeYearSpan,
+	placeYearsText,
+	selectedPlaces,
+	selectionCount,
+	selectionName
+} from './places';
 
 // The place domain's pure helpers: the client's region table, the
 // capture span's wording, and the map selection's panel identity.
@@ -86,5 +94,23 @@ test('the selection count sums the places\u2019 honest counts', () => {
 describe('the selection name never depends on the request order', () => {
 	test('the same group answers the same name in either order', () => {
 		expect(selectionName([nice, paris], 'en', 'This area')).toBe(selectionName([paris, nice], 'en', 'This area'));
+	});
+});
+
+describe('a count-only bubble says where and how much', () => {
+	test('one country answers its display name, the city count and the photo count', () => {
+		expect(clusterLabelValues([paris, nice], 'en')).toEqual({ name: 'France', cities: 2, photos: 24 });
+	});
+
+	test('a group spanning countries has no single name', () => {
+		expect(clusterLabelValues([paris, beijing], 'en')).toEqual({ name: null, cities: 2, photos: 59 });
+	});
+
+	test('a single place answers nothing: its named pin already says the name and count', () => {
+		expect(clusterLabelValues([paris], 'en')).toBeNull();
+	});
+
+	test('the locale follows the message table', () => {
+		expect(clusterLabelValues([paris, nice], 'zh-Hans')?.name).toBe('法国');
 	});
 });

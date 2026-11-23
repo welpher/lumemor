@@ -865,5 +865,7 @@
   "viewer_edit_location_hint": "拖动移动地图 · 点一下放图钉",
   "viewer_edit_location_no_pin": "在地图上点一下或搜索以放置图钉",
   "viewer_edit_location_submit": "使用这个位置",
-  "viewer_location_saved": "位置已更新。"
+  "viewer_location_saved": "位置已更新。",
+  "places_map_pin_cluster": "{name} · {cities, plural, other {# 座城市}} · {photos, plural, other {# 张照片}}",
+  "places_map_pin_cluster_unnamed": "{cities, plural, other {# 座城市}} · {photos, plural, other {# 张照片}}"
 }

@@ -12,6 +12,9 @@
 		label: string;
 		onselect?: (placeIds: number[]) => void;
 		selected?: readonly number[] | null;
+		describeCluster?: (placeIds: readonly number[]) => string | null;
+		returnFocus?: readonly number[] | null;
+		returnFocusToken?: number;
 		tiles?: 'loading' | 'ready' | 'unconfigured' | 'unavailable';
 		attribution?: string;
 	};
@@ -21,6 +24,9 @@
 		label,
 		onselect,
 		selected = null,
+		describeCluster,
+		returnFocus = null,
+		returnFocusToken = 0,
 		tiles = $bindable('loading'),
 		attribution = $bindable('')
 	}: Props = $props();
@@ -34,7 +40,16 @@
 	}
 </script>
 
-<div class="map map-stub" aria-label={label} role="region" data-tiles={tiles} data-attribution={attribution}>
+<div
+	class="map map-stub"
+	aria-label={label}
+	role="region"
+	data-tiles={tiles}
+	data-attribution={attribution}
+	data-return-focus={returnFocus?.join(',') ?? ''}
+	data-return-focus-token={returnFocusToken}
+	data-describe-cluster={describeCluster === undefined ? 'absent' : 'present'}
+>
 	{#each places as place (place.placeId)}
 		<button
 			class="map__pin-stub"

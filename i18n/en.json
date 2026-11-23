@@ -865,5 +865,7 @@
   "viewer_edit_location_hint": "Drag to move the map · click to drop the pin",
   "viewer_edit_location_no_pin": "Click the map or search to pin a location",
   "viewer_edit_location_submit": "Use this location",
-  "viewer_location_saved": "Location updated."
+  "viewer_location_saved": "Location updated.",
+  "places_map_pin_cluster": "{name} · {cities, plural, one {# city} other {# cities}} · {photos, plural, one {# photo} other {# photos}}",
+  "places_map_pin_cluster_unnamed": "{cities, plural, one {# city} other {# cities}} · {photos, plural, one {# photo} other {# photos}}"
 }

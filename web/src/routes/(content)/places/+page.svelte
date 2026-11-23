@@ -46,7 +46,7 @@
 	import MapView, { type MapState } from '$lib/map/MapView.svelte';
 	import type { PlacePoint } from '$lib/map/tiles';
 	import PlacePanel from '$lib/places/PlacePanel.svelte';
-	import { countryName, placeYearsText, selectedPlaces } from '$lib/places/places';
+	import { clusterLabelValues, countryName, placeYearsText, selectedPlaces } from '$lib/places/places';
 	import { untrack } from 'svelte';
 
 	type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -205,8 +205,46 @@
 		syncSelection([...placeIds]);
 	}
 
+	/** The focus hand-back's request: the marker that opened the panel. */
+	let returnFocus = $state<readonly number[] | null>(null);
+	let returnFocusToken = $state(0);
+
+	/** Whether the keyboard focus currently sits inside the panel. */
+	function panelHasFocus(): boolean {
+		const active = document.activeElement;
+		return active instanceof HTMLElement && active.closest('[data-place-panel]') !== null;
+	}
+
+	/**
+	 * Collapse the panel. Closing FROM INSIDE it hands the keyboard
+	 * back to the marker that opened it (the sample's rule): the
+	 * panel must not strand focus at the page top. A click on the
+	 * marker itself needs no hand-back -- the focus is already there.
+	 */
 	function closePanel(): void {
+		const returning = panelHasFocus() ? [...selectedIds] : null;
 		syncSelection(null);
+		if (returning !== null && returning.length > 0) {
+			returnFocus = returning;
+			returnFocusToken += 1;
+		}
+	}
+
+	/**
+	 * A count-only bubble's sentence: the shared country's name (when
+	 * the group has one), the city count and the photo count. A named
+	 * pin answers null -- its own label already says it.
+	 */
+	function describeCluster(placeIds: readonly number[]): string | null {
+		const facts = clusterLabelValues(selectedPlaces(places, [...placeIds]), $locale ?? 'en');
+		if (facts === null) {
+			return null;
+		}
+		return facts.name === null
+			? $_('places_map_pin_cluster_unnamed', {
+					values: { cities: facts.cities, photos: facts.photos }
+				})
+			: $_('places_map_pin_cluster', { values: facts });
 	}
 
 	/**
@@ -237,7 +275,7 @@
 	/** The escape hatch: the panel collapses (the map returns to full width). */
 	function handleWindowKeydown(event: KeyboardEvent): void {
 		if (event.key === 'Escape' && selectedIds.length > 0) {
-			syncSelection(null);
+			closePanel();
 		}
 	}
 
@@ -409,6 +447,9 @@
 							selected={selectedIds.length > 0 ? selectedIds : null}
 							label={$_('places_map_label')}
 							onselect={pickMarker}
+							{describeCluster}
+							{returnFocus}
+							{returnFocusToken}
 							bind:tiles={mapState}
 							bind:attribution={mapAttribution}
 						/>
