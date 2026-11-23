@@ -34,7 +34,7 @@
 	import Minus from '@lucide/svelte/icons/minus';
 	import Star from '@lucide/svelte/icons/star';
 	import Archive from '@lucide/svelte/icons/archive';
-	import Eye from '@lucide/svelte/icons/eye';
+	import ArchiveRestore from '@lucide/svelte/icons/archive-restore';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import X from '@lucide/svelte/icons/x';
@@ -209,7 +209,7 @@
 				title={$_('asset_unarchive')}
 				onclick={() => onaction('unhide')}
 			>
-				<Eye size={20} aria-hidden="true" />
+				<ArchiveRestore size={20} aria-hidden="true" />
 			</IconButton>
 		{/if}
 		{#if offers('trash')}
