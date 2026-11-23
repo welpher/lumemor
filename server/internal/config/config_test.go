@@ -190,7 +190,8 @@ func TestLoadFolderWatch(t *testing.T) {
 
 // TestLoadPublicURL pins the canonical-origin rule: unset or empty
 // stays empty (the request's own TLS state decides), a bare http(s)
-// origin is normalized without its trailing slash, and anything that
+// origin is normalized without its trailing slash or the scheme's
+// default port (a browser's Origin omits both), and anything that
 // is not an origin -- a path, a query, a fragment, credentials, a
 // non-http scheme -- fails the boot naming the variable.
 func TestLoadPublicURL(t *testing.T) {
@@ -204,6 +205,9 @@ func TestLoadPublicURL(t *testing.T) {
 		{"https origin", "https://photos.example.com", "https://photos.example.com", false},
 		{"http origin", "http://photos.example.com", "http://photos.example.com", false},
 		{"port kept", "https://photos.example.com:8443", "https://photos.example.com:8443", false},
+		{"https default port dropped", "https://photos.example.com:443", "https://photos.example.com", false},
+		{"http default port dropped", "http://photos.example.com:80", "http://photos.example.com", false},
+		{"non-default port under https kept", "https://photos.example.com:80", "https://photos.example.com:80", false},
 		{"trailing slash normalized", "https://photos.example.com/", "https://photos.example.com", false},
 		{"surrounding space trimmed", "  https://photos.example.com ", "https://photos.example.com", false},
 		{"a path is not an origin", "https://photos.example.com/photos", "", true},

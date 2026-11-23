@@ -198,6 +198,13 @@ func TestDeployTransportSameOrigin(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "a public origin's default port never blocks the browser's origin",
+			public: "https://photos.example.com:443",
+			host:   "lumemor:8244",
+			origin: "https://photos.example.com",
+			want:   true,
+		},
+		{
 			name:   "a foreign origin still does not match",
 			public: "https://photos.example.com",
 			host:   "lumemor:8244",
