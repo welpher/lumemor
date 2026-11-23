@@ -1022,6 +1022,135 @@ func TestRequireSession(t *testing.T) {
 	})
 }
 
+// TestSessionCookieSecureFollowsDeploymentTransport pins the cookie's
+// Secure flag and the recorded client address against the deployment's
+// transport knobs: the unset instance keeps the plain-HTTP cookie, an
+// https public origin marks it Secure even though the proxied request is
+// plain HTTP, a trusted proxy's https report counts, and an untrusted
+// peer's spoofed report buys neither a Secure cookie nor a forged
+// session address. The logout refresh repeats the same determination, so
+// a browser drops the cookie it holds.
+func TestSessionCookieSecureFollowsDeploymentTransport(t *testing.T) {
+	pool := newSetupEnv(t)
+	userID, _ := seedPlainUser(t, pool, "grace@example.com")
+
+	cases := []struct {
+		name       string
+		public     string
+		trusted    []string
+		peer       string
+		proto      string
+		xff        string
+		wantSecure bool
+		wantIP     string
+	}{
+		{
+			name:   "unset deployment keeps the plain-HTTP cookie",
+			peer:   "192.168.1.20:41000",
+			wantIP: "192.168.1.20",
+		},
+		{
+			name:       "an https public origin marks it Secure",
+			public:     "https://photos.example.com",
+			peer:       "10.0.0.5:41000",
+			wantSecure: true,
+			wantIP:     "10.0.0.5",
+		},
+		{
+			name:   "an http public origin does not",
+			public: "http://photos.example.com",
+			peer:   "10.0.0.5:41000",
+			wantIP: "10.0.0.5",
+		},
+		{
+			name:       "a trusted proxy's https report marks it Secure",
+			trusted:    []string{"10.0.0.0/8"},
+			peer:       "10.0.0.5:41000",
+			proto:      "https",
+			xff:        "203.0.113.9",
+			wantSecure: true,
+			wantIP:     "203.0.113.9",
+		},
+		{
+			name:    "an untrusted peer's spoofed report changes nothing",
+			trusted: []string{"10.0.0.0/8"},
+			peer:    "192.168.1.20:41000",
+			proto:   "https",
+			xff:     "203.0.113.9",
+			wantIP:  "192.168.1.20",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			router := NewRouter(&Deps{
+				Pool:           pool,
+				Version:        testVersion,
+				PublicURL:      tc.public,
+				TrustedProxies: mustPrefixes(t, tc.trusted...),
+			})
+			login := func() *httptest.ResponseRecorder {
+				req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+					strings.NewReader(loginBody(t, "grace@example.com", testPassword)))
+				req.Header.Set("Content-Type", "application/json")
+				req.RemoteAddr = tc.peer
+				if tc.proto != "" {
+					req.Header.Set("X-Forwarded-Proto", tc.proto)
+				}
+				if tc.xff != "" {
+					req.Header.Set("X-Forwarded-For", tc.xff)
+				}
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, req)
+				return rec
+			}
+
+			rec := login()
+			if rec.Code != http.StatusOK {
+				t.Fatalf("login: status = %d, want %d (body %q)", rec.Code, http.StatusOK, rec.Body.String())
+			}
+			cookie := sessionCookie(t, rec)
+			if cookie.Secure != tc.wantSecure {
+				t.Errorf("login cookie Secure = %v, want %v", cookie.Secure, tc.wantSecure)
+			}
+
+			// The recorded session address comes from the same derived
+			// client: a spoofed header never lands in the device list.
+			var recorded pgtype.Text
+			if err := pool.QueryRow(t.Context(),
+				`SELECT ip_address FROM sessions WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT 1`,
+				userID).Scan(&recorded); err != nil {
+				t.Fatalf("read the recorded session address: %v", err)
+			}
+			if recorded.String != tc.wantIP {
+				t.Errorf("session ip_address = %q, want %q", recorded.String, tc.wantIP)
+			}
+
+			// The expiry refresh (logout) repeats the login's answer.
+			logout := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+			logout.RemoteAddr = tc.peer
+			if tc.proto != "" {
+				logout.Header.Set("X-Forwarded-Proto", tc.proto)
+			}
+			if tc.xff != "" {
+				logout.Header.Set("X-Forwarded-For", tc.xff)
+			}
+			logout.AddCookie(cookie)
+			logoutRec := httptest.NewRecorder()
+			router.ServeHTTP(logoutRec, logout)
+			if logoutRec.Code != http.StatusNoContent {
+				t.Fatalf("logout: status = %d, want %d (body %q)", logoutRec.Code, http.StatusNoContent, logoutRec.Body.String())
+			}
+			expired := sessionCookie(t, logoutRec)
+			if expired.MaxAge != -1 {
+				t.Errorf("logout cookie MaxAge = %d, want -1", expired.MaxAge)
+			}
+			if expired.Secure != tc.wantSecure {
+				t.Errorf("logout cookie Secure = %v, want %v", expired.Secure, tc.wantSecure)
+			}
+		})
+	}
+}
+
 // contains reports whether the fields slice holds name.
 func contains(fields []string, name string) bool {
 	for _, field := range fields {
