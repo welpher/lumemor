@@ -3,9 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 // The end-to-end suite of the web app: one browser driving the real
 // compose stack (docker-compose.yml, the server at
 // http://localhost:8244). The stack's lifecycle is owned by the
-// caller -- scripts/acceptance_m2d.sh builds it, waits for /healthz
-// and tears it down -- so this config only pins how the suite talks
-// to it. See web/e2e/ for the M2 full-chain story the suite walks.
+// caller -- scripts/e2e-suite.sh builds it, waits for /healthz and
+// tears it down, once per spec -- so this config only pins how the
+// suite talks to it. See web/e2e/ for the stories the suite walks.
 export default defineConfig({
 	testDir: 'e2e',
 	// One stack, one story: the scenes build on one another (the

@@ -1,10 +1,9 @@
 // The M2 full-chain story of the web app, walked end to end against
-// the real compose stack (scripts/acceptance_m2d.sh builds the stack
-// and waits for /healthz before running this suite; the spec itself
-// only talks to http://localhost:8244). The stack is fresh and
-// uninitialized when the suite starts -- the story performs the
-// first-run bootstrap itself, exactly like the shell acceptance
-// scripts do, through the setup API.
+// the real compose stack (scripts/e2e-suite.sh builds the stack and
+// waits for /healthz before running this spec on its own fresh
+// instance; the spec itself only talks to http://localhost:8244). The
+// story performs the first-run bootstrap itself, through the setup
+// API -- the reason every spec owns one stack lifetime.
 //
 // THE SCENES (the full-chain script, in order):
 //

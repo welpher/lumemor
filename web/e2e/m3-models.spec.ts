@@ -1,7 +1,7 @@
 // The M3 model management story of the web app, walked end to end
-// against the real compose stack. scripts/acceptance_m3a.sh builds
-// and owns the stack (its phase 3), waits for /healthz and then runs
-// this spec; the spec itself only talks to http://localhost:8244.
+// against the real compose stack. scripts/e2e-suite.sh builds the
+// stack, waits for /healthz and runs this spec on its own fresh
+// instance; the spec itself only talks to http://localhost:8244.
 //
 // THE STACK ARRANGEMENT (the honest reuse path, documented): the
 // stack is fresh (its database volume was removed before it started)

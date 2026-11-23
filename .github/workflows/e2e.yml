@@ -1,21 +1,15 @@
-# Continuous integration for the end-to-end acceptance: the full M3d
-# chain on a real compose stack. The job installs the web toolchain
-# and Playwright's chromium, then runs scripts/acceptance_m3d.sh,
-# which chains the entire M1/M2/M3a/M3b/M3c acceptance line (the M2d
-# chain, including the M2 web story through a real browser, the M3a
-# model pipeline acceptance, the M3b people story and the M3c albums
-# and sharing story) and then walks the M3d search and places story
-# itself: the search surface's API walkthrough on a fresh stack (two
-# accounts, the member's seeded library -- the Beijing GPS photo, the
-# Chinese OCR photo, the face pair, the wildcard decoy and the
-# private photo -- the FTS and semantic arms, the deterministic
-# rank-fusion merge with its mode-tagged cursor pages, the facet
-# counts, the person and place filters, the tags domain's idempotent
-# create and honest batch skips, the sharee's visibility over both
-# arms, and the places locale join) and the M3d search story of the
-# web app through a real browser. The path filters keep this
-# workflow from running on changes that cannot affect it; the
-# workflow also runs when its own definition changes.
+# Continuous integration for the end-to-end suite: every Playwright
+# spec drives one fresh compose stack. The job installs the web
+# toolchain and Playwright's chromium, then runs scripts/e2e-suite.sh,
+# which builds the image once, boots the stack per spec (the first-run
+# setup belongs to the spec), walks the M1/M2/M3 stories and the later
+# blocks' scenes, and tears each stack down. The storage bind survives
+# the resets so model weights download once.
+#
+# The heavy tier is ON DEMAND, not per-PR: the per-block discipline
+# runs the specs locally on fresh stacks, and this workflow is the
+# outside-in reproduction -- dispatched when wanted, and kept from
+# rotting by the monthly schedule.
 
 name: e2e
 
@@ -65,11 +59,13 @@ jobs:
       - name: Install Playwright's chromium
         run: cd web && pnpm exec playwright install --with-deps chromium
 
-      - name: Run the M3d acceptance
-        run: scripts/acceptance_m3d.sh
+      - name: Run the Playwright suite (a fresh stack per spec)
+        run: scripts/e2e-suite.sh
+        timeout-minutes: 180
 
       # The suite's failure artifacts (traces, screenshots, videos of
-      # the scenes) land under web/test-results/.
+      # the scenes) land under web/test-results/ (the last spec's, when
+      # an earlier stack already tore its directory down).
       - name: Upload test artifacts
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,8 +1,7 @@
 // The M3b people story of the web app, walked end to end against the
-// real compose stack. scripts/acceptance_m3b.sh chains the M3a
-// acceptance (which itself chains the whole M1/M2 line) and then
-// starts this spec's own fresh stack; the spec itself only talks to
-// http://localhost:8244.
+// real compose stack. scripts/e2e-suite.sh gives this spec its own
+// fresh instance (the first-run setup belongs to the spec); the spec
+// itself only talks to http://localhost:8244.
 //
 // THE STACK ARRANGEMENT (the honest reuse path, documented): the
 // stack is fresh (its database volume was removed before it started)

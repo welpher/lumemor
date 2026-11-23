@@ -68,6 +68,6 @@ One page so you can add a feature without spelunking.
 - `i18n/` — `en.json` + `zh-Hans.json`.
 - `docker/server.Dockerfile` — the image build (the geodata bake, the
   model-manifest fetch machinery, the onnxruntime pin).
-- `scripts/acceptance_m*.sh` — the serial acceptance chain (each script
-  owns a compose stack; `acceptance_m3d.sh` chains the whole line).
+- `scripts/e2e-suite.sh` — the end-to-end suite runner: one fresh
+  compose stack per Playwright spec, torn down after each.
 - `AGENTS.md`, `docs/rules/`, `CONTRIBUTING.md` — the conventions stack.

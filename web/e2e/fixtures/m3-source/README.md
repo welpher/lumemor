@@ -13,7 +13,7 @@ container sees, with no allowlist layer left to open.
   (`server/internal/ml/testdata/`), arriving through the source path
   this time: referenced in place, never uploaded.
 - `trip-2026/` holds the four photos the search acceptance
-  story's album gathers (scripts/acceptance_m3d.sh) -- byte-identical copies
+  story's album gathers (the m3-search spec) -- byte-identical copies
   of the four fixtures that story's administrator uploads first (the
   Beijing GPS photo, the Chinese OCR photo, and the same-person face
   pair), so the scan's owner+checksum dedup answers each file with

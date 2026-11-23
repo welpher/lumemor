@@ -1,8 +1,7 @@
 // The M3d search and places story of the web app, walked end to end
-// against the real compose stack. scripts/acceptance_m3d.sh chains
-// the M3c acceptance (which itself chains the whole M1/M2/M3a/M3b
-// line) and then starts this spec's own fresh stack; the spec itself
-// only talks to http://localhost:8244.
+// against the real compose stack. scripts/e2e-suite.sh gives this
+// spec its own fresh instance (the first-run setup belongs to the
+// spec); the spec itself only talks to http://localhost:8244.
 //
 // THE STACK ARRANGEMENT (the honest reuse path, the m3-albums
 // arrangement): the stack is fresh (its database volume was removed
