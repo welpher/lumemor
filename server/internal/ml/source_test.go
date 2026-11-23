@@ -121,6 +121,45 @@ func TestProbeTimesOutAndCleansStaging(t *testing.T) {
 	}
 }
 
+// TestProbeTTLStartsAtSettle pins the record lifetime rule: a probe that
+// is still fetching outlives the TTL (its own deadline is the bound),
+// and the TTL of a settled probe counts from the settle, not from the
+// start -- so a long transfer does not lose its own result the moment
+// it finishes.
+func TestProbeTTLStartsAtSettle(t *testing.T) {
+	start := time.Unix(0, 0).UTC()
+	now := start
+	pm := NewProbeManager(t.TempDir(), nil, nil, nil, func() time.Time { return now })
+
+	pm.put(&ProbeSnapshot{ID: "running", State: ProbeRunning})
+	settled := &ProbeSnapshot{ID: "settled", State: ProbeRunning}
+	pm.put(settled)
+
+	// The transfer takes ten minutes, then settles.
+	now = start.Add(10 * time.Minute)
+	pm.fail(settled, "done")
+
+	// Twenty-four minutes in: the running record is older than the TTL
+	// but must stay (the dialog still polls it), and the settled one is
+	// only fourteen minutes past its settle.
+	now = start.Add(24 * time.Minute)
+	if _, ok := pm.Get("running"); !ok {
+		t.Fatal("a running probe was expired before its fetch deadline")
+	}
+	if _, ok := pm.Get("settled"); !ok {
+		t.Fatal("a settled probe expired before its TTL since settling")
+	}
+
+	// Sixteen minutes after settling is past the TTL.
+	now = start.Add(26 * time.Minute)
+	if _, ok := pm.Get("running"); !ok {
+		t.Fatal("a running probe was expired before its fetch deadline")
+	}
+	if _, ok := pm.Get("settled"); ok {
+		t.Fatal("a settled probe outlived its TTL since settling")
+	}
+}
+
 // TestProbeRefusesUndeclaredRedirectHop pins the per-hop gate: a
 // redirect from a declared host to a host outside the list aborts the
 // fetch with the refused host named, and the probe settles as the usual
