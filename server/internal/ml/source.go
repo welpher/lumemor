@@ -148,6 +148,11 @@ type ProbeSnapshot struct {
 	Reason      string
 	StagingPath string
 	CreatedAt   time.Time
+	// settledAt is when the probe left the running state; zero while it
+	// is still fetching. The TTL counts from here, so a legitimately
+	// long transfer (up to the fetch deadline) does not expire its own
+	// record the moment it finishes.
+	settledAt time.Time
 }
 
 // probeHosts answers the download sources list a URL candidate's host
@@ -519,6 +524,7 @@ func (pm *ProbeManager) inspect(record *ProbeSnapshot) {
 	if !record.Declared {
 		record.State = ProbeWarn
 	}
+	record.settledAt = pm.now()
 	pm.mu.Unlock()
 }
 
@@ -759,6 +765,7 @@ func (pm *ProbeManager) fail(record *ProbeSnapshot, reason string) {
 	pm.mu.Lock()
 	record.State = ProbeError
 	record.Reason = reason
+	record.settledAt = pm.now()
 	if record.StagingPath != "" {
 		_ = os.Remove(record.StagingPath)
 		record.StagingPath = ""
@@ -793,10 +800,18 @@ func (pm *ProbeManager) remove(id string) {
 	pm.mu.Unlock()
 }
 
+// expireLocked drops settled probes (and their staged bytes) once the
+// TTL since they settled has passed. A probe still fetching is left
+// alone: its own deadline bounds it, and expiring it mid-transfer would
+// hide the record from the dialog polling it while the fetch keeps
+// writing into a staging file nothing would ever clean up.
 func (pm *ProbeManager) expireLocked() {
 	now := pm.now()
 	for id, record := range pm.records {
-		if now.Sub(record.CreatedAt) > ProbeTTL {
+		if record.settledAt.IsZero() {
+			continue
+		}
+		if now.Sub(record.settledAt) > ProbeTTL {
 			if record.StagingPath != "" {
 				_ = os.Remove(record.StagingPath)
 			}
