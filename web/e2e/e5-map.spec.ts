@@ -185,7 +185,13 @@ test.describe('the signed-in scenes', () => {
 		// The settings page is the collapsed index (E33): each card's
 		// facts live inside its fold.
 		const openCard = async (testId: string): Promise<void> => {
-			await page.getByTestId(testId).locator('summary').click();
+			const card = page.getByTestId(testId);
+			// Ensure-open, not a blind toggle: the remembered expanded
+			// set may already have opened this card, and a second click
+			// would close it.
+			if ((await card.getAttribute('open')) === null) {
+				await card.locator('summary').click();
+			}
 		};
 		await openCard('admin-settings-update');
 		await openCard('admin-settings-tiles');
