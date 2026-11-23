@@ -1,8 +1,7 @@
 # mobile
 
-Flutter app.
+The mobile app is not part of this repository and has not been started.
 
-- Riverpod for state management; drift for the offline timeline cache
-- photomanager for library access; background_downloader for background backup (Android WorkManager / iOS BGTaskScheduler)
-- First-run pairing: mDNS discovery + QR code + manual URL fallback
-- API clients are generated from the root `openapi/` spec (dart-dio) — never hand-written
+This directory is a placeholder. The integration point for any future
+client is the OpenAPI contract in [`../openapi/lumemor.yaml`](../openapi/lumemor.yaml);
+the web app in [`../web/`](../web) is the reference UI.
