@@ -181,6 +181,114 @@ wider than the LAN: put a reverse proxy with TLS in front (Caddy/nginx
 or a tunnels solution), and complete the wizard before the port is
 reachable.
 
+### The reverse proxy setup
+
+TLS terminates at the proxy, so the server sees a plain-HTTP request
+and cannot tell what the browser used. Two deployment-level variables
+tell it, and neither is an instance setting (the network topology
+belongs to the deployment, not to the family's settings page):
+
+```yaml
+    environment:
+      LUMEMOR_PUBLIC_URL: "https://photos.example.com"
+      LUMEMOR_TRUSTED_PROXIES: "172.18.0.0/16"
+```
+
+- **`LUMEMOR_PUBLIC_URL`** — the origin browsers type (scheme and host
+  only, no path). When it is an `https` origin the session cookie gets
+  the `Secure` attribute, every response carries
+  `Strict-Transport-Security: max-age=31536000` (no `preload`, no
+  `includeSubDomains`), and the CSRF check accepts that origin even
+  when the proxy rewrites the `Host` header. A malformed value (a path,
+  a query, a non-http scheme) stops the boot and names the variable.
+- **`LUMEMOR_TRUSTED_PROXIES`** — the proxy's own addresses as a
+  comma-separated CIDR list (IPv4 and IPv6; a bare address names one
+  host). A request whose socket peer is on the list has its client
+  address taken from `X-Forwarded-For` (that address keys the login
+  rate limit and lands in the signed-in-devices list) and its
+  `X-Forwarded-Proto: https` believed for the cookie and HSTS
+  decisions. A peer outside the list has its forwarded headers ignored,
+  so a direct client cannot forge either one. A malformed entry stops
+  the boot and names the variable.
+
+> **List only the proxy's own address.** Every peer inside the prefix
+> may assert `X-Forwarded-For` and `X-Forwarded-Proto`, and the client
+> address walk steps past trusted hops to the right: a prefix wide
+> enough to cover real clients (the family LAN, `0.0.0.0/0`) lets a
+> host inside it forge its client address and escape the login
+> lockout.
+
+With `LUMEMOR_PUBLIC_URL` set, the trusted-proxy list is optional (the
+public origin already answers the scheme question); without it, the
+list alone is enough when the proxy sends `X-Forwarded-Proto`. Set both
+if the proxy also forwards the client address and you want real
+per-device rate limiting and a truthful device-list address.
+
+A Caddy that terminates TLS itself (the shortest correct setup):
+
+```caddyfile
+photos.example.com {
+    reverse_proxy lumemor:8244
+}
+```
+
+Caddy obtains and renews the certificate and sends `Host`,
+`X-Forwarded-For` and `X-Forwarded-Proto` on its own; add its compose
+address to `LUMEMOR_TRUSTED_PROXIES` if you also want the client
+addresses.
+
+An nginx front for a certificate you already hold:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name photos.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/photos.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/photos.example.com/privkey.pem;
+
+    # The upload ceiling: the server's per-file limit (2 GiB by
+    # default) must fit through the proxy, and uploads stream
+    # instead of being buffered to disk first.
+    client_max_body_size 2g;
+    proxy_request_buffering off;
+
+    location / {
+        proxy_pass http://127.0.0.1:8244;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # The activity stream (SSE) and media downloads stream
+        # through; buffering them would stall both.
+        proxy_buffering off;
+        proxy_read_timeout 2h;
+    }
+}
+```
+
+**HSTS is sticky.** Once a browser has seen
+`Strict-Transport-Security` for the host it refuses plain HTTP to it
+for a year. Only set `LUMEMOR_PUBLIC_URL` to an `https` origin once TLS
+at the proxy actually works. Serve a port-80 name that redirects to
+https (`return 301 https://$host$request_uri`): HSTS only starts
+protecting after the first https response, so the redirect covers the
+first visit.
+
+**An https public origin signs browsers in over https only.** The
+session cookie carries `Secure`, so the same browser reaching the
+instance by LAN IP or plain http will not be signed in. That is the
+point of the setting -- keep the LAN address out of day-to-day use once
+the public deployment is live.
+
+**With neither variable set nothing changes.** The LAN deployment is
+first-class: no `Secure` cookie, no HSTS, the request's own connection
+decides, the CSRF check compares `Host`, and every browser behind a
+proxy shares one rate-limit bucket while the device list shows the
+proxy's address. That is the same behaviour as before these variables
+existed.
+
 ## Data safety
 
 Everything durable lives in `./lumemor/` (photos, derivatives, models)

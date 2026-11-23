@@ -84,6 +84,31 @@ func main() {
 	}
 }
 
+// newHTTPServer builds the HTTP server around the router with the
+// transport timeouts this deployment pins. The bounds are deliberate:
+//
+//   - ReadHeaderTimeout catches a client that opens a connection and
+//     dribbles its headers;
+//   - IdleTimeout reclaims keep-alive connections nobody is using;
+//   - ReadTimeout is generous (2h) because it also covers the request
+//     body, and a 2 GiB upload on a slow link is legitimate;
+//   - WriteTimeout is deliberately UNSET: it would cut a large media
+//     download mid-stream, and the read bound plus the client's own
+//     connection lifetime already keep an abandoned request finite.
+//
+// The multipart upload route sits outside the per-request JSON
+// handler timeout; its only bound is this read timeout plus the
+// receiver's per-file size cap.
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       2 * time.Hour,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
 // run executes the server lifecycle: load config, prepare the storage
 // layout, connect to the database and apply migrations, start the HTTP
 // server, then shut down gracefully on SIGINT/SIGTERM.
@@ -297,68 +322,70 @@ func run(logger *slog.Logger) error {
 	go releaseChecker.Run(ctx)
 	logger.Info("release check started", "disabled", cfg.UpdateCheckDisabled, "version", buildinfo.Version)
 
-	srv := &http.Server{
-		Addr: cfg.Listen,
-		Handler: api.NewRouter(&api.Deps{
-			Pool:    pool,
-			Logger:  logger,
-			Version: buildinfo.Version,
-			Events:  bus,
-			// The upload endpoint stages and finalizes files under the
-			// data root and honors the configured per-file size limit.
-			DataDir:          cfg.DataDir,
-			UploadLimitBytes: cfg.UploadLimitBytes,
-			// The upload handler enqueues the metadata job of every
-			// committed asset through the queue.
-			Jobs: queue,
-			// The download endpoint enqueues the default model group's
-			// download through the same queue.
-			ModelDownloads: queue,
-			// The model management endpoints share the registry and
-			// its models dir with the job queue, and the rerun
-			// endpoint enqueues through the same queue.
-			Models:    registry,
-			ModelsDir: modelsDir,
-			MlReruns:  queue,
-			// The source pipeline's host check reads the same
-			// allowed-hosts list the downloader's transport gate
-			// reads: one settings document owns both.
-			ProbeHosts: func() []string {
-				settings, err := db.ModelSettingsOf(context.Background(), queries)
-				if err != nil {
-					logger.Warn("read the model download sources; answering the defaults", "error", err)
-				}
-				return settings.AllowedHosts
-			},
-			// The places re-resolution endpoint enqueues through the
-			// same queue.
-			PlacesReruns: queue,
-			// The manual location edit resolves its place against the
-			// same in-memory grid the metadata job's GPS step uses.
-			Places: placeIndex,
-			// The derivative rebuild endpoint enqueues through the
-			// same queue.
-			DerivativesRebuilds: queue,
-			// The album rescan endpoint enqueues through the same
-			// queue.
-			AlbumRescans: queue,
-			// The instance-wide rescan sweep's endpoint enqueues
-			// through the same queue.
-			AlbumRescanAlls: queue,
-			// The release check face reads and runs the checker the
-			// schedule above drives.
-			UpdateChecks: releaseChecker,
-			Initialized: func(ctx context.Context) bool {
-				admins, err := queries.CountAdmins(ctx)
-				if err != nil {
-					logger.Error("count admins for root routing", "error", err)
-					return false
-				}
-				return admins > 0
-			},
-		}),
-		ReadHeaderTimeout: 10 * time.Second,
-	}
+	srv := newHTTPServer(cfg.Listen, api.NewRouter(&api.Deps{
+		Pool:    pool,
+		Logger:  logger,
+		Version: buildinfo.Version,
+		Events:  bus,
+		// The upload endpoint stages and finalizes files under the
+		// data root and honors the configured per-file size limit.
+		DataDir:          cfg.DataDir,
+		UploadLimitBytes: cfg.UploadLimitBytes,
+		// The upload handler enqueues the metadata job of every
+		// committed asset through the queue.
+		Jobs: queue,
+		// The download endpoint enqueues the default model group's
+		// download through the same queue.
+		ModelDownloads: queue,
+		// The model management endpoints share the registry and
+		// its models dir with the job queue, and the rerun
+		// endpoint enqueues through the same queue.
+		Models:    registry,
+		ModelsDir: modelsDir,
+		MlReruns:  queue,
+		// The source pipeline's host check reads the same
+		// allowed-hosts list the downloader's transport gate
+		// reads: one settings document owns both.
+		ProbeHosts: func() []string {
+			settings, err := db.ModelSettingsOf(context.Background(), queries)
+			if err != nil {
+				logger.Warn("read the model download sources; answering the defaults", "error", err)
+			}
+			return settings.AllowedHosts
+		},
+		// The places re-resolution endpoint enqueues through the
+		// same queue.
+		PlacesReruns: queue,
+		// The manual location edit resolves its place against the
+		// same in-memory grid the metadata job's GPS step uses.
+		Places: placeIndex,
+		// The derivative rebuild endpoint enqueues through the
+		// same queue.
+		DerivativesRebuilds: queue,
+		// The album rescan endpoint enqueues through the same
+		// queue.
+		AlbumRescans: queue,
+		// The instance-wide rescan sweep's endpoint enqueues
+		// through the same queue.
+		AlbumRescanAlls: queue,
+		// The release check face reads and runs the checker the
+		// schedule above drives.
+		UpdateChecks: releaseChecker,
+		// The deployment's transport facts: the public origin and
+		// the trusted-proxy prefixes decide the Secure cookie,
+		// HSTS, the CSRF host set and the client address. Both
+		// empty is the direct/LAN deployment, unchanged.
+		PublicURL:      cfg.PublicURL,
+		TrustedProxies: cfg.TrustedProxies,
+		Initialized: func(ctx context.Context) bool {
+			admins, err := queries.CountAdmins(ctx)
+			if err != nil {
+				logger.Error("count admins for root routing", "error", err)
+				return false
+			}
+			return admins > 0
+		},
+	}))
 
 	serveErr := make(chan error, 1)
 	go func() {

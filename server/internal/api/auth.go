@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -83,7 +82,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	// The rate-limit gate runs before any credential work so a locked
 	// pair burns no Argon2 and, crucially, cannot succeed its way out
 	// of the lock.
-	key := remoteIP(r) + "|" + email
+	key := s.transport.remoteIP(r) + "|" + email
 	if !s.limiter.Allow(key) {
 		seconds := int64(math.Ceil(s.limiter.RetryAfter(key).Seconds()))
 		if seconds < 1 {
@@ -137,9 +136,9 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		Kind:       dbgen.SessionKindWeb,
 		DeviceName: deviceLabel(r),
 		// The creation-time address the device list renders; the
-		// socket peer, never a forwarded header (the same trust rule
-		// as the rate-limit key).
-		IpAddress:  pgtype.Text{String: remoteIP(r), Valid: true},
+		// derived client address (the socket peer unless a trusted
+		// proxy forwards it -- the same rule as the rate-limit key).
+		IpAddress:  pgtype.Text{String: s.transport.remoteIP(r), Valid: true},
 		LastSeenAt: pgtype.Timestamptz{Time: now, Valid: true},
 		ExpiresAt:  pgtype.Timestamptz{Time: now.Add(webSessionTTL), Valid: true},
 	})
@@ -156,7 +155,10 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   int(webSessionTTL / time.Second),
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		// Secure follows the deployment's transport policy: the
+		// request's own TLS state, the https public origin, or a
+		// trusted proxy's https report.
+		Secure:   s.transport.requestIsHTTPS(r),
 		SameSite: http.SameSiteStrictMode,
 	})
 
@@ -185,7 +187,7 @@ func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, r, "revoke session", err)
 		return
 	}
-	expireSessionCookie(w, r)
+	s.expireSessionCookie(w, r)
 	s.publishSessionEvent("session.revoked", pgUUID(user.sessionID), user.kind)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -236,7 +238,7 @@ func (s *server) RevokeSession(w http.ResponseWriter, r *http.Request, id oapity
 		s.publishSessionEvent("session.revoked", pgUUID(id), kind)
 	}
 	if id == user.sessionID {
-		expireSessionCookie(w, r)
+		s.expireSessionCookie(w, r)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -267,15 +269,17 @@ func (s *server) publishLoginFailed(email string) {
 }
 
 // expireSessionCookie instructs web clients to drop the session cookie
-// by re-issuing it with a past expiry.
-func expireSessionCookie(w http.ResponseWriter, r *http.Request) {
+// by re-issuing it with a past expiry. The refreshed cookie repeats the
+// login's Secure determination, so a browser drops the https cookie it
+// holds even though the proxied request arrives as plain HTTP.
+func (s *server) expireSessionCookie(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.TLS != nil,
+		Secure:   s.transport.requestIsHTTPS(r),
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -320,18 +324,6 @@ func deviceLabel(r *http.Request) string {
 		agent = string([]rune(agent)[:maxDeviceNameRunes])
 	}
 	return agent
-}
-
-// remoteIP extracts the client address of the rate-limit key. It is
-// deliberately the socket peer, never a forwarded header: trusting
-// X-Forwarded-For would let any client forge (and bypass) its bucket.
-// Behind a reverse proxy all browser clients share one bucket -- an
-// accepted trade-off for the family-LAN deployment.
-func remoteIP(r *http.Request) string {
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 // pgUUID wraps a uuid.UUID as the pgtype the generated queries take.

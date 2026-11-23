@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -136,6 +137,16 @@ type Deps struct {
 	// whatever the asset already carried (the feature-off wiring,
 	// the metadata step's own discipline).
 	Places *geodata.Index
+	// PublicURL is the deployment's canonical public origin
+	// ("https://photos.example.com"), empty when the instance is
+	// reached directly. It decides the Secure cookie and HSTS for a
+	// TLS-terminating proxy and adds the origin to the CSRF check's
+	// accepted hosts.
+	PublicURL string
+	// TrustedProxies are the reverse-proxy peers whose forwarded
+	// address and scheme headers are believed. Empty trusts the
+	// socket peer only.
+	TrustedProxies []netip.Prefix
 }
 
 // AssetJobEnqueuer enqueues the asset pipeline's jobs. It is the seam
@@ -334,12 +345,25 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// The same trade for the pairing budget: a restart forgets the
 		// day's count, the daily window re-arms at UTC midnight.
 		pairingBudget: auth.NewDailyLimiter(pairingDailyLimit, nil),
+		// The deployment's transport facts: the public origin and the
+		// trusted-proxy prefixes decide the Secure cookie, HSTS, the
+		// CSRF host set and the client address. Both empty is the
+		// direct/LAN deployment, where every answer comes from the
+		// socket alone.
+		transport: newDeployTransport(deps.PublicURL, deps.TrustedProxies),
 	}
 	if s.version == "" {
 		s.version = buildinfo.Version
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()
+	}
+	// A public origin that does not parse would silently drop the
+	// Secure cookie, HSTS and the public-origin CSRF branch -- config
+	// loading validates it first, so this only fires on a wiring bug.
+	if deps.PublicURL != "" && s.transport.publicHost == "" {
+		s.logger.Warn("the configured public origin did not parse; the deployment's https transport policy is off",
+			"value", deps.PublicURL)
 	}
 	// A nil Initialized keeps the root on the wizard: only production
 	// wiring and tests that exercise / need the real predicate.
@@ -351,8 +375,9 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	r := chi.NewRouter()
 	// Root-level middleware: the security headers cover every response
 	// the server emits -- pages, the SPA shell and its assets, the API,
-	// and the operational endpoints (the HTML-surface item).
-	r.Use(setSecurityHeaders)
+	// and the operational endpoints (the HTML-surface item), with HSTS
+	// joining them once the deployment is known to be https.
+	r.Use(s.transport.securityHeaders)
 	r.Get("/healthz", handleHealthz)
 	r.Handle("/metrics", promhttp.Handler())
 	r.Get("/setup", handleSetupPage)
@@ -374,7 +399,7 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 		// JSON body limit moved into the JSON group below so multipart
 		// uploads can stream past it (the receiver's own size limit
 		// governs them).
-		r.Use(checkOrigin)
+		r.Use(s.transport.checkOrigin)
 
 		// The wrapper reuses the generated request binders (the path
 		// uuid, the Last-Event-ID header) and routes their failures
@@ -832,6 +857,10 @@ type server struct {
 	// pairingBudget bounds pairing token generation per user per UTC
 	// day.
 	pairingBudget *auth.DailyLimiter
+	// transport is the deployment's transport policy: the public
+	// origin and trusted proxies that decide the Secure cookie, HSTS,
+	// the CSRF host set and the client address.
+	transport deployTransport
 	// dataDir is the photo data root the upload endpoint stages into.
 	dataDir string
 	// uploadLimit caps each uploaded file.
