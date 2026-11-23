@@ -211,11 +211,18 @@ belongs to the deployment, not to the family's settings page):
   so a direct client cannot forge either one. A malformed entry stops
   the boot and names the variable.
 
+> **List only the proxy's own address.** Every peer inside the prefix
+> may assert `X-Forwarded-For` and `X-Forwarded-Proto`, and the client
+> address walk steps past trusted hops to the right: a prefix wide
+> enough to cover real clients (the family LAN, `0.0.0.0/0`) lets a
+> host inside it forge its client address and escape the login
+> lockout.
+
 With `LUMEMOR_PUBLIC_URL` set, the trusted-proxy list is optional (the
 public origin already answers the scheme question); without it, the
 list alone is enough when the proxy sends `X-Forwarded-Proto`. Set both
 if the proxy also forwards the client address and you want real
-per-device rate limiting and device names.
+per-device rate limiting and a truthful device-list address.
 
 A Caddy that terminates TLS itself (the shortest correct setup):
 
@@ -264,7 +271,16 @@ server {
 **HSTS is sticky.** Once a browser has seen
 `Strict-Transport-Security` for the host it refuses plain HTTP to it
 for a year. Only set `LUMEMOR_PUBLIC_URL` to an `https` origin once TLS
-at the proxy actually works.
+at the proxy actually works. Serve a port-80 name that redirects to
+https (`return 301 https://$host$request_uri`): HSTS only starts
+protecting after the first https response, so the redirect covers the
+first visit.
+
+**An https public origin signs browsers in over https only.** The
+session cookie carries `Secure`, so the same browser reaching the
+instance by LAN IP or plain http will not be signed in. That is the
+point of the setting -- keep the LAN address out of day-to-day use once
+the public deployment is live.
 
 **With neither variable set nothing changes.** The LAN deployment is
 first-class: no `Secure` cookie, no HSTS, the request's own connection
