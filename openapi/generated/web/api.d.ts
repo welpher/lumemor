@@ -2983,7 +2983,7 @@ export interface paths {
          *     the caller's own tags, the titles of albums the caller can
          *     see (own albums and albums shared to them; the sync album is
          *     the timeline's face, not a filter), and the caller's own
-         *     non-hidden person labels. The query is a LITERAL substring,
+         *     person labels. The query is a LITERAL substring,
          *     never a pattern: the engine escapes its own wildcard
          *     characters, so `50%` matches the literal text `50%` and never
          *     globs. Word semantics, stemming and segmentation are out of
@@ -3020,7 +3020,7 @@ export interface paths {
          *     with no other filter is the whole visible timeline.
          *
          *     The FACETS count the current filtered set minus their own
-         *     dimension: `people` lists the caller's named, non-hidden
+         *     dimension: `people` lists the caller's named
          *     people with the number of assets of the current set (query
          *     and every filter applied EXCEPT personIds) that carry a face
          *     of that cluster; `places`, `years`, `cameras`, `kinds`,
@@ -8331,10 +8331,8 @@ export interface components {
          */
         SearchFacets: {
             /**
-             * @description The caller's named, non-hidden people: one entry per
-             *     labeled face cluster with a face on the current set.
-             *     Hidden labels never list (the hidden switch removes
-             *     the person from every face position).
+             * @description The caller's named people: one entry per labeled face
+             *     cluster with a face on the current set.
              */
             people: components["schemas"]["PersonFacetCount"][];
             /**

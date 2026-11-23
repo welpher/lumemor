@@ -33,9 +33,8 @@
 // server publishes are `{assetId, kind}` objects, the job.* payloads
 // are `{jobRunId, kind, total, done, failed, state}` maps, the
 // person.* payloads carry the cluster (or face) id beside the acting
-// user's id (label and hidden state are private per user, so the
-// subscriber filters by what it renders, never by another account's
-// change), and face.clustered carries the library's cluster totals
+// user's id (the label is private per user, so the subscriber filters
+// by what it renders, never by another account's change), and face.clustered carries the library's cluster totals
 // -- every value a string on the wire (the server publishes
 // map[string]string), the counts parsing through Number(); anything
 // else on the wire is ignored defensively rather than crashing
@@ -396,9 +395,9 @@ function parseJobEvent(name: JobEventName, message: MessageEvent): JobEvent | nu
 /**
  * Parse one SSE block into a PersonEvent; null when the block is not
  * the payload shape this module subscribes to. The wire payload is
- * all strings (the server publishes map[string]string), so the
- * hidden switch parses from 'true'/'false' and the merged sources
- * split on the comma -- anything else means the block is not for us.
+ * all strings (the server publishes map[string]string), so the merged
+ * sources split on the comma and the ids read as strings -- anything
+ * else means the block is not for us.
  */
 function parsePersonEvent(name: PersonEventName, message: MessageEvent): PersonEvent | null {
 	const base = baseEvent(message);
@@ -670,10 +669,10 @@ export function subscribeJobEvents(listener: JobEventListener): () => void {
 
 /**
  * Subscribe to the parsed person.* events of the activity stream --
- * the people surface's label, hidden, merge and face-move writes,
- * riding the SAME refcounted EventSource as every other subscriber.
- * Returns the unsubscribe function; the stream closes when the last
- * subscriber of any kind unsubscribes.
+ * the people surface's label, birthdate/avatar, merge and face-move
+ * writes, riding the SAME refcounted EventSource as every other
+ * subscriber. Returns the unsubscribe function; the stream closes
+ * when the last subscriber of any kind unsubscribes.
  */
 export function subscribePersonEvents(listener: PersonEventListener): () => void {
 	personListeners.add(listener);

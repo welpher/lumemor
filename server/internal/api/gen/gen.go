@@ -4624,10 +4624,8 @@ type SearchFacets struct {
 	// Kinds The media families of the current set.
 	Kinds []KindFacetCount `json:"kinds"`
 
-	// People The caller's named, non-hidden people: one entry per
-	// labeled face cluster with a face on the current set.
-	// Hidden labels never list (the hidden switch removes
-	// the person from every face position).
+	// People The caller's named people: one entry per labeled face
+	// cluster with a face on the current set.
 	People []PersonFacetCount `json:"people"`
 
 	// Places The resolved places of the current set with the locale

@@ -7,7 +7,7 @@ void main() {
   // TODO add properties to the builder and call build()
 
   group(SearchFacets, () {
-    // The caller's named, non-hidden people: one entry per labeled face cluster with a face on the current set. Hidden labels never list (the hidden switch removes the person from every face position). 
+    // The caller's named people: one entry per labeled face cluster with a face on the current set. 
     // BuiltList<PersonFacetCount> people
     test('to test the property `people`', () async {
       // TODO

@@ -19,7 +19,7 @@ part 'search_facets.g.dart';
 /// The filter bar's counts over the current filtered set minus each dimension: a facet entry's `assetCount` answers \"how many results would I have if I added this value ON TOP of the current query and filters\" (the dimension's own filter parameters excluded). Every facet is caller-scoped exactly like the surface it summarizes: places count visible assets, tags and people are the caller's own, albums are the ones the caller can see. The lists are ordered by `assetCount` descending with a deterministic per-dimension tiebreak; they are not paginated (bounded by the family instance's vocabulary sizes, the tags listing's own shape). 
 ///
 /// Properties:
-/// * [people] - The caller's named, non-hidden people: one entry per labeled face cluster with a face on the current set. Hidden labels never list (the hidden switch removes the person from every face position). 
+/// * [people] - The caller's named people: one entry per labeled face cluster with a face on the current set. 
 /// * [places] - The resolved places of the current set with the locale display name (`locale` parameter, the `GET /places` join). 
 /// * [years] - The taken-at years of the current set, newest first: the time-range facet (the `from`/`to` filters are the dimension the year counts exclude). 
 /// * [cameras] - The EXIF camera makes/models of the current set. The `id` is the round-trip filter value (`make|model`); `make` and `model` are the display halves, null exactly when the EXIF row carries no value there. 
@@ -28,7 +28,7 @@ part 'search_facets.g.dart';
 /// * [tags] - The CALLER's tags with members in the current set (another account's tags never surface). 
 @BuiltValue()
 abstract class SearchFacets implements Built<SearchFacets, SearchFacetsBuilder> {
-  /// The caller's named, non-hidden people: one entry per labeled face cluster with a face on the current set. Hidden labels never list (the hidden switch removes the person from every face position). 
+  /// The caller's named people: one entry per labeled face cluster with a face on the current set. 
   @BuiltValueField(wireName: r'people')
   BuiltList<PersonFacetCount> get people;
 
