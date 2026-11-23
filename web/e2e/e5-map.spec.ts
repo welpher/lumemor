@@ -334,7 +334,17 @@ test.describe('the signed-in scenes', () => {
 		await expect(panel.locator('[data-place-panel-name]')).toHaveText('Beijing');
 		await expect(panel.locator('.tile').first().getByRole('link')).toHaveAccessibleName(PHOTO_GPS_NAME);
 
-		// The same pin collapses it again.
+		// Closing FROM INSIDE the panel hands the keyboard back to the
+		// pin that opened it -- the panel never strands focus.
+		await panel.locator('.places__panel-close').focus();
+		await panel.locator('.places__panel-close').click();
+		await expect(panel).toHaveCount(0);
+		await expect(pin).toBeFocused();
+
+		// Re-open through the pin; the same pin collapses it again
+		// (the focus is already there, so no hand-back is needed).
+		await pin.click();
+		await expect(panel).toBeVisible();
 		await pin.click();
 		await expect(panel).toHaveCount(0);
 	});
@@ -481,7 +491,9 @@ test.describe('the signed-in scenes', () => {
 		await page.getByTestId('places-rebuild-start').click();
 		await expect(page.locator('.toasts')).toContainText('Rebuild started; follow its progress on the Jobs page.');
 		await expect(page.getByTestId('places-rebuild-dialog')).toHaveCount(0);
-		await page.goto('/admin/jobs');
+		// The jobs page is a catalog plus a run list (E43): the run
+		// rows live on the Recent runs tab, the deep link's face.
+		await page.goto('/admin/jobs?tab=runs');
 		await expect(page.getByText('Places rerun').first()).toBeVisible();
 
 		// The run's own scope: the full walk covers the count the read
