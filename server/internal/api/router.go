@@ -358,6 +358,13 @@ func newRouter(deps *Deps, timeout time.Duration) *chi.Mux {
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
+	// A public origin that does not parse would silently drop the
+	// Secure cookie, HSTS and the public-origin CSRF branch -- config
+	// loading validates it first, so this only fires on a wiring bug.
+	if deps.PublicURL != "" && s.transport.publicHost == "" {
+		s.logger.Warn("the configured public origin did not parse; the deployment's https transport policy is off",
+			"value", deps.PublicURL)
+	}
 	// A nil Initialized keeps the root on the wizard: only production
 	// wiring and tests that exercise / need the real predicate.
 	initialized := deps.Initialized

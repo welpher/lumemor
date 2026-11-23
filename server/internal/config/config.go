@@ -314,7 +314,15 @@ func loadPublicURL() (string, error) {
 	if parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
 		return "", fmt.Errorf("%s must be a bare origin (scheme://host), got %q", EnvPublicURL, raw)
 	}
-	return parsed.Scheme + "://" + parsed.Host, nil
+	// Drop the scheme's default port. A browser's Origin omits it, so
+	// an explicitly written ":443" (or http's ":80") would otherwise
+	// never match the origin the browser sends -- and with a proxy that
+	// rewrites Host, that means every state-changing request is refused.
+	host := parsed.Host
+	if port := parsed.Port(); (parsed.Scheme == "https" && port == "443") || (parsed.Scheme == "http" && port == "80") {
+		host = strings.TrimSuffix(host, ":"+port)
+	}
+	return parsed.Scheme + "://" + host, nil
 }
 
 // loadTrustedProxies parses EnvTrustedProxies. An unset or empty

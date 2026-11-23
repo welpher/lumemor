@@ -61,6 +61,15 @@ func newDeployTransport(publicURL string, trusted []netip.Prefix) deployTranspor
 		return policy
 	}
 	policy.publicHost = parsed.Host
+	// Drop the scheme's default port: a browser's Origin omits it, so
+	// "https://photos.example.com:443" must match the browser's
+	// "https://photos.example.com" -- with a proxy that rewrites Host,
+	// the origin is the only way a state-changing request gets through.
+	// Config loading already canonicalizes; this keeps a directly wired
+	// Deps.PublicURL safe too.
+	if port := parsed.Port(); (parsed.Scheme == "https" && port == "443") || (parsed.Scheme == "http" && port == "80") {
+		policy.publicHost = strings.TrimSuffix(policy.publicHost, ":"+port)
+	}
 	policy.publicHTTPS = parsed.Scheme == "https"
 	return policy
 }
