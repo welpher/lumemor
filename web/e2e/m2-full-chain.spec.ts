@@ -675,6 +675,88 @@ test.describe('the signed-in scenes', () => {
 		await expect(page.getByRole('status').filter({ hasText: 'Connection lost — reconnecting' })).toHaveCount(0);
 	});
 
+	test('scene 11b: a read-only source greys the time edit and the delete; a PNG offers neither', async ({ page }) => {
+		// A directory album over the read-only fixture mount: the
+		// creation probe answers sourceWritable false, so the app may
+		// not write the source files.
+		const created = await page.request.post('/api/v1/albums', {
+			data: { title: 'Read-only source', rootPath: '/mnt/e2e-source/coastal-week', audience: [] }
+		});
+		expect(created.status()).toBe(201);
+		const album = (await created.json()) as { id: string; sourceWritable?: boolean };
+		expect(album.sourceWritable).toBe(false);
+
+		// The scan lands the fixture's members; take one asset id.
+		let assetId = '';
+		for (let attempt = 0; attempt < 60 && assetId === ''; attempt += 1) {
+			const detail = await page.request.get(`/api/v1/albums/${album.id}?limit=10`);
+			if (detail.ok()) {
+				const body = (await detail.json()) as { items?: Array<{ assetId?: string }> };
+				assetId = body.items?.[0]?.assetId ?? '';
+			}
+			if (assetId === '') {
+				await page.waitForTimeout(1000);
+			}
+		}
+		expect(assetId).not.toBe('');
+
+		// The detail's capability: the format is fine, the write grant
+		// is not.
+		const detailResponse = await page.request.get(`/api/v1/assets/${assetId}?locale=en`);
+		expect(detailResponse.status()).toBe(200);
+		const detail = (await detailResponse.json()) as {
+			metadataWritable?: boolean;
+			metadataSupported?: boolean;
+		};
+		expect(detail.metadataSupported).toBe(true);
+		expect(detail.metadataWritable).toBe(false);
+
+		// The viewer: the time edit and the delete are visible but
+		// disabled, the reason in the accessible name's title.
+		await page.goto(`/a/${assetId}`);
+		await page.getByRole('button', { name: 'Photo information' }).click();
+		const editDate = page.getByRole('button', { name: 'Edit date' });
+		await expect(editDate).toBeVisible();
+		await expect(editDate).toHaveAttribute('aria-disabled', 'true');
+		const trash = page.getByRole('button', { name: 'Trash', exact: true });
+		await expect(trash).toBeVisible();
+		await expect(trash).toHaveAttribute('aria-disabled', 'true');
+
+		// A PNG (a managed original): no standard capture-time field,
+		// so the time entry does not exist at all -- and the managed
+		// original stays deletable (the grant is the format's, not the
+		// source's).
+		const upload = await page.request.post('/api/v1/assets', {
+			multipart: {
+				deviceAssetId: 'm2d-e2e-png',
+				fileName: 'm2d-e2e.png',
+				deviceCreatedAt: '2026-06-06T12:00:00Z',
+				deviceTimeZone: 'UTC',
+				photo: {
+					name: 'm2d-e2e.png',
+					mimeType: 'image/png',
+					buffer: await readFile(path.join(specDir, 'fixtures', 'tile-256.png'))
+				}
+			}
+		});
+		expect(upload.status()).toBe(201);
+		const png = (await upload.json()) as { id: string };
+		const pngDetail = (await (await page.request.get(`/api/v1/assets/${png.id}?locale=en`)).json()) as {
+			metadataSupported?: boolean;
+			metadataWritable?: boolean;
+		};
+		expect(pngDetail.metadataSupported).toBe(false);
+		expect(pngDetail.metadataWritable).toBe(false);
+
+		await page.goto(`/a/${png.id}`);
+		await page.getByRole('button', { name: 'Photo information' }).click();
+		await expect(page.getByRole('button', { name: 'Edit date' })).toHaveCount(0);
+		await expect(page.getByRole('button', { name: 'Trash', exact: true })).not.toHaveAttribute(
+			'aria-disabled',
+			'true'
+		);
+	});
+
 	test('scene 12: signing out re-arms the route guard', async ({ page }) => {
 		await page.goto('/timeline');
 

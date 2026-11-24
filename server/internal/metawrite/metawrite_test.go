@@ -127,3 +127,31 @@ func TestStageVideoWritesCreationTime(t *testing.T) {
 		t.Errorf("staged creation_time = %q, want 2020-01-02T03:04:05", got)
 	}
 }
+
+func TestStageTimesOutAndKillsTheTool(t *testing.T) {
+	// A tool that never finishes: the timeout must cut it (and its
+	// process group) instead of pinning the request.
+	dir := t.TempDir()
+	script := filepath.Join(dir, "slow.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldBinary, oldTimeout := exiftoolBinary, imageTimeout
+	exiftoolBinary, imageTimeout = script, 200*time.Millisecond
+	t.Cleanup(func() {
+		exiftoolBinary, imageTimeout = oldBinary, oldTimeout
+	})
+
+	path := copyFixture(t, filepath.Join("..", "jobs", "testdata", "golden.jpg"), "photo.jpg")
+	start := time.Now()
+	_, err := Stage(context.Background(), path, "image/jpeg", time.Now())
+	if err == nil {
+		t.Fatal("Stage(slow tool) error = nil, want a timeout")
+	}
+	if !strings.Contains(err.Error(), "budget") {
+		t.Errorf("error = %v, want the exceeded-budget wording", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("Stage took %v, want the 200ms budget to cut it", elapsed)
+	}
+}
