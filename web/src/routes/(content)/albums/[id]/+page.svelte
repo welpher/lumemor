@@ -403,8 +403,8 @@
 		const wantsTitle = draft.title !== detail.title;
 		const wantsDeletable =
 			detail.sourceWritable === true &&
-			draft.allowAppDeletion !== undefined &&
-			draft.allowAppDeletion !== (detail.allowAppDeletion ?? true);
+			draft.allowAppWrites !== undefined &&
+			draft.allowAppWrites !== (detail.allowAppWrites ?? true);
 		const currentIds = new Set((detail.shares ?? []).map((share) => share.userId));
 		const nextIds = new Set(draft.audience.map((member) => member.userId));
 		const wantsAudience =
@@ -418,12 +418,12 @@
 		writeBusy = true;
 		propertiesErrorKey = '';
 		if (wantsTitle || wantsDeletable) {
-			const patch: { title?: string; allowAppDeletion?: boolean } = {};
+			const patch: { title?: string; allowAppWrites?: boolean } = {};
 			if (wantsTitle) {
 				patch.title = draft.title;
 			}
 			if (wantsDeletable) {
-				patch.allowAppDeletion = draft.allowAppDeletion;
+				patch.allowAppWrites = draft.allowAppWrites;
 			}
 			const outcome = await patchAlbum(id, patch);
 			if (!outcome.ok) {
@@ -972,7 +972,7 @@
 		shares={detail.shares ?? []}
 		initialInTimeline={detail.inTimeline}
 		sourceWritable={detail.sourceWritable === true}
-		initialAllowDeletion={detail.allowAppDeletion ?? true}
+		initialAllowDeletion={detail.allowAppWrites ?? true}
 		busy={writeBusy}
 		errorKey={propertiesErrorKey}
 		onsubmit={(draft) => void submitProperties(draft)}

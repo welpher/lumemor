@@ -8,7 +8,7 @@
 		/** The caller's own timeline preference draft (undefined = not excludable). */
 		inTimeline: boolean | undefined;
 		/** The deletability switch's draft (undefined = the row does not render). */
-		allowAppDeletion: boolean | undefined;
+		allowAppWrites: boolean | undefined;
 	};
 </script>
 
@@ -81,7 +81,7 @@
 		sourceWritable?: boolean;
 		/**
 		 * The deletability draft's seed (the detail's
-		 * `allowAppDeletion`, the owner's own view).
+		 * `allowAppWrites`, the owner's own view).
 		 */
 		initialAllowDeletion?: boolean;
 		/** Writes run one at a time: the submit disables while in flight. */
@@ -144,7 +144,7 @@
 			title: titleDraft.trim(),
 			audience,
 			inTimeline: inTimelineDraft,
-			allowAppDeletion: allowDeletionDraft
+			allowAppWrites: allowDeletionDraft
 		});
 	}
 </script>
@@ -224,11 +224,11 @@
 					<span class="flex flex-col gap-0.5">
 						<span class="album-form__toggle-label flex items-center gap-1.5">
 							<Trash2 size={14} class="text-text-faint shrink-0" aria-hidden="true" />
-							{$_('albums_deletable_label')}
+							{$_('albums_writes_label')}
 						</span>
 						<span
 							class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint"
-							>{$_('albums_deletable_note')}</span
+							>{$_('albums_writes_note')}</span
 						>
 					</span>
 				</label>

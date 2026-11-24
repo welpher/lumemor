@@ -114,7 +114,7 @@
 //     default), NO deletability row (the picked row's writable fact
 //     is false: no dead affordance). The POST carries exactly what
 //     the dialog holds (title, rootPath, audience, inTimeline true
-//     -- and no allowAppDeletion key). The write probe
+//     -- and no allowAppWrites key). The write probe
 //     answers sourceWritable false -- the creation FEEDBACK is the
 //     toast carrying the read-only note (both sentences, one
 //     acknowledgment; the dialog closes on the landed write). The
@@ -164,7 +164,7 @@
 //     from the picked row's writable fact, and the timeline-exclusion
 //     toggle is UNCHECKED: the album is created kept out of its
 //     creator's timeline. The POST carries both switches
-//     (allowAppDeletion true, inTimeline false), the probe answers
+//     (allowAppWrites true, inTimeline false), the probe answers
 //     sourceWritable true -- the writable, all-landed creation closes
 //     the dialog DIRECTLY and the house toast confirms it. The card
 //     lands.
@@ -574,7 +574,7 @@ test.describe('the administrator scenes', () => {
 
 		// The POST shape: exactly what the dialog holds, pinned against
 		// the real request the page sends (the read-only pick's row is
-		// absent, so no allowAppDeletion key rides along).
+		// absent, so no allowAppWrites key rides along).
 		const createPost = page.waitForRequest(
 			(request) => request.method() === 'POST' && request.url().endsWith('/api/v1/albums')
 		);
@@ -1253,7 +1253,7 @@ test.describe('the writable source scenes', () => {
 			title: RW_ALBUM_TITLE,
 			rootPath: RW_MOUNT_ROOT,
 			audience: [],
-			allowAppDeletion: true,
+			allowAppWrites: true,
 			inTimeline: false
 		});
 

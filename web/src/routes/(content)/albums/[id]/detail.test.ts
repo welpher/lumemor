@@ -530,7 +530,7 @@ test('the directory detail: the edit dialog, the autonomy faces and the live res
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: true,
 		inTimeline: true
 	};
@@ -914,20 +914,20 @@ test('the deletability row renders for a writable source and PATCHes the switch'
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: true,
 		inTimeline: true
 	};
 	const fetchMock = stubFetch(
 		detailRoutes({
 			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071': (init?: RequestInit) => {
-				expect(JSON.parse(String(init?.body))).toEqual({ allowAppDeletion: false });
+				expect(JSON.parse(String(init?.body))).toEqual({ allowAppWrites: false });
 				deletabilitySaved = true;
 				return jsonResponse(200, summary({ type: 'directory' }));
 			},
 			'/api/v1/albums/0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071?limit=1': () =>
 				deletabilitySaved
-					? jsonResponse(200, { ...detailState, allowAppDeletion: false, deletable: false })
+					? jsonResponse(200, { ...detailState, allowAppWrites: false, deletable: false })
 					: jsonResponse(200, detailState)
 		})
 	);
@@ -969,7 +969,7 @@ test('a read-only source renders NO deletability row and NO wall selection (the 
 		type: 'directory',
 		rootPath: '/mnt/readonly/archive',
 		sourceWritable: false,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: false,
 		inTimeline: true
 	};
@@ -1001,7 +1001,7 @@ test("the dialog's exclusion row writes the caller's own preference on save", as
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: true,
 		inTimeline: true
 	};
@@ -1056,7 +1056,7 @@ test('the retired lock leaves no trace: no lock row, no frozen fields, one plain
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: true,
 		inTimeline: true
 	};
@@ -1292,7 +1292,7 @@ test('removing the directory album states the semantics and leaves for the wall'
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: true,
+		allowAppWrites: true,
 		deletable: true,
 		inTimeline: true
 	};

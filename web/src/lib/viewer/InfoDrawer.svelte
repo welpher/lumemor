@@ -633,11 +633,19 @@
 						{/if}
 					</span>
 					{#if isOwner}
+						<!-- The time edit needs a write into the file. Without
+						     the grant it stays visible but disabled (a grey
+						     button, not a hidden one): the capability exists,
+						     the caller may not use it. -->
 						<button
-							class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
 							type="button"
+							disabled={!detail.metadataWritable}
+							aria-disabled={!detail.metadataWritable}
 							aria-label={$_('viewer_edit_date_open')}
-							title={$_('viewer_edit_date_open')}
+							title={detail.metadataWritable
+								? $_('viewer_edit_date_open')
+								: $_('asset_write_unavailable_note')}
 							onclick={onedittime}
 						>
 							<PenLine size={14} />

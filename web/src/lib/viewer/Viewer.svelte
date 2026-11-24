@@ -1081,12 +1081,22 @@
 					     the tile's favorite badge already carries). -->
 						<Star size={20} fill={favorite ? 'currentColor' : 'none'} class={favorite ? 'text-star' : ''} />
 					</button>
-					{#if canTrash}
+					{#if isOwner && detail !== null}
+						<!-- The delete needs the app's write grant. Without it
+						     the button stays visible but disabled (a grey
+						     button, not a hidden one): the capability exists,
+						     the caller may not use it. -->
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
 							type="button"
 							aria-label={detail.isTrashed ? $_('action_restore') : $_('action_trash')}
-							disabled={busy}
+							title={canTrash
+								? detail.isTrashed
+									? $_('action_restore')
+									: $_('action_trash')
+								: $_('asset_write_unavailable_note')}
+							disabled={busy || !canTrash}
+							aria-disabled={!canTrash}
 							onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
 						>
 							{#if detail.isTrashed}

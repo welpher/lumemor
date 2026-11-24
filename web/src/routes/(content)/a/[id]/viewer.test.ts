@@ -116,6 +116,8 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		// The twin count of the delete toast: the default fixture is a
 		// lone copy, and the dual-home scenes override it.
 		contentCopies: 0,
+		// A managed original: the time edit is available by default.
+		metadataWritable: true,
 		location: null,
 		path: null,
 		faces: [],
@@ -931,7 +933,10 @@ test("the sync album's own photos ARE deletable; only the read-only directory's 
 	]);
 	await settle();
 	expect(() => barButton('Favorite')).not.toThrow();
-	expect(() => barButton('Trash')).toThrow();
+	// The delete stays visible but disabled (a grey button): the
+	// capability exists, this source cannot take it.
+	const readOnlyTrash = barButton('Trash');
+	expect(readOnlyTrash.disabled).toBe(true);
 	unmount(vault);
 	flushSync();
 

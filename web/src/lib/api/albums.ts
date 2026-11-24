@@ -2,7 +2,7 @@
 // albums-as-sources and album-autonomy reworks, widened by the
 // memory's birth): the wall list, the detail read (the deletion faces
 // included -- the write probe's `sourceWritable` fact, the owner's
-// `allowAppDeletion` switch, the derived `deletable` affordance), the
+// `allowAppWrites` switch, the derived `deletable` affordance), the
 // directory creation (title + source path + audience + the two
 // autonomy switches, the honest skipped report and the probe's
 // read-only fact -- both admin-guarded writes), the memory creation
@@ -460,13 +460,13 @@ function detailFrom(body: unknown, albumId: string): AlbumDetail | null {
 	}
 	// The deletion faces ride the directory albums: the probe's
 	// `sourceWritable` fact (both roles), the owner's
-	// `allowAppDeletion` switch and the derived `deletable`
+	// `allowAppWrites` switch and the derived `deletable`
 	// affordance (the owner's view alone) -- each optional, but a
 	// present value must be the boolean it names.
 	if (candidate.sourceWritable !== undefined && typeof candidate.sourceWritable !== 'boolean') {
 		return null;
 	}
-	if (candidate.allowAppDeletion !== undefined && typeof candidate.allowAppDeletion !== 'boolean') {
+	if (candidate.allowAppWrites !== undefined && typeof candidate.allowAppWrites !== 'boolean') {
 		return null;
 	}
 	if (candidate.deletable !== undefined && typeof candidate.deletable !== 'boolean') {
@@ -534,7 +534,7 @@ export async function listAlbums(fetcher: typeof fetch = globalThis.fetch): Prom
  * GET /api/v1/albums/{albumId}: the album's metadata as the caller
  * sees it -- `callerRole` decides the write affordances, `shares`
  * rides the owner's view alone, `rootPath` and the deletion faces
- * (`sourceWritable`, the owner's `allowAppDeletion` and the derived
+ * (`sourceWritable`, the owner's `allowAppWrites` and the derived
  * `deletable`) the directory albums, `inTimeline` the excludable
  * kinds. The caller's OWN sync album answers here (read-only, the
  * default album); a 404 is the anti-enumeration pair (unknown id,
@@ -586,7 +586,7 @@ export async function fetchAlbumDetail(
  * error code; the managed tree is refused on the resolved path) and
  * the audience the album starts with; the files stay where they
  * are, zero copy, zero move. The two autonomy switches ride the
- * creation: `allowAppDeletion` carries the dialog's deletability
+ * creation: `allowAppWrites` carries the dialog's deletability
  * toggle (present exactly when the picked completion row's
  * `writable` fact rendered the row -- the server's default governs
  * when the dialog omits it), `inTimeline` the creator's own
@@ -603,7 +603,7 @@ export async function createAlbum(
 		title: string;
 		rootPath: string;
 		audience: readonly string[];
-		allowAppDeletion?: boolean;
+		allowAppWrites?: boolean;
 		inTimeline?: boolean;
 	},
 	fetcher: typeof fetch = globalThis.fetch
@@ -623,7 +623,7 @@ export async function createAlbum(
 					// the deletability toggle exists exactly where the
 					// picked row's write fact rendered it, and the
 					// exclusion toggle always holds a draft.
-					...(input.allowAppDeletion !== undefined ? { allowAppDeletion: input.allowAppDeletion } : {}),
+					...(input.allowAppWrites !== undefined ? { allowAppWrites: input.allowAppWrites } : {}),
 					...(input.inTimeline !== undefined ? { inTimeline: input.inTimeline } : {})
 				})
 			},
@@ -819,7 +819,7 @@ export async function completeAlbumPath(
 
 /**
  * PATCH /api/v1/albums/{albumId}: the owner's partial edit of the
- * properties (`title`, `coverAssetIds`, `allowAppDeletion`, any
+ * properties (`title`, `coverAssetIds`, `allowAppWrites`, any
  * subset). The cover is a full set -- 0 restores the automatic
  * weekly group, N pins the owner's order -- and a refused set names
  * how many of its frames left the album. The response is the album's
@@ -829,7 +829,7 @@ export async function completeAlbumPath(
  */
 export async function patchAlbum(
 	albumId: string,
-	patch: { title?: string; coverAssetIds?: readonly string[]; allowAppDeletion?: boolean },
+	patch: { title?: string; coverAssetIds?: readonly string[]; allowAppWrites?: boolean },
 	fetcher: typeof fetch = globalThis.fetch
 ): Promise<AlbumPatchResult> {
 	let response: Response;

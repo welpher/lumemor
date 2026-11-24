@@ -75,6 +75,9 @@
 		<p class="m-0 font-body font-normal text-[14px] leading-[1.5] text-text-soft">
 			{$_('viewer_edit_date_note')}
 		</p>
+		<p class="m-0 font-body font-normal text-[12px] leading-[1.4] text-text-faint">
+			{$_('viewer_edit_date_meta_note')}
+		</p>
 		<label class="font-body font-semibold text-[14px] leading-[1.4] text-text" for="viewer-edit-date-value"
 			>{$_('viewer_edit_date_field')}</label
 		>

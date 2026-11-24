@@ -69,7 +69,7 @@
 		 * (undefined = the row does not exist, the server's default
 		 * governs).
 		 */
-		allowAppDeletion?: boolean;
+		allowAppWrites?: boolean;
 	};
 
 	type Props = {
@@ -186,7 +186,7 @@
 		}
 		onsubmit(titleDraft.trim(), pathDraft.trim(), audience, {
 			inTimeline: inTimelineDraft,
-			...(allowDeletionDraft !== undefined ? { allowAppDeletion: allowDeletionDraft } : {})
+			...(allowDeletionDraft !== undefined ? { allowAppWrites: allowDeletionDraft } : {})
 		});
 	}
 </script>
@@ -293,11 +293,11 @@
 						<span class="flex flex-col gap-0.5">
 							<span class="album-form__toggle-label flex items-center gap-1.5">
 								<Trash2 size={14} class="text-text-faint shrink-0" aria-hidden="true" />
-								{$_('albums_deletable_label')}
+								{$_('albums_writes_label')}
 							</span>
 							<span
 								class="album-form__toggle-note font-body font-normal text-[12px] leading-[1.4] text-text-faint"
-								>{$_('albums_deletable_note')}</span
+								>{$_('albums_writes_note')}</span
 							>
 						</span>
 					</label>

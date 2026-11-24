@@ -185,7 +185,7 @@ test('fetchAlbumDetail reads the directory album source row and the deletion fac
 		type: 'directory',
 		rootPath: '/Volumes/Photos/family',
 		sourceWritable: true,
-		allowAppDeletion: false,
+		allowAppWrites: false,
 		deletable: false
 	};
 	vi.stubGlobal(
@@ -201,7 +201,7 @@ test('fetchAlbumDetail reads the directory album source row and the deletion fac
 		// The probe's fact, the owner's switch and the derived
 		// affordance ride the directory detail as-is.
 		expect(outcome.detail.sourceWritable).toBe(true);
-		expect(outcome.detail.allowAppDeletion).toBe(false);
+		expect(outcome.detail.allowAppWrites).toBe(false);
 		expect(outcome.detail.deletable).toBe(false);
 	}
 
@@ -296,7 +296,7 @@ test('createAlbum POSTs the autonomy switches with the drafts it carries', async
 					rootPath: '/Volumes/Photos/family',
 					audience: [],
 					inTimeline: false,
-					allowAppDeletion: false
+					allowAppWrites: false
 				});
 			} else {
 				expect(body).toEqual({
@@ -321,7 +321,7 @@ test('createAlbum POSTs the autonomy switches with the drafts it carries', async
 		title: 'Family archive',
 		rootPath: '/Volumes/Photos/family',
 		audience: [],
-		allowAppDeletion: false,
+		allowAppWrites: false,
 		inTimeline: false
 	});
 
@@ -475,13 +475,13 @@ test('patchAlbum PATCHes the deletability switch like every property field', asy
 		[`/api/v1/albums/${directoryCard.id}`]: (init?: RequestInit) => {
 			expect(init?.method).toBe('PATCH');
 			const body = JSON.parse(String(init?.body));
-			expect(body).toEqual({ allowAppDeletion: false });
+			expect(body).toEqual({ allowAppWrites: false });
 			return jsonResponse(200, directoryCard);
 		}
 	});
 	vi.stubGlobal('fetch', fetchMock);
 
-	const outcome = await patchAlbum(directoryCard.id, { allowAppDeletion: false });
+	const outcome = await patchAlbum(directoryCard.id, { allowAppWrites: false });
 	expect(outcome).toEqual({ ok: true, album: directoryCard });
 });
 
@@ -516,7 +516,7 @@ test("patchAlbum surfaces the write faces' message keys", async () => {
 				})
 		})
 	);
-	expect(await patchAlbum(ownCard.id, { allowAppDeletion: false })).toEqual({
+	expect(await patchAlbum(ownCard.id, { allowAppWrites: false })).toEqual({
 		ok: false,
 		errorKey: 'album_deletable_not_directory'
 	});

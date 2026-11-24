@@ -217,7 +217,7 @@
 			title,
 			rootPath,
 			audience: audience.map((member) => member.userId),
-			allowAppDeletion: switches.allowAppDeletion,
+			allowAppWrites: switches.allowAppWrites,
 			inTimeline: switches.inTimeline
 		});
 		createBusy = false;
