@@ -1285,7 +1285,14 @@ describe('the album container (archived members stay)', () => {
 			if (url.includes('/api/v1/assets/a2')) {
 				return detailOf(item('a2', '2026-11-01T09:00:00Z', { isArchived: true }), {
 					albums: [
-						{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner', sourceWritable: true }
+						{
+							id: 'al-1',
+							title: 'Trip',
+							type: 'directory',
+							callerRole: 'owner',
+							sourceWritable: true,
+							allowAppWrites: true
+						}
 					]
 				});
 			}

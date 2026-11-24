@@ -588,7 +588,7 @@ test('the container keeps an archived member, and the owner unarchives it from t
 	// renders, and checking it raises the bar's unarchive action --
 	// the owner's unarchive entry, offered only for an archived
 	// selection.
-	detailState = { ...detailState, deletable: true, sourceWritable: true, callerRole: 'owner' };
+	detailState = { ...detailState, deletable: true, sourceWritable: true, allowAppWrites: true, callerRole: 'owner' };
 	const archivedItems = [
 		item('a1', '2026-11-02T10:00:00Z', { isArchived: true }),
 		item('a2', '2026-10-13T12:30:00Z')

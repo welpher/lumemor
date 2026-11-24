@@ -972,7 +972,7 @@
 		shares={detail.shares ?? []}
 		initialInTimeline={detail.inTimeline}
 		sourceWritable={detail.sourceWritable === true}
-		initialAllowDeletion={detail.allowAppWrites ?? true}
+		initialAllowWrites={detail.allowAppWrites ?? true}
 		busy={writeBusy}
 		errorKey={propertiesErrorKey}
 		onsubmit={(draft) => void submitProperties(draft)}

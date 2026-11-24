@@ -115,7 +115,7 @@
 	/** The exclusion toggle's draft (checked = the album feeds the creator's timeline). */
 	let inTimelineDraft = $state(true);
 	/** The deletability toggle's draft (undefined = the row does not render). */
-	let allowDeletionDraft = $state<boolean | undefined>(undefined);
+	let allowWritesDraft = $state<boolean | undefined>(undefined);
 	/** The picked completion row: the write fact's source and its exact path. */
 	let pickedRow = $state<AlbumPathCompletion | null>(null);
 	/** Whether a submit attempt already ran for the current drafts. */
@@ -129,7 +129,7 @@
 			pathDraft = '';
 			audience = [];
 			inTimelineDraft = true;
-			allowDeletionDraft = undefined;
+			allowWritesDraft = undefined;
 			pickedRow = null;
 			checked = false;
 		}
@@ -158,8 +158,8 @@
 	// A dropped row withdraws the toggle's draft too: the request
 	// omits the switch, the server's default governs.
 	$effect(() => {
-		if (!deletionRowApplies && allowDeletionDraft !== undefined) {
-			allowDeletionDraft = undefined;
+		if (!deletionRowApplies && allowWritesDraft !== undefined) {
+			allowWritesDraft = undefined;
 		}
 	});
 
@@ -186,7 +186,7 @@
 		}
 		onsubmit(titleDraft.trim(), pathDraft.trim(), audience, {
 			inTimeline: inTimelineDraft,
-			...(allowDeletionDraft !== undefined ? { allowAppWrites: allowDeletionDraft } : {})
+			...(allowWritesDraft !== undefined ? { allowAppWrites: allowWritesDraft } : {})
 		});
 	}
 </script>
@@ -245,7 +245,7 @@
 					pickedRow = row;
 					// The pick seeds the toggle's draft: the row exists
 					// exactly for a writable pick.
-					allowDeletionDraft = row.writable ? true : undefined;
+					allowWritesDraft = row.writable ? true : undefined;
 				}}
 			/>
 			<!-- ...the audience after: the add-style picker. -->
@@ -276,7 +276,7 @@
 						>
 					</span>
 				</label>
-				{#if deletionRowApplies && allowDeletionDraft !== undefined}
+				{#if deletionRowApplies && allowWritesDraft !== undefined}
 					<!-- The deletability row: rendered ONLY for a writable
 					     pick (a read-only source's row does not
 					     exist -- no dead affordance); the honest probe
@@ -288,7 +288,7 @@
 							class="album-form__toggle-input mt-0.5 w-[18px] h-[18px] accent-accent shrink-0"
 							type="checkbox"
 							data-testid="album-deletable-toggle"
-							bind:checked={allowDeletionDraft}
+							bind:checked={allowWritesDraft}
 						/>
 						<span class="flex flex-col gap-0.5">
 							<span class="album-form__toggle-label flex items-center gap-1.5">

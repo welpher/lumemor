@@ -470,7 +470,8 @@
 	const canTrash = $derived(
 		isOwner &&
 			detail !== null &&
-			(detail.isTrashed || detail.albums.some((album) => album.type === 'sync' || album.sourceWritable))
+			(detail.isTrashed ||
+				detail.albums.some((album) => album.type === 'sync' || (album.sourceWritable && album.allowAppWrites)))
 	);
 
 	// The per-asset interaction reset: navigating replaces the asset,
@@ -1086,8 +1087,13 @@
 						     the button stays visible but disabled (a grey
 						     button, not a hidden one): the capability exists,
 						     the caller may not use it. -->
+						<!-- aria-disabled, not the native attribute: the
+						     disabled state must stay focusable so the reason
+						     reaches keyboard and screen-reader users. -->
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent"
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent {canTrash
+								? ''
+								: 'opacity-55 cursor-not-allowed'}"
 							type="button"
 							aria-label={detail.isTrashed ? $_('action_restore') : $_('action_trash')}
 							title={canTrash
@@ -1095,9 +1101,12 @@
 									? $_('action_restore')
 									: $_('action_trash')
 								: $_('asset_write_unavailable_note')}
-							disabled={busy || !canTrash}
+							disabled={busy}
 							aria-disabled={!canTrash}
-							onclick={() => void onaction(detail.isTrashed ? 'restore' : 'trash')}
+							onclick={() => {
+								if (!canTrash) return;
+								void onaction(detail.isTrashed ? 'restore' : 'trash');
+							}}
 						>
 							{#if detail.isTrashed}
 								<RotateCcw size={20} />

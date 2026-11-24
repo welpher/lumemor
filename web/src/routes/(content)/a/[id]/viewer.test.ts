@@ -118,6 +118,7 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		contentCopies: 0,
 		// A managed original: the time edit is available by default.
 		metadataWritable: true,
+		metadataSupported: true,
 		location: null,
 		path: null,
 		faces: [],
@@ -125,7 +126,16 @@ function detailBodyOf(source: TimelineItem, overrides: Record<string, unknown> =
 		// The band's home album: a directory source the owner holds, so
 		// the bar's owner-only curation arms render by default (the
 		// sync-only arm has its own scene below).
-		albums: [{ id: 'al-src', title: 'Album al-src', type: 'directory', callerRole: 'owner', sourceWritable: true }],
+		albums: [
+			{
+				id: 'al-src',
+				title: 'Album al-src',
+				type: 'directory',
+				callerRole: 'owner',
+				sourceWritable: true,
+				allowAppWrites: true
+			}
+		],
 		place: null,
 		...source,
 		...overrides
@@ -795,7 +805,14 @@ test('the trash toast names the copies a delete leaves behind', async () => {
 				detailBodyOf(sequence[1]!, {
 					contentCopies: 2,
 					albums: [
-						{ id: 'al-sync', title: 'My photos', type: 'sync', callerRole: 'owner', sourceWritable: false }
+						{
+							id: 'al-sync',
+							title: 'My photos',
+							type: 'sync',
+							callerRole: 'owner',
+							sourceWritable: false,
+							allowAppWrites: true
+						}
 					]
 				})
 			)
@@ -820,7 +837,14 @@ test('the trash toast is the plain sentence when no copy remains', async () => {
 				detailBodyOf(sequence[1]!, {
 					contentCopies: 0,
 					albums: [
-						{ id: 'al-sync', title: 'My photos', type: 'sync', callerRole: 'owner', sourceWritable: false }
+						{
+							id: 'al-sync',
+							title: 'My photos',
+							type: 'sync',
+							callerRole: 'owner',
+							sourceWritable: false,
+							allowAppWrites: true
+						}
 					]
 				})
 			)
@@ -907,7 +931,9 @@ test("the sync album's own photos ARE deletable; only the read-only directory's 
 	// directory source is the one arm with no delete: its photo is
 	// the scan's verdict alone, the source cannot take the
 	// application's writes.
-	const syncOnly = [{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true }];
+	const syncOnly = [
+		{ id: 'sync-1', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true, allowAppWrites: true }
+	];
 	const { app } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () => jsonResponse(200, detailBodyOf(sequence[1]!, { albums: syncOnly }))),
 		post('/api/v1/assets/batch', () => jsonResponse(200, { affected: 1, missing: [] }))
@@ -923,7 +949,14 @@ test("the sync album's own photos ARE deletable; only the read-only directory's 
 	// The read-only directory: the only home's source cannot take
 	// writes, so no delete affordance renders -- never a grayed one.
 	const readOnlyDirectory = [
-		{ id: 'ro-1', title: 'Family vault', type: 'directory', callerRole: 'owner', sourceWritable: false }
+		{
+			id: 'ro-1',
+			title: 'Family vault',
+			type: 'directory',
+			callerRole: 'owner',
+			sourceWritable: false,
+			allowAppWrites: true
+		}
 	];
 	const { app: vault } = mountViewer('a2', [
 		get('/api/v1/assets/a2?locale=en', () =>
@@ -936,7 +969,10 @@ test("the sync album's own photos ARE deletable; only the read-only directory's 
 	// The delete stays visible but disabled (a grey button): the
 	// capability exists, this source cannot take it.
 	const readOnlyTrash = barButton('Trash');
-	expect(readOnlyTrash.disabled).toBe(true);
+	expect(readOnlyTrash.getAttribute('aria-disabled')).toBe('true');
+	// The reason rides the title (focusable, not a native disabled
+	// button): the mouse and the keyboard both learn why.
+	expect(readOnlyTrash.getAttribute('title')).toBe('The app may not modify this file.');
 	unmount(vault);
 	flushSync();
 
@@ -1759,9 +1795,23 @@ test("the drawer's browsable rows deep-link: albums, tags, named faces; the plac
 		exif: { cameraMake: 'Apple', cameraModel: 'iPhone 15' },
 		tags: [{ id: 't1', name: 'Beach' }],
 		albums: [
-			{ id: 'al-1', title: 'Trip', type: 'directory', callerRole: 'owner', sourceWritable: true },
-			{ id: 'mem-1', title: 'Paris trip', type: 'memory', callerRole: 'owner', sourceWritable: true },
-			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true }
+			{
+				id: 'al-1',
+				title: 'Trip',
+				type: 'directory',
+				callerRole: 'owner',
+				sourceWritable: true,
+				allowAppWrites: true
+			},
+			{
+				id: 'mem-1',
+				title: 'Paris trip',
+				type: 'memory',
+				callerRole: 'owner',
+				sourceWritable: true,
+				allowAppWrites: true
+			},
+			{ id: 'al-2', title: 'Sync', type: 'sync', callerRole: 'owner', sourceWritable: true, allowAppWrites: true }
 		],
 		place: { placeId: 2988507, name: 'Paris' },
 		location: { lat: 48.8584, lon: 2.2945 },

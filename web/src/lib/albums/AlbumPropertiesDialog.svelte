@@ -83,7 +83,7 @@
 		 * The deletability draft's seed (the detail's
 		 * `allowAppWrites`, the owner's own view).
 		 */
-		initialAllowDeletion?: boolean;
+		initialAllowWrites?: boolean;
 		/** Writes run one at a time: the submit disables while in flight. */
 		busy?: boolean;
 		/** The error-code i18n key of the last failed write ('' when none). */
@@ -101,7 +101,7 @@
 		shares,
 		initialInTimeline = undefined,
 		sourceWritable = false,
-		initialAllowDeletion = true,
+		initialAllowWrites = true,
 		busy = false,
 		errorKey = '',
 		onsubmit
@@ -110,7 +110,7 @@
 	let titleDraft = $state('');
 	let audience = $state<AudienceMember[]>([]);
 	let inTimelineDraft = $state<boolean | undefined>(undefined);
-	let allowDeletionDraft = $state<boolean | undefined>(undefined);
+	let allowWritesDraft = $state<boolean | undefined>(undefined);
 	/** Whether a submit attempt already ran for the current draft. */
 	let checked = $state(false);
 
@@ -122,7 +122,7 @@
 			titleDraft = initialTitle;
 			audience = shares.map((share) => ({ userId: share.userId, email: share.email }));
 			inTimelineDraft = initialInTimeline;
-			allowDeletionDraft = sourceWritable ? initialAllowDeletion : undefined;
+			allowWritesDraft = sourceWritable ? initialAllowWrites : undefined;
 			checked = false;
 		}
 	});
@@ -144,7 +144,7 @@
 			title: titleDraft.trim(),
 			audience,
 			inTimeline: inTimelineDraft,
-			allowAppWrites: allowDeletionDraft
+			allowAppWrites: allowWritesDraft
 		});
 	}
 </script>
@@ -208,7 +208,7 @@
 					</span>
 				</label>
 			{/if}
-			{#if sourceWritable && allowDeletionDraft !== undefined}
+			{#if sourceWritable && allowWritesDraft !== undefined}
 				<!-- The deletability row: rendered ONLY for a writable
 				     source (a read-only album's row does not
 				     exist -- no dead affordance). -->
@@ -219,7 +219,7 @@
 						class="album-form__toggle-input mt-0.5 w-[18px] h-[18px] accent-accent shrink-0"
 						type="checkbox"
 						data-testid="album-deletable-toggle"
-						bind:checked={allowDeletionDraft}
+						bind:checked={allowWritesDraft}
 					/>
 					<span class="flex flex-col gap-0.5">
 						<span class="album-form__toggle-label flex items-center gap-1.5">

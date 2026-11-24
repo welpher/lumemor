@@ -234,6 +234,9 @@ function detailFrom(body: unknown): AssetDetail | null {
 		if (typeof album.sourceWritable !== 'boolean') {
 			return null;
 		}
+		if (typeof album.allowAppWrites !== 'boolean') {
+			return null;
+		}
 	}
 	// The place face is required and nullable: a present value must
 	// carry the deep link's key and the display name.
@@ -276,6 +279,12 @@ function detailFrom(body: unknown): AssetDetail | null {
 		return null;
 	}
 	if (candidate.contentCopies < 0) {
+		return null;
+	}
+	// The capture-time capability is part of the fixed shape: the
+	// permission half (metadataWritable) and the format half
+	// (metadataSupported) drive the info panel's edit entry.
+	if (typeof candidate.metadataWritable !== 'boolean' || typeof candidate.metadataSupported !== 'boolean') {
 		return null;
 	}
 	return body as AssetDetail;
