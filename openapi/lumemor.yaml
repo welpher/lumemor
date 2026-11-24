@@ -2187,11 +2187,13 @@ paths:
                         type: sync
                         callerRole: owner
                         sourceWritable: true
+                        allowAppWrites: true
                       - id: 0192f5b3-6c7d-8e9f-a0b1-2c3d4e5f6071
                         title: Road trip 2026
                         type: memory
                         callerRole: owner
                         sourceWritable: true
+                        allowAppWrites: true
                     place:
                       placeId: 2988507
                       name: Paris
@@ -2440,6 +2442,7 @@ paths:
                         type: sync
                         callerRole: owner
                         sourceWritable: true
+                        allowAppWrites: true
                     place: null
         '400':
           description: |
