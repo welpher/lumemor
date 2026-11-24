@@ -35,6 +35,7 @@ import (
 	"github.com/welpher/lumemor/server/internal/db"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
 	"github.com/welpher/lumemor/server/internal/media"
+	"github.com/welpher/lumemor/server/internal/metawrite"
 	"github.com/welpher/lumemor/server/internal/storage"
 )
 
@@ -683,26 +684,15 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 			// destructive affordances on it (a read-only directory's
 			// photo is the scan's verdict alone).
 			SourceWritable: row.SourceWritable,
+			// The write switch, on the owner's rows only: a viewer
+			// holds no write to read it for.
+			AllowAppWrites: row.IsOwner && row.AllowAppDeletion,
 		})
 		if row.IsOwner && row.Type == dbgen.AlbumTypeDirectory && row.SourceWritable && row.AllowAppDeletion {
 			albumsWritable = true
 		}
 	}
 	return albums, albumsWritable, nil
-}
-
-// captureTimeWritableFormat reports whether the app can write a
-// capture-time field into this file's embedded metadata: EXIF for
-// JPEG/HEIC/TIFF, the container's creation_time for MP4/MOV. Every
-// other format (PNG and the like) has no standard field to carry it,
-// so the edit is not offered and the write refuses.
-func captureTimeWritableFormat(mime string) bool {
-	switch mime {
-	case "image/jpeg", "image/heic", "image/heif", "image/tiff",
-		"video/mp4", "video/quicktime":
-		return true
-	}
-	return false
 }
 
 // assetMetadataWritable derives the capture-time capability: the
@@ -714,7 +704,7 @@ func assetMetadataWritable(ownerID, callerID pgtype.UUID, storageKind dbgen.Stor
 	if !ownerID.Valid || !callerID.Valid || ownerID.Bytes != callerID.Bytes {
 		return false
 	}
-	if !captureTimeWritableFormat(mime) {
+	if !metawrite.Supported(mime) {
 		return false
 	}
 	if storageKind == dbgen.StorageKindBlob {
@@ -739,32 +729,33 @@ func assetMetadataWritable(ownerID, callerID pgtype.UUID, storageKind dbgen.Stor
 // carrying the same content, the delete toast's note.
 func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef, includePath, metadataWritable bool) apigen.AssetDetail {
 	detail := apigen.AssetDetail{
-		Id:               uuid.UUID(row.ID.Bytes),
-		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
-		Kind:             apigen.AssetDetailKind(row.MediaKind),
-		OriginalFilename: row.OriginalFilename,
-		FileSize:         row.FileSize,
-		MimeType:         row.MimeType,
-		Checksum:         row.Checksum,
-		CreatedAt:        row.CreatedAt.Time.UTC(),
-		TakenAt:          row.TakenAt.Time.UTC(),
-		TakenAtSource:    apigen.AssetDetailTakenAtSource(row.TakenAtSource),
-		TakenAtZone:      textValue(row.TakenAtZone),
-		IsTrashed:        row.DeletedAt.Valid,
-		IsArchived:       row.IsHidden,
-		Description:      row.Description,
-		IsReady:          row.ReadyAt.Valid,
-		Width:            dimensionValue(row.Width),
-		Height:           dimensionValue(row.Height),
-		DurationMs:       int4Value(row.DurationMs),
-		Blurhash:         textValue(row.Blurhash),
-		ContentCopies:    int(row.ContentCopies),
-		MetadataWritable: metadataWritable,
-		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),
-		Exif:             exifSummaryFrom(row),
-		Faces:            faces,
-		Tags:             tags,
-		Albums:           albums,
+		Id:                uuid.UUID(row.ID.Bytes),
+		OwnerId:           uuid.UUID(row.OwnerID.Bytes),
+		Kind:              apigen.AssetDetailKind(row.MediaKind),
+		OriginalFilename:  row.OriginalFilename,
+		FileSize:          row.FileSize,
+		MimeType:          row.MimeType,
+		Checksum:          row.Checksum,
+		CreatedAt:         row.CreatedAt.Time.UTC(),
+		TakenAt:           row.TakenAt.Time.UTC(),
+		TakenAtSource:     apigen.AssetDetailTakenAtSource(row.TakenAtSource),
+		TakenAtZone:       textValue(row.TakenAtZone),
+		IsTrashed:         row.DeletedAt.Valid,
+		IsArchived:        row.IsHidden,
+		Description:       row.Description,
+		IsReady:           row.ReadyAt.Valid,
+		Width:             dimensionValue(row.Width),
+		Height:            dimensionValue(row.Height),
+		DurationMs:        int4Value(row.DurationMs),
+		Blurhash:          textValue(row.Blurhash),
+		ContentCopies:     int(row.ContentCopies),
+		MetadataWritable:  metadataWritable,
+		MetadataSupported: metawrite.Supported(row.MimeType),
+		LivePhotoVideoId:  uuidValue(row.LivePhotoVideoID),
+		Exif:              exifSummaryFrom(row),
+		Faces:             faces,
+		Tags:              tags,
+		Albums:            albums,
 	}
 	// The location face: the owner's manual pair when one landed, the
 	// camera-recorded GPS otherwise -- and only when both halves

@@ -305,9 +305,9 @@ func (s *server) GetAlbum(w http.ResponseWriter, r *http.Request, albumId uuid.U
 		sourceWritable := album.Album.SourceWritable
 		detail.SourceWritable = &sourceWritable
 		if album.CallerRole == "owner" {
-			allowAppDeletion := album.Album.AllowAppDeletion
-			detail.AllowAppWrites = &allowAppDeletion
-			deletable := sourceWritable && allowAppDeletion
+			allowWrites := album.Album.AllowAppDeletion
+			detail.AllowAppWrites = &allowWrites
+			deletable := sourceWritable && allowWrites
 			detail.Deletable = &deletable
 		}
 	}

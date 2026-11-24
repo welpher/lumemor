@@ -13,6 +13,7 @@ part 'asset_album_ref.g.dart';
 ///
 /// Properties:
 /// * [id] - Identifier of the album (the detail face's deep link).
+/// * [allowAppWrites] - The album's write switch as its OWNER set it. True (the creation default) means the application may modify the album's source files -- delete them through the trash move and write capture-time edits into their metadata. Carried on the owner's rows; a viewer's row carries false (a viewer holds no write to read it for). The detail's delete affordance folds this with `sourceWritable`. 
 /// * [sourceWritable] - Whether the album's source directory can take the application's writes. False only for a directory album whose creation-time write probe answered no -- every other type (sync, memory, a writable directory) is true. The photo-detail faces read this to gate the destructive affordances: a photo housed only in a read-only source is the scan's verdict alone and offers no delete. 
 /// * [title] - The album's display title (the sync card's internal label).
 /// * [type] - The album's type. A `memory` entry is one of the viewer's own or shared reference sets; `directory` entries are sources. The one `sync` entry, when present, is the viewer's own default album (never another account's). 
@@ -22,6 +23,10 @@ abstract class AssetAlbumRef implements Built<AssetAlbumRef, AssetAlbumRefBuilde
   /// Identifier of the album (the detail face's deep link).
   @BuiltValueField(wireName: r'id')
   String get id;
+
+  /// The album's write switch as its OWNER set it. True (the creation default) means the application may modify the album's source files -- delete them through the trash move and write capture-time edits into their metadata. Carried on the owner's rows; a viewer's row carries false (a viewer holds no write to read it for). The detail's delete affordance folds this with `sourceWritable`. 
+  @BuiltValueField(wireName: r'allowAppWrites')
+  bool get allowAppWrites;
 
   /// Whether the album's source directory can take the application's writes. False only for a directory album whose creation-time write probe answered no -- every other type (sync, memory, a writable directory) is true. The photo-detail faces read this to gate the destructive affordances: a photo housed only in a read-only source is the scan's verdict alone and offers no delete. 
   @BuiltValueField(wireName: r'sourceWritable')
@@ -68,6 +73,11 @@ class _$AssetAlbumRefSerializer implements PrimitiveSerializer<AssetAlbumRef> {
     yield serializers.serialize(
       object.id,
       specifiedType: const FullType(String),
+    );
+    yield r'allowAppWrites';
+    yield serializers.serialize(
+      object.allowAppWrites,
+      specifiedType: const FullType(bool),
     );
     yield r'sourceWritable';
     yield serializers.serialize(
@@ -118,6 +128,13 @@ class _$AssetAlbumRefSerializer implements PrimitiveSerializer<AssetAlbumRef> {
             specifiedType: const FullType(String),
           ) as String;
           result.id = valueDes;
+          break;
+        case r'allowAppWrites':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.allowAppWrites = valueDes;
           break;
         case r'sourceWritable':
           final valueDes = serializers.deserialize(

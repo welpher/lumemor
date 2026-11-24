@@ -2228,6 +2228,15 @@ type AlbumWallResponse struct {
 // `title` is the internal system label ('Sync') and clients
 // render the localized display name keyed by the type.
 type AssetAlbumRef struct {
+	// AllowAppWrites The album's write switch as its OWNER set it. True (the
+	// creation default) means the application may modify the
+	// album's source files -- delete them through the trash
+	// move and write capture-time edits into their metadata.
+	// Carried on the owner's rows; a viewer's row carries false
+	// (a viewer holds no write to read it for). The detail's
+	// delete affordance folds this with `sourceWritable`.
+	AllowAppWrites bool `json:"allowAppWrites"`
+
 	// CallerRole The caller's relation to this album: `owner` items are
 	// the caller's own (the sync stream's entry is always
 	// one), `viewer` items the albums shared to them.
@@ -2421,6 +2430,13 @@ type AssetDetail struct {
 	// location row stays unrendered. The PATCH response serves
 	// the same face, exactly as the GET serves it.
 	Location *AssetCoordinates `json:"location"`
+
+	// MetadataSupported Whether this file's format carries a capture-time field the
+	// app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time).
+	// False for PNG and the like: the edit entry is not offered
+	// at all for such a file (no dead control), and the PATCH
+	// answers 409 when asked anyway.
+	MetadataSupported bool `json:"metadataSupported"`
 
 	// MetadataWritable Whether the calling owner may edit this asset's capture
 	// time with a write into the original file. True for a

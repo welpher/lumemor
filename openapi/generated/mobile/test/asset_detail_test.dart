@@ -127,6 +127,12 @@ void main() {
       // TODO
     });
 
+    // Whether this file's format carries a capture-time field the app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time). False for PNG and the like: the edit entry is not offered at all for such a file (no dead control), and the PATCH answers 409 when asked anyway. 
+    // bool metadataSupported
+    test('to test the property `metadataSupported`', () async {
+      // TODO
+    });
+
     // Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
     // bool metadataWritable
     test('to test the property `metadataWritable`', () async {

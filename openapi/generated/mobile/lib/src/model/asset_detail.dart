@@ -38,6 +38,7 @@ part 'asset_detail.g.dart';
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
 /// * [contentCopies] - How many OTHER live rows of the same owner carry this asset's content (same checksum) -- the twin copies a delete leaves behind. A directory album mirrors its folder, so one photo can be an uploaded copy and a source copy at once; trashing one leaves the other. 0 means this row is the content's only live copy. The count is owner-scoped: it never reveals rows outside the asset's owner, and it counts rows, not surfaces. The PATCH response serves the same value, exactly as the GET serves it. 
+/// * [metadataSupported] - Whether this file's format carries a capture-time field the app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time). False for PNG and the like: the edit entry is not offered at all for such a file (no dead control), and the PATCH answers 409 when asked anyway. 
 /// * [metadataWritable] - Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
 /// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
@@ -130,6 +131,10 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// How many OTHER live rows of the same owner carry this asset's content (same checksum) -- the twin copies a delete leaves behind. A directory album mirrors its folder, so one photo can be an uploaded copy and a source copy at once; trashing one leaves the other. 0 means this row is the content's only live copy. The count is owner-scoped: it never reveals rows outside the asset's owner, and it counts rows, not surfaces. The PATCH response serves the same value, exactly as the GET serves it. 
   @BuiltValueField(wireName: r'contentCopies')
   int get contentCopies;
+
+  /// Whether this file's format carries a capture-time field the app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time). False for PNG and the like: the edit entry is not offered at all for such a file (no dead control), and the PATCH answers 409 when asked anyway. 
+  @BuiltValueField(wireName: r'metadataSupported')
+  bool get metadataSupported;
 
   /// Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
   @BuiltValueField(wireName: r'metadataWritable')
@@ -289,6 +294,11 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.contentCopies,
       specifiedType: const FullType(int),
+    );
+    yield r'metadataSupported';
+    yield serializers.serialize(
+      object.metadataSupported,
+      specifiedType: const FullType(bool),
     );
     yield r'metadataWritable';
     yield serializers.serialize(
@@ -502,6 +512,13 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(int),
           ) as int;
           result.contentCopies = valueDes;
+          break;
+        case r'metadataSupported':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.metadataSupported = valueDes;
           break;
         case r'metadataWritable':
           final valueDes = serializers.deserialize(

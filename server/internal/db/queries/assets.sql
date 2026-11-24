@@ -306,13 +306,23 @@ WHERE id = sqlc.arg('id');
 -- guard is the permission check's second half.
 UPDATE assets SET
     taken_at        = sqlc.arg('taken_at'),
+    -- The source is the file's embedded time. For a video that is the
+    -- container's creation_time (the same semantic slot); the app's
+    -- own reader reads DateTimeOriginal only, so a video's value
+    -- serves other tools and the export path.
     taken_at_source = 'exif'::taken_at_source,
     taken_at_zone   = sqlc.arg('taken_at_zone'),
     checksum        = sqlc.arg('checksum'),
     file_size       = sqlc.arg('file_size'),
     file_mtime      = COALESCE(sqlc.narg('file_mtime'), file_mtime),
     updated_at      = now()
-WHERE id = sqlc.arg('id') AND owner_id = sqlc.arg('owner_id');
+WHERE id = sqlc.arg('id')
+  AND owner_id = sqlc.arg('owner_id')
+  -- The optimistic guard: the checksum read before the file was
+  -- staged must still be the row's. A concurrent write in the
+  -- window matches zero rows and the caller answers the conflict
+  -- instead of leaving the file and the row on different bytes.
+  AND checksum = sqlc.arg('expected_checksum');
 
 -- name: CompleteAssetJob :one
 -- One pipeline job completion: the guarded decrement of the readiness
@@ -365,30 +375,6 @@ UPDATE assets SET
 WHERE id = sqlc.arg('id')
   AND owner_id = sqlc.arg('owner_id')
   AND description <> sqlc.arg('description');
-
--- name: UpdateAssetTakenAt :execrows
--- The owner-scoped capture-time write of PATCH /assets/{id}: the
--- instant and the display zone that resolved it land together (the
--- offset IS the zone the info panel renders beside the time). The
--- pair <> arm is the set-semantics guard: a patch repeating both the
--- stored instant and the stored zone matches nothing, so the
--- idempotent repeat is the same success, updated_at stays un-stamped
--- and the event stays silent -- the rows-affected count is the
--- handler's change signal. (Both fields are compared: the instant
--- and the zone are DISTINCT from their stored values, so a
--- same-instant zone-only patch IS a change -- the zone is a served
--- field of its own.) The owner guard IS the permission check (asset
--- attribute editing is owner-only, no admin override), so a foreign
--- id matches nothing exactly like an unknown one. No state filter: a
--- trashed asset is editable like it is readable.
-UPDATE assets SET
-    taken_at = sqlc.arg('taken_at'),
-    taken_at_zone = sqlc.arg('taken_at_zone'),
-    updated_at = now()
-WHERE id = sqlc.arg('id')
-  AND owner_id = sqlc.arg('owner_id')
-  AND (taken_at <> sqlc.arg('taken_at')
-       OR taken_at_zone IS DISTINCT FROM sqlc.arg('taken_at_zone'));
 
 -- name: UpdateAssetLocation :execrows
 -- The owner-scoped manual-location write of PATCH /assets/{id}: the

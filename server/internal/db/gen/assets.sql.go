@@ -1029,71 +1029,37 @@ func (q *Queries) UpdateAssetLocation(ctx context.Context, arg UpdateAssetLocati
 	return result.RowsAffected(), nil
 }
 
-const updateAssetTakenAt = `-- name: UpdateAssetTakenAt :execrows
-UPDATE assets SET
-    taken_at = $1,
-    taken_at_zone = $2,
-    updated_at = now()
-WHERE id = $3
-  AND owner_id = $4
-  AND (taken_at <> $1
-       OR taken_at_zone IS DISTINCT FROM $2)
-`
-
-type UpdateAssetTakenAtParams struct {
-	TakenAt     pgtype.Timestamptz `json:"taken_at"`
-	TakenAtZone pgtype.Text        `json:"taken_at_zone"`
-	ID          pgtype.UUID        `json:"id"`
-	OwnerID     pgtype.UUID        `json:"owner_id"`
-}
-
-// The owner-scoped capture-time write of PATCH /assets/{id}: the
-// instant and the display zone that resolved it land together (the
-// offset IS the zone the info panel renders beside the time). The
-// pair <> arm is the set-semantics guard: a patch repeating both the
-// stored instant and the stored zone matches nothing, so the
-// idempotent repeat is the same success, updated_at stays un-stamped
-// and the event stays silent -- the rows-affected count is the
-// handler's change signal. (Both fields are compared: the instant
-// and the zone are DISTINCT from their stored values, so a
-// same-instant zone-only patch IS a change -- the zone is a served
-// field of its own.) The owner guard IS the permission check (asset
-// attribute editing is owner-only, no admin override), so a foreign
-// id matches nothing exactly like an unknown one. No state filter: a
-// trashed asset is editable like it is readable.
-func (q *Queries) UpdateAssetTakenAt(ctx context.Context, arg UpdateAssetTakenAtParams) (int64, error) {
-	result, err := q.db.Exec(ctx, updateAssetTakenAt,
-		arg.TakenAt,
-		arg.TakenAtZone,
-		arg.ID,
-		arg.OwnerID,
-	)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected(), nil
-}
-
 const updateAssetTakenAtWritten = `-- name: UpdateAssetTakenAtWritten :execrows
 UPDATE assets SET
     taken_at        = $1,
+    -- The source is the file's embedded time. For a video that is the
+    -- container's creation_time (the same semantic slot); the app's
+    -- own reader reads DateTimeOriginal only, so a video's value
+    -- serves other tools and the export path.
     taken_at_source = 'exif'::taken_at_source,
     taken_at_zone   = $2,
     checksum        = $3,
     file_size       = $4,
     file_mtime      = COALESCE($5, file_mtime),
     updated_at      = now()
-WHERE id = $6 AND owner_id = $7
+WHERE id = $6
+  AND owner_id = $7
+  -- The optimistic guard: the checksum read before the file was
+  -- staged must still be the row's. A concurrent write in the
+  -- window matches zero rows and the caller answers the conflict
+  -- instead of leaving the file and the row on different bytes.
+  AND checksum = $8
 `
 
 type UpdateAssetTakenAtWrittenParams struct {
-	TakenAt     pgtype.Timestamptz `json:"taken_at"`
-	TakenAtZone pgtype.Text        `json:"taken_at_zone"`
-	Checksum    string             `json:"checksum"`
-	FileSize    int64              `json:"file_size"`
-	FileMtime   pgtype.Timestamptz `json:"file_mtime"`
-	ID          pgtype.UUID        `json:"id"`
-	OwnerID     pgtype.UUID        `json:"owner_id"`
+	TakenAt          pgtype.Timestamptz `json:"taken_at"`
+	TakenAtZone      pgtype.Text        `json:"taken_at_zone"`
+	Checksum         string             `json:"checksum"`
+	FileSize         int64              `json:"file_size"`
+	FileMtime        pgtype.Timestamptz `json:"file_mtime"`
+	ID               pgtype.UUID        `json:"id"`
+	OwnerID          pgtype.UUID        `json:"owner_id"`
+	ExpectedChecksum string             `json:"expected_checksum"`
 }
 
 // The capture-time edit's write-back arm: the file's metadata was
@@ -1113,6 +1079,7 @@ func (q *Queries) UpdateAssetTakenAtWritten(ctx context.Context, arg UpdateAsset
 		arg.FileMtime,
 		arg.ID,
 		arg.OwnerID,
+		arg.ExpectedChecksum,
 	)
 	if err != nil {
 		return 0, err

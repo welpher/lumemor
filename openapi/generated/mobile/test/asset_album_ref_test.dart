@@ -13,6 +13,12 @@ void main() {
       // TODO
     });
 
+    // The album's write switch as its OWNER set it. True (the creation default) means the application may modify the album's source files -- delete them through the trash move and write capture-time edits into their metadata. Carried on the owner's rows; a viewer's row carries false (a viewer holds no write to read it for). The detail's delete affordance folds this with `sourceWritable`. 
+    // bool allowAppWrites
+    test('to test the property `allowAppWrites`', () async {
+      // TODO
+    });
+
     // Whether the album's source directory can take the application's writes. False only for a directory album whose creation-time write probe answered no -- every other type (sync, memory, a writable directory) is true. The photo-detail faces read this to gate the destructive affordances: a photo housed only in a read-only source is the scan's verdict alone and offers no delete. 
     // bool sourceWritable
     test('to test the property `sourceWritable`', () async {

@@ -6705,6 +6705,14 @@ export interface components {
              */
             contentCopies: number;
             /**
+             * @description Whether this file's format carries a capture-time field the
+             *     app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time).
+             *     False for PNG and the like: the edit entry is not offered
+             *     at all for such a file (no dead control), and the PATCH
+             *     answers 409 when asked anyway.
+             */
+            metadataSupported: boolean;
+            /**
              * @description Whether the calling owner may edit this asset's capture
              *     time with a write into the original file. True for a
              *     managed original (the caller owns it) and for a
@@ -6932,6 +6940,16 @@ export interface components {
              * @description Identifier of the album (the detail face's deep link).
              */
             id: string;
+            /**
+             * @description The album's write switch as its OWNER set it. True (the
+             *     creation default) means the application may modify the
+             *     album's source files -- delete them through the trash
+             *     move and write capture-time edits into their metadata.
+             *     Carried on the owner's rows; a viewer's row carries false
+             *     (a viewer holds no write to read it for). The detail's
+             *     delete affordance folds this with `sourceWritable`.
+             */
+            allowAppWrites: boolean;
             /**
              * @description Whether the album's source directory can take the
              *     application's writes. False only for a directory album
@@ -10701,12 +10719,37 @@ export interface operations {
                 };
             };
             /**
+             * @description The caller may not modify this file: a directory-source
+             *     photo whose album write switch is off, or a row the caller
+             *     does not own. Nothing changed.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
              * @description No asset with this id is editable by the caller: the id
              *     is unknown or belongs to another account (the owner-only
              *     gate applies to administrators too), and the two cases
              *     are indistinguishable by design.
              */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description The file format carries no standard capture-time field the
+             *     app can write (PNG and the like). Nothing changed.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

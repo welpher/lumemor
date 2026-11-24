@@ -15,12 +15,14 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	"github.com/welpher/lumemor/server/internal/geodata"
@@ -48,6 +50,9 @@ func newAssetEnvWithPlaces(t *testing.T, uploadLimit int64, centroids []geodata.
 // serves it, the row carries both, one event covers the change, and
 // the idempotent repeat stays silent.
 func TestPatchAssetTakenAt(t *testing.T) {
+	if !exiftoolAvailable() {
+		t.Skip("exiftool is not installed (the metadata write needs it)")
+	}
 	env := newAssetEnv(t, testUploadLimit)
 	id := fixtureAssetID("a1")
 	env.insertOwnedAsset(t, id, env.sessionUserID(t),
@@ -61,8 +66,16 @@ func TestPatchAssetTakenAt(t *testing.T) {
 	if after := readFileSum(t, path); after == before {
 		t.Fatal("the original file was not rewritten (the write-back did not land)")
 	}
-	if detail.Checksum == "fixture-checksum-"+id.String() {
-		t.Errorf("checksum = %q, want the rewritten file's digest", detail.Checksum)
+	if want := readFileSum(t, path); detail.Checksum != want {
+		t.Errorf("checksum = %q, want the rewritten file's digest %q", detail.Checksum, want)
+	}
+	if info, err := os.Stat(path); err == nil && detail.FileSize != info.Size() {
+		t.Errorf("fileSize = %d, want the rewritten file's %d", detail.FileSize, info.Size())
+	}
+	rewritten := readFileSum(t, path)
+	env.patchAsset(t, env.cookie, id, map[string]any{"takenAt": "2026-08-12T18:42:00+08:00"})
+	if got := readFileSum(t, path); got != rewritten {
+		t.Error("the idempotent repeat rewrote the file")
 	}
 	if !detail.TakenAt.Equal(time.Date(2026, 8, 12, 10, 42, 0, 0, time.UTC)) {
 		t.Errorf("patched takenAt = %v, want the offset's instant (10:42 UTC)", detail.TakenAt)
@@ -517,7 +530,28 @@ func TestPatchAssetTakenAtGate(t *testing.T) {
 		t.Error("the read-only source's file changed")
 	}
 
+	// The switch-off arm: a writable source whose owner turned the
+	// write switch off is the same 403, the file untouched.
+	switchedOff := fixtureAssetID("d6")
+	switchedOffPath := writeJPEG("switched-off.jpg")
+	before = readFileSum(t, switchedOffPath)
+	env.insertTwinAsset(t, switchedOff, owner, switchedOffPath, "checksum-off", "switched-off.jpg", base)
+	switchedOffAlbum := fixtureAssetID("d7")
+	env.insertTimelineAlbum(t, switchedOffAlbum, owner, "directory")
+	env.exec(t, "UPDATE albums SET allow_app_deletion = false WHERE id = $1", pgUUID(switchedOffAlbum))
+	env.addTimelineItem(t, switchedOffAlbum, switchedOff, owner)
+	rec = env.patchAssetRaw(t, env.cookie, switchedOff, body())
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("switched-off patch status = %d, want %d (body %q)", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if after := readFileSum(t, switchedOffPath); after != before {
+		t.Error("the switched-off source's file changed")
+	}
+
 	// The writable source arm: the edit lands and rewrites the file.
+	if !exiftoolAvailable() {
+		t.Skip("exiftool is not installed (the writable arm needs it)")
+	}
 	writable := fixtureAssetID("d4")
 	writablePath := writeJPEG("writable.jpg")
 	before = readFileSum(t, writablePath)
@@ -532,7 +566,25 @@ func TestPatchAssetTakenAtGate(t *testing.T) {
 	if after := readFileSum(t, writablePath); after == before {
 		t.Error("the writable source's file was not rewritten")
 	}
-	if detail.Checksum == "checksum-rw" {
-		t.Errorf("checksum = %q, want the rewritten file's digest", detail.Checksum)
+	if want := readFileSum(t, writablePath); detail.Checksum != want {
+		t.Errorf("checksum = %q, want the rewritten file's digest %q", detail.Checksum, want)
 	}
+	var fileMtime pgtype.Timestamptz
+	if err := env.pool.QueryRow(context.Background(),
+		"SELECT file_mtime FROM assets WHERE id = $1", pgUUID(writable)).Scan(&fileMtime); err != nil {
+		t.Fatalf("read the external snapshot: %v", err)
+	}
+	if info, err := os.Stat(writablePath); err == nil {
+		if !fileMtime.Valid || fileMtime.Time.Unix() != info.ModTime().Unix() {
+			t.Errorf("file_mtime = %v, want the rewritten file's %v", fileMtime.Time, info.ModTime())
+		}
+	}
+}
+
+// exiftoolAvailable reports whether the metadata tool is on the PATH
+// (the CI runner installs ffmpeg but not exiftool; ci-local runs in
+// the dev image, where it is present).
+func exiftoolAvailable() bool {
+	_, err := exec.LookPath("exiftool")
+	return err == nil
 }

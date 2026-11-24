@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -116,20 +117,24 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		return
 	}
 
-	// The capture-time edit writes the original FILE, so it needs
-	// the write grant: the owner of a managed original, or the owner
-	// of a directory album whose source was writable at creation and
-	// whose write switch is on. The gate is enforced HERE, not only
-	// in the UI. A format with no standard capture-time field is a
-	// 409 -- the capability itself is absent.
+	// The albums face and the write grant share one read. The
+	// capture-time edit writes the original FILE, so it needs the
+	// grant: the owner of a managed original, or the owner of a
+	// directory album whose source was writable at creation and whose
+	// write switch is on. The gate is enforced HERE, not only in the
+	// UI; a format with no standard field is a 409.
+	ctx := r.Context()
+	albums, albumsWritable, err := s.assetAlbumsForCaller(ctx, pgUUID(id), pgUUID(requester.userID))
+	if err != nil {
+		s.internalError(w, r, "load asset albums", err)
+		return
+	}
+
+	var stagedWrite *metawrite.Staged
+	var written *captureWrite
 	if request.TakenAt != nil {
-		_, albumsWritable, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
-		if err != nil {
-			s.internalError(w, r, "load asset albums for the time edit", err)
-			return
-		}
 		if !assetMetadataWritable(row.OwnerID, pgUUID(requester.userID), row.StorageKind, row.MimeType, albumsWritable) {
-			if !captureTimeWritableFormat(row.MimeType) {
+			if !metawrite.Supported(row.MimeType) {
 				s.writeError(w, http.StatusConflict, apigen.ASSETMETADATAUNSUPPORTED,
 					"the file format carries no standard capture-time field", nil)
 				return
@@ -138,7 +143,50 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 				"the app may not modify this file", nil)
 			return
 		}
+		// The file and the row speak seconds: EXIF carries no
+		// sub-second field here, and Postgres truncates to
+		// microseconds. Both sides truncate so a repeat is the
+		// idempotent no-op.
+		at := request.TakenAt.Truncate(time.Second)
+		zone := at.Format("-07:00")
+		alreadySet := row.TakenAt.Valid && row.TakenAt.Time.Truncate(time.Second).Equal(at) &&
+			row.TakenAtZone.Valid && row.TakenAtZone.String == zone
+		if !alreadySet {
+			target, err := s.captureTimeTarget(row)
+			if err != nil {
+				s.logger.Error("resolve the asset file for the time edit", "asset_id", id, "error", err)
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
+					"the capture time could not be written into the file", nil)
+				return
+			}
+			// The subprocess runs BEFORE the transaction: no database
+			// connection and no row lock is held across it.
+			staged, err := metawrite.Stage(ctx, target, row.MimeType, at)
+			if err != nil {
+				s.logger.Error("write the capture time into the file", "asset_id", id, "error", err)
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
+					"the capture time could not be written into the file", nil)
+				return
+			}
+			sum, size, mtime, err := staged.Fingerprint()
+			if err != nil {
+				staged.Discard()
+				s.logger.Error("read the written file back", "asset_id", id, "error", err)
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
+					"the written file could not be read back", nil)
+				return
+			}
+			stagedWrite = staged
+			written = &captureWrite{at: at, zone: zone, checksum: sum, size: size, mtime: mtime}
+		}
 	}
+	// A staging file never outlives the request: commit consumes it,
+	// every other path discards it.
+	defer func() {
+		if stagedWrite != nil {
+			stagedWrite.Discard()
+		}
+	}()
 
 	// One transaction for the whole patch: when the request carries
 	// both fields they land together or not at all -- a partial patch
@@ -148,8 +196,6 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// isArchived arm is the batch's own SetAssetHidden -- one
 	// authority for the switch, whatever the surfaces call it -- and
 	// the description arm is its owner-guarded sibling.
-	ctx := r.Context()
-	var stagedWrite *metawrite.Staged
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		s.internalError(w, r, "begin patch transaction", err)
@@ -175,58 +221,31 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 			changed = true
 		}
 	}
-	if request.TakenAt != nil {
-		// The offset that wrote the instant is the display zone:
-		// one value decides both. The RFC 3339 binding has already
-		// refused a zone-less timestamp (the decode's own error), so
-		// what survives here always carries one. The repeat of the
-		// stored value is the idempotent no-op: the file is not
-		// rewritten for it.
-		zone := request.TakenAt.Format("-07:00")
-		alreadySet := row.TakenAt.Valid && row.TakenAt.Time.Equal(*request.TakenAt) &&
-			row.TakenAtZone.Valid && row.TakenAtZone.String == zone
-		if !alreadySet {
-			target, err := s.captureTimeTarget(row)
-			if err != nil {
-				s.internalError(w, r, "resolve the asset file for the time edit", err)
-				return
-			}
-			staged, err := metawrite.Stage(ctx, target, row.MimeType, *request.TakenAt)
-			if err != nil {
-				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
-					"the capture time could not be written into the file", nil)
-				return
-			}
-			sum, size, mtime, err := staged.Fingerprint()
-			if err != nil {
-				staged.Discard()
-				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
-					"the written file could not be read back", nil)
-				return
-			}
-			fileMtime := pgtype.Timestamptz{}
-			if row.StorageKind == dbgen.StorageKindExternal {
-				fileMtime = pgtype.Timestamptz{Time: mtime, Valid: true}
-			}
-			rows, err := queries.UpdateAssetTakenAtWritten(ctx, dbgen.UpdateAssetTakenAtWrittenParams{
-				ID:          pgUUID(id),
-				OwnerID:     pgUUID(requester.userID),
-				TakenAt:     pgtype.Timestamptz{Time: *request.TakenAt, Valid: true},
-				TakenAtZone: pgtype.Text{String: zone, Valid: true},
-				Checksum:    sum,
-				FileSize:    size,
-				FileMtime:   fileMtime,
-			})
-			if err != nil {
-				staged.Discard()
-				s.internalError(w, r, "update asset capture time", err)
-				return
-			}
-			if rows > 0 {
-				changed = true
-			}
-			stagedWrite = staged
+	if request.TakenAt != nil && written != nil {
+		fileMtime := pgtype.Timestamptz{}
+		if row.StorageKind == dbgen.StorageKindExternal {
+			fileMtime = pgtype.Timestamptz{Time: written.mtime, Valid: true}
 		}
+		rows, err := queries.UpdateAssetTakenAtWritten(ctx, dbgen.UpdateAssetTakenAtWrittenParams{
+			ID:               pgUUID(id),
+			OwnerID:          pgUUID(requester.userID),
+			TakenAt:          pgtype.Timestamptz{Time: written.at, Valid: true},
+			TakenAtZone:      pgtype.Text{String: written.zone, Valid: true},
+			Checksum:         written.checksum,
+			FileSize:         written.size,
+			FileMtime:        fileMtime,
+			ExpectedChecksum: row.Checksum,
+		})
+		if err != nil {
+			s.internalError(w, r, "update asset capture time", err)
+			return
+		}
+		if rows == 0 {
+			s.writeError(w, http.StatusConflict, apigen.ASSETMETADATAWRITEFAILED,
+				"the asset changed while the edit ran; nothing changed", nil)
+			return
+		}
+		changed = true
 	}
 	if request.Latitude != nil && request.Longitude != nil {
 		// The place the pin resolves to: the grid's nearest city, or
@@ -333,11 +352,6 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset tags", err)
 		return
 	}
-	albums, albumsWritable, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
-	if err != nil {
-		s.internalError(w, r, "load patched asset albums", err)
-		return
-	}
 	includePath := requester.role == dbgen.UserRoleAdmin
 	metadataWritable := assetMetadataWritable(detail.OwnerID, pgUUID(requester.userID), detail.StorageKind, detail.MimeType, albumsWritable)
 	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums, includePath, metadataWritable))
@@ -352,4 +366,15 @@ func (s *server) captureTimeTarget(row dbgen.Asset) (string, error) {
 		return row.TrashPath.String, nil
 	}
 	return storage.ResolveAssetPath(s.dataDir, row.FilePath, string(row.StorageKind))
+}
+
+// captureWrite is one staged file write's facts: the truncated
+// capture time, its display zone, and the new file's digest, size and
+// mtime -- what the row takes once the write lands.
+type captureWrite struct {
+	at       time.Time
+	zone     string
+	checksum string
+	size     int64
+	mtime    time.Time
 }

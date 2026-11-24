@@ -2133,6 +2133,8 @@ paths:
                     durationMs: null
                     blurhash: UHL6aAof00WBWB00ayWB00
                     contentCopies: 2
+                    metadataWritable: true
+                    metadataSupported: true
                     livePhotoVideoId: null
                     exif:
                       cameraMake: Lumemor
@@ -2411,6 +2413,8 @@ paths:
                     durationMs: null
                     blurhash: UHL6aAof00WBWB00ayWB00
                     contentCopies: 0
+                    metadataWritable: true
+                    metadataSupported: true
                     livePhotoVideoId: null
                     exif:
                       cameraMake: Lumemor
@@ -2478,6 +2482,33 @@ paths:
                   value:
                     code: AUTH_INVALID_CREDENTIALS
                     message: authentication required
+        '403':
+          description: |
+            The caller may not modify this file: a directory-source
+            photo whose album write switch is off, or a row the caller
+            does not own. Nothing changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                metadataReadonly:
+                  value:
+                    code: ASSET_METADATA_READONLY
+                    message: the app may not modify this file
+        '409':
+          description: |
+            The file format carries no standard capture-time field the
+            app can write (PNG and the like). Nothing changed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                metadataUnsupported:
+                  value:
+                    code: ASSET_METADATA_UNSUPPORTED
+                    message: the file format carries no standard capture-time field
         '404':
           description: |
             No asset with this id is editable by the caller: the id
@@ -15960,6 +15991,7 @@ components:
         - blurhash
         - contentCopies
         - metadataWritable
+        - metadataSupported
         - livePhotoVideoId
         - exif
         - location
@@ -16117,6 +16149,14 @@ components:
             owner, and it counts rows, not surfaces. The PATCH
             response serves the same value, exactly as the GET serves
             it.
+        metadataSupported:
+          type: boolean
+          description: |
+            Whether this file's format carries a capture-time field the
+            app can write (JPEG/HEIC/TIFF EXIF, MP4/MOV creation_time).
+            False for PNG and the like: the edit entry is not offered
+            at all for such a file (no dead control), and the PATCH
+            answers 409 when asked anyway.
         metadataWritable:
           type: boolean
           description: |
@@ -16392,11 +16432,22 @@ components:
         - type
         - callerRole
         - sourceWritable
+        - allowAppWrites
       properties:
         id:
           type: string
           format: uuid
           description: Identifier of the album (the detail face's deep link).
+        allowAppWrites:
+          type: boolean
+          description: |
+            The album's write switch as its OWNER set it. True (the
+            creation default) means the application may modify the
+            album's source files -- delete them through the trash
+            move and write capture-time edits into their metadata.
+            Carried on the owner's rows; a viewer's row carries false
+            (a viewer holds no write to read it for). The detail's
+            delete affordance folds this with `sourceWritable`.
         sourceWritable:
           type: boolean
           description: |
