@@ -28,6 +28,8 @@ import (
 
 	apigen "github.com/welpher/lumemor/server/internal/api/gen"
 	dbgen "github.com/welpher/lumemor/server/internal/db/gen"
+	"github.com/welpher/lumemor/server/internal/metawrite"
+	"github.com/welpher/lumemor/server/internal/storage"
 )
 
 // descriptionLimit is the contract's bound on the asset description:
@@ -114,6 +116,30 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		return
 	}
 
+	// The capture-time edit writes the original FILE, so it needs
+	// the write grant: the owner of a managed original, or the owner
+	// of a directory album whose source was writable at creation and
+	// whose write switch is on. The gate is enforced HERE, not only
+	// in the UI. A format with no standard capture-time field is a
+	// 409 -- the capability itself is absent.
+	if request.TakenAt != nil {
+		_, albumsWritable, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+		if err != nil {
+			s.internalError(w, r, "load asset albums for the time edit", err)
+			return
+		}
+		if !assetMetadataWritable(row.OwnerID, pgUUID(requester.userID), row.StorageKind, row.MimeType, albumsWritable) {
+			if !captureTimeWritableFormat(row.MimeType) {
+				s.writeError(w, http.StatusConflict, apigen.ASSETMETADATAUNSUPPORTED,
+					"the file format carries no standard capture-time field", nil)
+				return
+			}
+			s.writeError(w, http.StatusForbidden, apigen.ASSETMETADATAREADONLY,
+				"the app may not modify this file", nil)
+			return
+		}
+	}
+
 	// One transaction for the whole patch: when the request carries
 	// both fields they land together or not at all -- a partial patch
 	// never surfaces. Each write's set-semantics guard makes the
@@ -123,6 +149,7 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 	// authority for the switch, whatever the surfaces call it -- and
 	// the description arm is its owner-guarded sibling.
 	ctx := r.Context()
+	var stagedWrite *metawrite.Staged
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		s.internalError(w, r, "begin patch transaction", err)
@@ -152,19 +179,53 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		// The offset that wrote the instant is the display zone:
 		// one value decides both. The RFC 3339 binding has already
 		// refused a zone-less timestamp (the decode's own error), so
-		// what survives here always carries one.
-		rows, err := queries.UpdateAssetTakenAt(ctx, dbgen.UpdateAssetTakenAtParams{
-			ID:          pgUUID(id),
-			OwnerID:     pgUUID(requester.userID),
-			TakenAt:     pgtype.Timestamptz{Time: *request.TakenAt, Valid: true},
-			TakenAtZone: pgtype.Text{String: request.TakenAt.Format("-07:00"), Valid: true},
-		})
-		if err != nil {
-			s.internalError(w, r, "update asset capture time", err)
-			return
-		}
-		if rows > 0 {
-			changed = true
+		// what survives here always carries one. The repeat of the
+		// stored value is the idempotent no-op: the file is not
+		// rewritten for it.
+		zone := request.TakenAt.Format("-07:00")
+		alreadySet := row.TakenAt.Valid && row.TakenAt.Time.Equal(*request.TakenAt) &&
+			row.TakenAtZone.Valid && row.TakenAtZone.String == zone
+		if !alreadySet {
+			target, err := s.captureTimeTarget(row)
+			if err != nil {
+				s.internalError(w, r, "resolve the asset file for the time edit", err)
+				return
+			}
+			staged, err := metawrite.Stage(ctx, target, row.MimeType, *request.TakenAt)
+			if err != nil {
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
+					"the capture time could not be written into the file", nil)
+				return
+			}
+			sum, size, mtime, err := staged.Fingerprint()
+			if err != nil {
+				staged.Discard()
+				s.writeError(w, http.StatusInternalServerError, apigen.ASSETMETADATAWRITEFAILED,
+					"the written file could not be read back", nil)
+				return
+			}
+			fileMtime := pgtype.Timestamptz{}
+			if row.StorageKind == dbgen.StorageKindExternal {
+				fileMtime = pgtype.Timestamptz{Time: mtime, Valid: true}
+			}
+			rows, err := queries.UpdateAssetTakenAtWritten(ctx, dbgen.UpdateAssetTakenAtWrittenParams{
+				ID:          pgUUID(id),
+				OwnerID:     pgUUID(requester.userID),
+				TakenAt:     pgtype.Timestamptz{Time: *request.TakenAt, Valid: true},
+				TakenAtZone: pgtype.Text{String: zone, Valid: true},
+				Checksum:    sum,
+				FileSize:    size,
+				FileMtime:   fileMtime,
+			})
+			if err != nil {
+				staged.Discard()
+				s.internalError(w, r, "update asset capture time", err)
+				return
+			}
+			if rows > 0 {
+				changed = true
+			}
+			stagedWrite = staged
 		}
 	}
 	if request.Latitude != nil && request.Longitude != nil {
@@ -208,7 +269,22 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		}
 	}
 
+	// The file lands first, then the transaction: a staging or DB
+	// failure leaves the original byte-identical (the rollback path),
+	// and a commit failure after the rename is the one residual
+	// window, logged rather than silently swallowed.
+	if stagedWrite != nil {
+		if err := stagedWrite.Commit(); err != nil {
+			stagedWrite.Discard()
+			s.internalError(w, r, "write the capture time into the file", err)
+			return
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
+		if stagedWrite != nil {
+			s.logger.Error("the file was rewritten but the row commit failed",
+				"asset_id", id, "error", err)
+		}
 		s.internalError(w, r, "commit asset patch", err)
 		return
 	}
@@ -257,11 +333,23 @@ func (s *server) PatchAsset(w http.ResponseWriter, r *http.Request, id openapi_t
 		s.internalError(w, r, "load patched asset tags", err)
 		return
 	}
-	albums, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	albums, albumsWritable, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
 	if err != nil {
 		s.internalError(w, r, "load patched asset albums", err)
 		return
 	}
 	includePath := requester.role == dbgen.UserRoleAdmin
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums, includePath))
+	metadataWritable := assetMetadataWritable(detail.OwnerID, pgUUID(requester.userID), detail.StorageKind, detail.MimeType, albumsWritable)
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(detail, faces, tags, albums, includePath, metadataWritable))
+}
+
+// captureTimeTarget resolves the file the write-back edits: the
+// original for a live row, the trash copy for a trashed external row
+// (the trash move relocated the file; the row stays editable), and
+// the storage layout's path for a managed original.
+func (s *server) captureTimeTarget(row dbgen.Asset) (string, error) {
+	if row.StorageKind == dbgen.StorageKindExternal && row.DeletedAt.Valid && row.TrashPath.Valid {
+		return row.TrashPath.String, nil
+	}
+	return storage.ResolveAssetPath(s.dataDir, row.FilePath, string(row.StorageKind))
 }

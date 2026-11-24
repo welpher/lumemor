@@ -9,9 +9,13 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -48,8 +52,18 @@ func TestPatchAssetTakenAt(t *testing.T) {
 	id := fixtureAssetID("a1")
 	env.insertOwnedAsset(t, id, env.sessionUserID(t),
 		time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC), timelineAssetOpts{})
+	// The edit writes the original file, so the row needs a real one:
+	// a JPEG fixture at the storage layout's path.
+	path := env.seedAssetFile(t, id)
+	before := readFileSum(t, path)
 
 	detail := env.patchAsset(t, env.cookie, id, map[string]any{"takenAt": "2026-08-12T18:42:00+08:00"})
+	if after := readFileSum(t, path); after == before {
+		t.Fatal("the original file was not rewritten (the write-back did not land)")
+	}
+	if detail.Checksum == "fixture-checksum-"+id.String() {
+		t.Errorf("checksum = %q, want the rewritten file's digest", detail.Checksum)
+	}
 	if !detail.TakenAt.Equal(time.Date(2026, 8, 12, 10, 42, 0, 0, time.UTC)) {
 		t.Errorf("patched takenAt = %v, want the offset's instant (10:42 UTC)", detail.TakenAt)
 	}
@@ -408,5 +422,117 @@ func TestCreateFaceNotFound(t *testing.T) {
 	}
 	if count := env.queryInt(t, "SELECT count(*) FROM faces"); count != 0 {
 		t.Errorf("faces rows after the refusals = %d, want 0", count)
+	}
+}
+
+// seedAssetFile writes a real JPEG at one fixture blob row's storage
+// path and answers that path (the capture-time write-back needs bytes
+// to rewrite).
+func (e *assetEnv) seedAssetFile(t *testing.T, id uuid.UUID) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("..", "jobs", "testdata", "golden.jpg"))
+	if err != nil {
+		t.Fatalf("read the JPEG fixture: %v", err)
+	}
+	path := filepath.Join(e.dataDir, "originals", "fixtures", id.String())
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create the fixture directory: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write the fixture file: %v", err)
+	}
+	return path
+}
+
+// readFileSum answers one file's content digest (the before/after
+// witness of the write-back).
+func readFileSum(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// TestPatchAssetTakenAtGate pins the write grant: a format with no
+// standard capture-time field is a 409, a read-only directory source's
+// photo is a 403 (the file untouched), and a writable source's photo
+// takes the edit with the file rewritten and the detail saying so.
+func TestPatchAssetTakenAtGate(t *testing.T) {
+	env := newAssetEnv(t, testUploadLimit)
+	owner := env.sessionUserID(t)
+	base := time.Date(2026, 7, 10, 10, 0, 0, 0, time.UTC)
+	body := func() []byte {
+		return patchAssetBody(t, map[string]any{"takenAt": "2026-08-12T18:42:00+08:00"})
+	}
+	codeOf := func(rec *httptest.ResponseRecorder) apigen.ErrorCode {
+		var failure apigen.Error
+		if err := json.Unmarshal(rec.Body.Bytes(), &failure); err != nil {
+			t.Fatalf("decode error body %q: %v", rec.Body.String(), err)
+		}
+		return failure.Code
+	}
+	writeJPEG := func(name string) string {
+		data, err := os.ReadFile(filepath.Join("..", "jobs", "testdata", "golden.jpg"))
+		if err != nil {
+			t.Fatalf("read the JPEG fixture: %v", err)
+		}
+		path := filepath.Join(t.TempDir(), name)
+		if err := os.WriteFile(path, data, 0o644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+		return path
+	}
+
+	// The format arm: a PNG has no standard capture-time field.
+	png := fixtureAssetID("d1")
+	env.insertOwnedAsset(t, png, owner, base, timelineAssetOpts{mime: "image/png"})
+	rec := env.patchAssetRaw(t, env.cookie, png, body())
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("PNG patch status = %d, want %d (body %q)", rec.Code, http.StatusConflict, rec.Body.String())
+	}
+	if code := codeOf(rec); code != apigen.ASSETMETADATAUNSUPPORTED {
+		t.Errorf("PNG patch code = %q, want %q", code, apigen.ASSETMETADATAUNSUPPORTED)
+	}
+
+	// The read-only source arm: the file must stay byte-identical.
+	readOnly := fixtureAssetID("d2")
+	readOnlyPath := writeJPEG("read-only.jpg")
+	before := readFileSum(t, readOnlyPath)
+	env.insertTwinAsset(t, readOnly, owner, readOnlyPath, "checksum-ro", "read-only.jpg", base)
+	readOnlyAlbum := fixtureAssetID("d3")
+	env.insertTimelineAlbum(t, readOnlyAlbum, owner, "directory")
+	env.exec(t, "UPDATE albums SET source_writable = false WHERE id = $1", pgUUID(readOnlyAlbum))
+	env.addTimelineItem(t, readOnlyAlbum, readOnly, owner)
+	rec = env.patchAssetRaw(t, env.cookie, readOnly, body())
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("read-only patch status = %d, want %d (body %q)", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if code := codeOf(rec); code != apigen.ASSETMETADATAREADONLY {
+		t.Errorf("read-only patch code = %q, want %q", code, apigen.ASSETMETADATAREADONLY)
+	}
+	if after := readFileSum(t, readOnlyPath); after != before {
+		t.Error("the read-only source's file changed")
+	}
+
+	// The writable source arm: the edit lands and rewrites the file.
+	writable := fixtureAssetID("d4")
+	writablePath := writeJPEG("writable.jpg")
+	before = readFileSum(t, writablePath)
+	env.insertTwinAsset(t, writable, owner, writablePath, "checksum-rw", "writable.jpg", base)
+	writableAlbum := fixtureAssetID("d5")
+	env.insertTimelineAlbum(t, writableAlbum, owner, "directory")
+	env.addTimelineItem(t, writableAlbum, writable, owner)
+	detail := env.patchAsset(t, env.cookie, writable, map[string]any{"takenAt": "2026-08-12T18:42:00+08:00"})
+	if !detail.MetadataWritable {
+		t.Error("metadataWritable = false for a writable directory source, want true")
+	}
+	if after := readFileSum(t, writablePath); after == before {
+		t.Error("the writable source's file was not rewritten")
+	}
+	if detail.Checksum == "checksum-rw" {
+		t.Errorf("checksum = %q, want the rewritten file's digest", detail.Checksum)
 	}
 }
