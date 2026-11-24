@@ -439,11 +439,11 @@ func TestCreateAlbumDialogSwitches(t *testing.T) {
 	graceID, graceCookie := env.createSecondUser(t, "create-switches-grace@example.com")
 	root := env.provisionMountRoot(t)
 
-	createSwitched := func(t *testing.T, title, dir string, allowAppDeletion, inTimeline *bool, audience []uuid.UUID) apigen.AlbumCreateResponse {
+	createSwitched := func(t *testing.T, title, dir string, allowAppWrites, inTimeline *bool, audience []uuid.UUID) apigen.AlbumCreateResponse {
 		t.Helper()
 		body := map[string]any{"title": title, "rootPath": dir}
-		if allowAppDeletion != nil {
-			body["allowAppDeletion"] = *allowAppDeletion
+		if allowAppWrites != nil {
+			body["allowAppWrites"] = *allowAppWrites
 		}
 		if inTimeline != nil {
 			body["inTimeline"] = *inTimeline
@@ -774,23 +774,23 @@ func TestUpdateAlbumDeletability(t *testing.T) {
 	}
 
 	t.Run("PatchesAndConverges", func(t *testing.T) {
-		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppWrites":false}`)
 		if got := stored(t, directory); got != 0 {
 			t.Errorf("stored allow_app_deletion = %d, want 0 (switched off)", got)
 		}
 		// Idempotent: repeating the stored value converges.
-		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":false}`)
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppWrites":false}`)
 		if got := stored(t, directory); got != 0 {
 			t.Errorf("stored allow_app_deletion after the repeat = %d, want 0 (converged)", got)
 		}
-		env.patchAlbum(t, env.cookie, directory, `{"allowAppDeletion":true}`)
+		env.patchAlbum(t, env.cookie, directory, `{"allowAppWrites":true}`)
 		if got := stored(t, directory); got != 1 {
 			t.Errorf("stored allow_app_deletion after the flip back = %d, want 1", got)
 		}
 	})
 
 	t.Run("MemoryAlbumRefusesTheSwitch", func(t *testing.T) {
-		rec := env.patchAlbumRaw(t, env.cookie, memory, `{"allowAppDeletion":false}`)
+		rec := env.patchAlbumRaw(t, env.cookie, memory, `{"allowAppWrites":false}`)
 		if rec.Code != http.StatusBadRequest {
 			t.Fatalf("PATCH the memory album status = %d, want %d (body %q)",
 				rec.Code, http.StatusBadRequest, rec.Body.String())

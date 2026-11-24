@@ -329,7 +329,7 @@ func TestMemoryCreation(t *testing.T) {
 		// them, the row stores nothing of them. The refusal is the
 		// shape's own -- no error, no home.
 		created := env.createMemoryRaw(t, env.cookie,
-			createMemoryBody(t, "Shape probe", nil, `"rootPath":"/Volumes/Photos","allowAppDeletion":false,"inTimeline":true`))
+			createMemoryBody(t, "Shape probe", nil, `"rootPath":"/Volumes/Photos","allowAppWrites":false,"inTimeline":true`))
 		if created.Code != http.StatusCreated {
 			t.Fatalf("POST /memories status = %d, want %d (body %q)",
 				created.Code, http.StatusCreated, created.Body.String())
