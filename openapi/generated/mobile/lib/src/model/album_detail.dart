@@ -20,7 +20,7 @@ part 'album_detail.g.dart';
 /// * [coverAssetIds] - The owner's stored pin, in pick order: the frames the owner picked, exactly as written (the server stores and returns the order given), or an empty array when the album is on the automatic weekly group. A pinned frame that has since left the album (moved out, trashed, archived) still appears here: the picker seeds from this list and marks the cells that are no longer in the album. The wall card's own `coverAssetIds` is the FILLED group (the dead pins replaced from the caller's visible pool); this field is the pin itself, never the rendered card. 
 /// * [rootPath] - The album's source directory: the RESOLVED absolute path the album row stores, present exactly on `directory` albums (the edit dialog's read-only source line; the property patch carries no field for it -- the source is pinned at creation). Memory and sync albums omit it: a memory has no source. 
 /// * [sourceWritable] - The creation-time write probe's fact: whether the source directory could be written, read back and removed from when the album was created. Present exactly on `directory` albums, both roles -- the fact is the album's own, not a role's. `false` is not an error state: a readable but read-only directory is a legitimate source whose photos cannot be deleted through the application. The truth is discovered exactly once, at creation; nothing re-probes it at runtime. 
-/// * [allowAppDeletion] - The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
+/// * [allowAppWrites] - The owner's write switch: whether the application may modify this album's source files -- the trash move of the source file on delete, and the metadata write-back of a capture-time edit. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face and the assets' `metadataWritable` stay false whatever it says. 
 /// * [deletable] - The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
 /// * [callerRole] - The caller's relation to this album: the owner holds the write affordances, a viewer is read-only. 
 /// * [itemCount] - The album's member count, the same predicate as the items below (every media kind). 
@@ -56,9 +56,9 @@ abstract class AlbumDetail implements Built<AlbumDetail, AlbumDetailBuilder> {
   @BuiltValueField(wireName: r'sourceWritable')
   bool? get sourceWritable;
 
-  /// The owner's deletability switch: whether deleting this album's photos THROUGH the application -- the trash move of the source file -- is permitted. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face stays false whatever it says. 
-  @BuiltValueField(wireName: r'allowAppDeletion')
-  bool? get allowAppDeletion;
+  /// The owner's write switch: whether the application may modify this album's source files -- the trash move of the source file on delete, and the metadata write-back of a capture-time edit. Present exactly on the OWNER's view of a `directory` album (the edit dialog's switch state; a viewer holds no write affordance to read it for). A read-only source carries the stored value too, but it governs nothing there: the derived `deletable` face and the assets' `metadataWritable` stay false whatever it says. 
+  @BuiltValueField(wireName: r'allowAppWrites')
+  bool? get allowAppWrites;
 
   /// The wall's delete-affordance derivation, computed server-side and carried as one boolean: the caller is the owner, the source was writable at creation, and the deletability switch is on. Present exactly on the OWNER's view of a `directory` album. The derivation is pure data -- no runtime probing -- and it drives the affordance only: the delete itself stays the operating system's authority, and a move it refuses answers the honest error. 
   @BuiltValueField(wireName: r'deletable')
@@ -150,10 +150,10 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
         specifiedType: const FullType(bool),
       );
     }
-    if (object.allowAppDeletion != null) {
-      yield r'allowAppDeletion';
+    if (object.allowAppWrites != null) {
+      yield r'allowAppWrites';
       yield serializers.serialize(
-        object.allowAppDeletion,
+        object.allowAppWrites,
         specifiedType: const FullType(bool),
       );
     }
@@ -272,13 +272,13 @@ class _$AlbumDetailSerializer implements PrimitiveSerializer<AlbumDetail> {
           if (valueDes == null) continue;
           result.sourceWritable = valueDes;
           break;
-        case r'allowAppDeletion':
+        case r'allowAppWrites':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType.nullable(bool),
           ) as bool?;
           if (valueDes == null) continue;
-          result.allowAppDeletion = valueDes;
+          result.allowAppWrites = valueDes;
           break;
         case r'deletable':
           final valueDes = serializers.deserialize(

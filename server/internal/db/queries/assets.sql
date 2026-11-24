@@ -139,6 +139,7 @@ WHERE a.id = sqlc.arg('id')
 -- assets_owner_checksum_idx.
 SELECT a.id,
        a.owner_id,
+       a.storage_kind,
        a.media_kind,
        a.original_filename,
        a.file_size,
@@ -293,6 +294,25 @@ UPDATE assets SET
                            ELSE place_id END,
     updated_at      = now()
 WHERE id = sqlc.arg('id');
+
+-- name: UpdateAssetTakenAtWritten :execrows
+-- The capture-time edit's write-back arm: the file's metadata was
+-- rewritten (staged and atomically committed), so the row takes the
+-- new capture time AND the file's new facts -- the checksum the
+-- serving ETags read, the size, the external snapshot's mtime -- in
+-- one statement. The caller only reaches here when the requested
+-- value differs from the stored one (the idempotent repeat never
+-- touches the file), so no set-semantics guard is needed; the owner
+-- guard is the permission check's second half.
+UPDATE assets SET
+    taken_at        = sqlc.arg('taken_at'),
+    taken_at_source = 'exif'::taken_at_source,
+    taken_at_zone   = sqlc.arg('taken_at_zone'),
+    checksum        = sqlc.arg('checksum'),
+    file_size       = sqlc.arg('file_size'),
+    file_mtime      = COALESCE(sqlc.narg('file_mtime'), file_mtime),
+    updated_at      = now()
+WHERE id = sqlc.arg('id') AND owner_id = sqlc.arg('owner_id');
 
 -- name: CompleteAssetJob :one
 -- One pipeline job completion: the guarded decrement of the readiness

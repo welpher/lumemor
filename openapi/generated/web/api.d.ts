@@ -882,16 +882,32 @@ export interface paths {
          *     `VALIDATION_FAILED`. The value replaces the stored text
          *     wholesale -- an empty string is a valid patch and clears it.
          *
-         *     `takenAt` replaces the stored capture time wholesale. The
-         *     timestamp MUST carry a UTC offset (RFC 3339's `Z` or
+         *     `takenAt` replaces the capture time with a WRITE INTO THE
+         *     ORIGINAL FILE: the image's EXIF (`DateTimeOriginal` and
+         *     `OffsetTimeOriginal`) or the video's `creation_time` is
+         *     rewritten atomically, and only then do the row's filesystem
+         *     facts follow (the checksum, the size, the external snapshot).
+         *     The timestamp MUST carry a UTC offset (RFC 3339's `Z` or
          *     `+hh:mm` designator): the offset is the capture zone the
          *     info panel displays beside the time, so a zone-less value is
          *     ambiguous and answers 400 `VALIDATION_FAILED` -- the same
          *     value decides where the photo sits on the timeline (the
          *     instant) and which offset renders beside it (the offset).
-         *     The stored `takenAtSource` keeps its value; the value itself
-         *     carries the edit. The same patch publishes the one
-         *     `asset.updated` event when the instant or the zone changed.
+         *     The edit is a content change: the response's `checksum` and
+         *     the twins' `contentCopies` reflect the new bytes, the stored
+         *     `takenAtSource` becomes `exif` (the file now carries the
+         *     value), and the one `asset.updated` event fires.
+         *
+         *     The write is gated by the source rule, enforced HERE rather
+         *     than only in the UI: a managed original answers to its
+         *     owner; a directory-source photo answers only when the caller
+         *     owns the album, its source was writable at creation, and the
+         *     album's `allowAppWrites` switch is on. An asset outside that
+         *     rule answers 403 `ASSET_METADATA_READONLY` and nothing
+         *     changes. A format with no standard capture-time field (PNG
+         *     and the like) answers 409 `ASSET_METADATA_UNSUPPORTED`; a
+         *     failed file write answers 500 `ASSET_METADATA_WRITE_FAILED`
+         *     with the original bytes and the row untouched.
          *
          *     `latitude` and `longitude` are the manual location edit, and
          *     they ride together: the pair replaces the asset's location
@@ -1487,7 +1503,7 @@ export interface paths {
          *     response's `skipped` list reports each with its reason.
          *
          *     The two dialog switches ride the same request. The
-         *     deletability switch (`allowAppDeletion`) lands on the row --
+         *     write switch (`allowAppWrites`) lands on the row --
          *     on by default, rendered by the dialog only where the source
          *     is writable (the completion row's `writable` fact; the
          *     read-only sources' stored value governs nothing). The
@@ -1680,7 +1696,8 @@ export interface paths {
          *
          *     `sourceWritable` rides beside it, on the `directory` albums
          *     only: the creation-time write probe's fact, false for a
-         *     read-only source. `allowAppDeletion` and `deletable` ride
+         *     read-only source. `allowAppWrites`, `deletable` and the asset's
+         *     derived `metadataWritable` ride
          *     the owner's view of a `directory` album only: the
          *     deletability switch's stored state (the edit dialog's
          *     toggle) and the wall's delete-affordance derivation
@@ -1778,7 +1795,7 @@ export interface paths {
         /**
          * Patch one album's properties.
          * @description The owner's partial edit of the album's properties: `title`,
-         *     `coverAssetIds` and `allowAppDeletion`, any subset,
+         *     `coverAssetIds` and `allowAppWrites`, any subset,
          *     at least one field (a body that carries none -- JSON null counts
          *     as absent, the patch discipline of the asset surface -- is a
          *     client bug and answers 400). The response is the album's wall
@@ -1815,7 +1832,7 @@ export interface paths {
          *     that is absent (or JSON null, which decodes as absent)
          *     leaves the pin unchanged.
          *
-         *     The deletability switch (`allowAppDeletion`) is the
+         *     The deletability switch (`allowAppWrites`) is the
          *     directory album's own field: a patch that carries it on a
          *     memory album answers 400 `VALIDATION_FAILED` with the
          *     message key `album_deletable_not_directory` (a memory
@@ -6688,6 +6705,19 @@ export interface components {
              */
             contentCopies: number;
             /**
+             * @description Whether the calling owner may edit this asset's capture
+             *     time with a write into the original file. True for a
+             *     managed original (the caller owns it) and for a
+             *     directory-source photo whose caller is the album's owner,
+             *     whose source was writable at creation, and whose album
+             *     write switch is on; false for a sharee, a read-only
+             *     source, the switch off, or a format with no standard
+             *     capture-time field (PNG and the like). The info panel
+             *     renders the time edit only when true, and the PATCH
+             *     enforces the same rule server-side.
+             */
+            metadataWritable: boolean;
+            /**
              * Format: uuid
              * @description For a Live Photo image, the id of its linked component
              *     video row (never in the timeline; its original is
@@ -8804,16 +8834,18 @@ export interface components {
              */
             sourceWritable?: boolean;
             /**
-             * @description The owner's deletability switch: whether deleting this
-             *     album's photos THROUGH the application -- the trash move
-             *     of the source file -- is permitted. Present exactly on
-             *     the OWNER's view of a `directory` album (the edit
-             *     dialog's switch state; a viewer holds no write
-             *     affordance to read it for). A read-only source carries
-             *     the stored value too, but it governs nothing there: the
-             *     derived `deletable` face stays false whatever it says.
+             * @description The owner's write switch: whether the application may
+             *     modify this album's source files -- the trash move of the
+             *     source file on delete, and the metadata write-back of a
+             *     capture-time edit. Present exactly on the OWNER's view of
+             *     a `directory` album (the edit dialog's switch state; a
+             *     viewer holds no write affordance to read it for). A
+             *     read-only source carries the stored value too, but it
+             *     governs nothing there: the derived `deletable` face and
+             *     the assets' `metadataWritable` stay false whatever it
+             *     says.
              */
-            allowAppDeletion?: boolean;
+            allowAppWrites?: boolean;
             /**
              * @description The wall's delete-affordance derivation, computed
              *     server-side and carried as one boolean: the caller is
@@ -8960,17 +8992,18 @@ export interface components {
              */
             rootPath: string;
             /**
-             * @description The owner's deletability switch, carried from the
-             *     creation dialog: whether the album's photos may be
-             *     deleted through the application (the trash move of the
-             *     source file). On by default; the dialog renders the
-             *     switch only where the source is writable (the
-             *     completion row's `writable` fact), and on a read-only
-             *     source the stored value governs nothing -- the derived
-             *     `deletable` face stays false whatever it says. Editable
-             *     later through the property patch.
+             * @description The owner's write switch, carried from the creation
+             *     dialog: whether the application may modify the album's
+             *     source files -- delete them through the trash move, and
+             *     write a capture-time edit back into their metadata. On
+             *     by default; the dialog renders the switch only where the
+             *     source is writable (the completion row's `writable`
+             *     fact), and on a read-only source the stored value
+             *     governs nothing -- the derived `deletable` and
+             *     `metadataWritable` faces stay false whatever it says.
+             *     Editable later through the property patch.
              */
-            allowAppDeletion?: boolean;
+            allowAppWrites?: boolean;
             /**
              * @description The creator's timeline preference, carried from the
              *     creation dialog: `false` keeps the album out of the
@@ -9113,20 +9146,21 @@ export interface components {
              */
             coverAssetIds?: string[];
             /**
-             * @description The owner's deletability switch of a DIRECTORY album:
-             *     whether the album's photos may be deleted through the
-             *     application (the trash move of the source file). On for
-             *     a writable source by default; the owner who manages
-             *     file-system deletions themselves turns it off, and the
-             *     wall's delete affordances disappear with it (the derived
-             *     `deletable` face of the detail read). A patch carrying
-             *     the field on a memory album answers 400 with the
-             *     message key `album_deletable_not_directory` -- the
-             *     switch is the directory album's own, a memory album's
+             * @description The owner's write switch of a DIRECTORY album: whether
+             *     the application may modify the album's source files --
+             *     delete them through the trash move, and write a
+             *     capture-time edit back into their metadata. On for a
+             *     writable source by default; the owner who manages the
+             *     files themselves turns it off, and the wall's delete
+             *     affordances and the assets' time edits disappear with it
+             *     (the derived `deletable` and `metadataWritable` faces).
+             *     A patch carrying the field on a memory album answers 400
+             *     with the message key `album_deletable_not_directory` --
+             *     the switch is the directory album's own, a memory album's
              *     deletions never move files. Idempotent: repeating the
              *     stored value converges.
              */
-            allowAppDeletion?: boolean;
+            allowAppWrites?: boolean;
         };
         /**
          * @description The membership write body, shared by the memory's curation
@@ -9367,7 +9401,7 @@ export interface components {
              *     form of this value.
              * @enum {string}
              */
-            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "ASSET_COMPONENT_CONFLICT" | "REBUILD_NOT_RUNNING" | "JOB_NOT_CANCELLABLE" | "JOB_RUN_NOT_FOUND";
+            code: "SETUP_ALREADY_COMPLETED" | "VALIDATION_FAILED" | "INTERNAL" | "AUTH_FORBIDDEN" | "AUTH_INVALID_CREDENTIALS" | "AUTH_RATE_LIMITED" | "PAIRING_TOKEN_INVALID" | "ASSET_TOO_LARGE" | "ASSET_NOT_FOUND" | "ASSET_NOT_READY" | "ASSET_METADATA_READONLY" | "ASSET_METADATA_UNSUPPORTED" | "ASSET_METADATA_WRITE_FAILED" | "USER_EMAIL_TAKEN" | "USER_NOT_FOUND" | "USER_LAST_ADMIN" | "USER_TRANSFER_TO_SELF" | "MODEL_DOWNLOAD_FAILED" | "MODEL_NOT_FOUND" | "MODEL_INVALID" | "MODEL_SLOT_UNKNOWN" | "MODEL_PROBE_NOT_FOUND" | "MODEL_PROBE_REQUIRED" | "MODEL_CONFIRM_REQUIRED" | "MODEL_SLOT_LOCKED" | "PERSON_NOT_FOUND" | "ALBUM_NOT_FOUND" | "ALBUM_PATH_NOT_FOUND" | "ALBUM_PATH_NOT_DIRECTORY" | "ALBUM_PATH_NOT_READABLE" | "ALBUM_PATH_IN_MANAGED_TREE" | "TAG_NOT_FOUND" | "TAG_NAME_TAKEN" | "ASSET_TRASH_MOVE_FAILED" | "ASSET_RESTORE_MOVE_FAILED" | "ASSET_COMPONENT_CONFLICT" | "REBUILD_NOT_RUNNING" | "JOB_NOT_CANCELLABLE" | "JOB_RUN_NOT_FOUND";
             /** @description English technical description for debugging. */
             message?: string;
             /**
@@ -11787,7 +11821,7 @@ export interface operations {
              *     the card's frame count, repeats an id, or names an id
              *     that is not a renderable member of this album (the message key
              *     `album_cover_not_member` with the refused count); or a
-             *     present `allowAppDeletion` names a non-directory album
+             *     present `allowAppWrites` names a non-directory album
              *     (the message key `album_deletable_not_directory`).
              */
             400: {

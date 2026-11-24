@@ -109,17 +109,18 @@ func (s *server) GetAsset(w http.ResponseWriter, r *http.Request, id openapi_typ
 	}
 	// The albums face rides the same permission: the visible
 	// membership rows only, never an album the caller cannot see.
-	albums, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
+	albums, albumsWritable, err := s.assetAlbumsForCaller(r.Context(), pgUUID(id), pgUUID(requester.userID))
 	if err != nil {
 		s.internalError(w, r, "load asset albums", err)
 		return
 	}
+	metadataWritable := assetMetadataWritable(row.OwnerID, pgUUID(requester.userID), row.StorageKind, row.MimeType, albumsWritable)
 
 	// The path face rides the caller's role: only an administrator's
 	// detail carries the storage-relative machine path (every other
 	// caller reads null and their panel renders no such row).
 	includePath := requester.role == dbgen.UserRoleAdmin
-	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags, albums, includePath))
+	s.writeJSON(w, http.StatusOK, assetDetailFrom(row, faces, tags, albums, includePath, metadataWritable))
 }
 
 // GetAssetThumbnail implements GET /api/v1/assets/{id}/thumbnail: the
@@ -651,14 +652,20 @@ func (s *server) assetFacesForCaller(ctx context.Context, assetID, callerID pgty
 // the PATCH response carries the albums exactly as the GET serves
 // them. Callers must have proven the asset caller-visible first;
 // the array carries no gate of its own.
-func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetAlbumRef, error) {
+func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgtype.UUID) ([]apigen.AssetAlbumRef, bool, error) {
 	rows, err := s.queries.ListAssetAlbumsForCaller(ctx, dbgen.ListAssetAlbumsForCallerParams{
 		Viewer:  callerID,
 		AssetID: assetID,
 	})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
+	// The write grant the metadata write-back needs: at least one of
+	// the CALLER's own directory albums accepts the application's
+	// writes (the creation-time probe's fact and the album switch
+	// together). A shared album never grants it -- the capability is
+	// the owner's.
+	albumsWritable := false
 	// A non-nil empty slice: the fixed-shape contract wants an array,
 	// never JSON null, for an asset no visible album holds.
 	albums := make([]apigen.AssetAlbumRef, 0, len(rows))
@@ -677,8 +684,43 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 			// photo is the scan's verdict alone).
 			SourceWritable: row.SourceWritable,
 		})
+		if row.IsOwner && row.Type == dbgen.AlbumTypeDirectory && row.SourceWritable && row.AllowAppDeletion {
+			albumsWritable = true
+		}
 	}
-	return albums, nil
+	return albums, albumsWritable, nil
+}
+
+// captureTimeWritableFormat reports whether the app can write a
+// capture-time field into this file's embedded metadata: EXIF for
+// JPEG/HEIC/TIFF, the container's creation_time for MP4/MOV. Every
+// other format (PNG and the like) has no standard field to carry it,
+// so the edit is not offered and the write refuses.
+func captureTimeWritableFormat(mime string) bool {
+	switch mime {
+	case "image/jpeg", "image/heic", "image/heif", "image/tiff",
+		"video/mp4", "video/quicktime":
+		return true
+	}
+	return false
+}
+
+// assetMetadataWritable derives the capture-time capability: the
+// caller owns the asset, the format carries a standard field, and the
+// file is the app's own (a managed original) or a directory source
+// whose write grant holds. The detail's metadataWritable face and the
+// PATCH's gate read the same rule.
+func assetMetadataWritable(ownerID, callerID pgtype.UUID, storageKind dbgen.StorageKind, mime string, albumsWritable bool) bool {
+	if !ownerID.Valid || !callerID.Valid || ownerID.Bytes != callerID.Bytes {
+		return false
+	}
+	if !captureTimeWritableFormat(mime) {
+		return false
+	}
+	if storageKind == dbgen.StorageKindBlob {
+		return true
+	}
+	return albumsWritable
 }
 
 // assetDetailFrom maps the detail read onto the API shape. The
@@ -695,7 +737,7 @@ func (s *server) assetAlbumsForCaller(ctx context.Context, assetID, callerID pgt
 // a null place_id (no GPS, no baked data) answers null. contentCopies
 // is the read's own twin count -- the OTHER live rows of the owner
 // carrying the same content, the delete toast's note.
-func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef, includePath bool) apigen.AssetDetail {
+func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummary, tags []apigen.AssetTagSummary, albums []apigen.AssetAlbumRef, includePath, metadataWritable bool) apigen.AssetDetail {
 	detail := apigen.AssetDetail{
 		Id:               uuid.UUID(row.ID.Bytes),
 		OwnerId:          uuid.UUID(row.OwnerID.Bytes),
@@ -717,6 +759,7 @@ func assetDetailFrom(row dbgen.GetAssetDetailRow, faces []apigen.AssetFaceSummar
 		DurationMs:       int4Value(row.DurationMs),
 		Blurhash:         textValue(row.Blurhash),
 		ContentCopies:    int(row.ContentCopies),
+		MetadataWritable: metadataWritable,
 		LivePhotoVideoId: uuidValue(row.LivePhotoVideoID),
 		Exif:             exifSummaryFrom(row),
 		Faces:            faces,

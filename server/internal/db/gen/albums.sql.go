@@ -1218,6 +1218,7 @@ SELECT al.id,
        al.title,
        al.type,
        al.source_writable,
+       al.allow_app_deletion,
        al.owner_id = $1 AS is_owner
 FROM albums al
 LEFT JOIN album_shares sh
@@ -1238,11 +1239,12 @@ type ListAssetAlbumsForCallerParams struct {
 }
 
 type ListAssetAlbumsForCallerRow struct {
-	ID             pgtype.UUID `json:"id"`
-	Title          string      `json:"title"`
-	Type           AlbumType   `json:"type"`
-	SourceWritable bool        `json:"source_writable"`
-	IsOwner        bool        `json:"is_owner"`
+	ID               pgtype.UUID `json:"id"`
+	Title            string      `json:"title"`
+	Type             AlbumType   `json:"type"`
+	SourceWritable   bool        `json:"source_writable"`
+	AllowAppDeletion bool        `json:"allow_app_deletion"`
+	IsOwner          bool        `json:"is_owner"`
 }
 
 // The asset detail's `albums` face: every album whose membership row
@@ -1275,6 +1277,7 @@ func (q *Queries) ListAssetAlbumsForCaller(ctx context.Context, arg ListAssetAlb
 			&i.Title,
 			&i.Type,
 			&i.SourceWritable,
+			&i.AllowAppDeletion,
 			&i.IsOwner,
 		); err != nil {
 			return nil, err

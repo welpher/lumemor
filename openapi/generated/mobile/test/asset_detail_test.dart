@@ -127,6 +127,12 @@ void main() {
       // TODO
     });
 
+    // Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
+    // bool metadataWritable
+    test('to test the property `metadataWritable`', () async {
+      // TODO
+    });
+
     // For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
     // String livePhotoVideoId
     test('to test the property `livePhotoVideoId`', () async {

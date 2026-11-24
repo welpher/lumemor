@@ -732,6 +732,7 @@ SELECT al.id,
        al.title,
        al.type,
        al.source_writable,
+       al.allow_app_deletion,
        al.owner_id = sqlc.arg('viewer') AS is_owner
 FROM albums al
 LEFT JOIN album_shares sh

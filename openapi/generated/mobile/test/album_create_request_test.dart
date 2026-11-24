@@ -19,9 +19,9 @@ void main() {
       // TODO
     });
 
-    // The owner's deletability switch, carried from the creation dialog: whether the album's photos may be deleted through the application (the trash move of the source file). On by default; the dialog renders the switch only where the source is writable (the completion row's `writable` fact), and on a read-only source the stored value governs nothing -- the derived `deletable` face stays false whatever it says. Editable later through the property patch. 
-    // bool allowAppDeletion
-    test('to test the property `allowAppDeletion`', () async {
+    // The owner's write switch, carried from the creation dialog: whether the application may modify the album's source files -- delete them through the trash move, and write a capture-time edit back into their metadata. On by default; the dialog renders the switch only where the source is writable (the completion row's `writable` fact), and on a read-only source the stored value governs nothing -- the derived `deletable` and `metadataWritable` faces stay false whatever it says. Editable later through the property patch. 
+    // bool allowAppWrites
+    test('to test the property `allowAppWrites`', () async {
       // TODO
     });
 

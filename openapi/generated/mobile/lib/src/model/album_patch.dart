@@ -14,7 +14,7 @@ part 'album_patch.g.dart';
 /// Properties:
 /// * [title] - The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
 /// * [coverAssetIds] - The owner's pin, as a full set: the frames of the cover in render order (the order the owner picked them in -- the server stores and returns it as given, never re-sorting). The length is 0 or exactly N, N being the card's frame count (four on the album card, six on the memory band): an empty array clears the pin and returns the album to the automatic weekly group, a full set pins it, and any other length answers 400 `VALIDATION_FAILED` (a partial set is the picker's un-saveable state, never a stored one). Repeated ids answer 400 too -- a cover is a set, and one frame cannot fill two cells. Every id must be a RENDERABLE member of THIS album (the membership row exists and the asset is not trashed, is not a Live Photo component row, and on a memory album is not archived -- an album's archived members render and may pin); otherwise the answer is 400 with the message key `album_cover_not_member` and a `count` of the refused frames. Absent (or JSON null, which decodes as absent) leaves the pin unchanged. 
-/// * [allowAppDeletion] - The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
+/// * [allowAppWrites] - The owner's write switch of a DIRECTORY album: whether the application may modify the album's source files -- delete them through the trash move, and write a capture-time edit back into their metadata. On for a writable source by default; the owner who manages the files themselves turns it off, and the wall's delete affordances and the assets' time edits disappear with it (the derived `deletable` and `metadataWritable` faces). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
 @BuiltValue()
 abstract class AlbumPatch implements Built<AlbumPatch, AlbumPatchBuilder> {
   /// The album's display title, trimmed server-side; when present it must span 1-64 Unicode characters after the trim. 
@@ -25,9 +25,9 @@ abstract class AlbumPatch implements Built<AlbumPatch, AlbumPatchBuilder> {
   @BuiltValueField(wireName: r'coverAssetIds')
   BuiltList<String>? get coverAssetIds;
 
-  /// The owner's deletability switch of a DIRECTORY album: whether the album's photos may be deleted through the application (the trash move of the source file). On for a writable source by default; the owner who manages file-system deletions themselves turns it off, and the wall's delete affordances disappear with it (the derived `deletable` face of the detail read). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
-  @BuiltValueField(wireName: r'allowAppDeletion')
-  bool? get allowAppDeletion;
+  /// The owner's write switch of a DIRECTORY album: whether the application may modify the album's source files -- delete them through the trash move, and write a capture-time edit back into their metadata. On for a writable source by default; the owner who manages the files themselves turns it off, and the wall's delete affordances and the assets' time edits disappear with it (the derived `deletable` and `metadataWritable` faces). A patch carrying the field on a memory album answers 400 with the message key `album_deletable_not_directory` -- the switch is the directory album's own, a memory album's deletions never move files. Idempotent: repeating the stored value converges. 
+  @BuiltValueField(wireName: r'allowAppWrites')
+  bool? get allowAppWrites;
 
   AlbumPatch._();
 
@@ -66,10 +66,10 @@ class _$AlbumPatchSerializer implements PrimitiveSerializer<AlbumPatch> {
         specifiedType: const FullType(BuiltList, [FullType(String)]),
       );
     }
-    if (object.allowAppDeletion != null) {
-      yield r'allowAppDeletion';
+    if (object.allowAppWrites != null) {
+      yield r'allowAppWrites';
       yield serializers.serialize(
-        object.allowAppDeletion,
+        object.allowAppWrites,
         specifiedType: const FullType(bool),
       );
     }
@@ -112,13 +112,13 @@ class _$AlbumPatchSerializer implements PrimitiveSerializer<AlbumPatch> {
           if (valueDes == null) continue;
           result.coverAssetIds.replace(valueDes);
           break;
-        case r'allowAppDeletion':
+        case r'allowAppWrites':
           final valueDes = serializers.deserialize(
             value,
             specifiedType: const FullType.nullable(bool),
           ) as bool?;
           if (valueDes == null) continue;
-          result.allowAppDeletion = valueDes;
+          result.allowAppWrites = valueDes;
           break;
         default:
           unhandled.add(key);

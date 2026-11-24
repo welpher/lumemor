@@ -372,7 +372,7 @@ func (s *server) CreateAlbum(w http.ResponseWriter, r *http.Request) {
 			Valid:  true,
 		},
 		SourceWritable:   writable,
-		AllowAppDeletion: request.AllowAppDeletion == nil || *request.AllowAppDeletion,
+		AllowAppDeletion: request.AllowAppWrites == nil || *request.AllowAppWrites,
 	}); err != nil {
 		s.internalError(w, r, "create the album", err)
 		return
@@ -497,7 +497,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		return
 	}
 	if request.Title == nil &&
-		request.CoverAssetIds == nil && request.AllowAppDeletion == nil {
+		request.CoverAssetIds == nil && request.AllowAppWrites == nil {
 		s.writeValidationError(w, "the patch must carry a field", []string{"body"})
 		return
 	}
@@ -512,7 +512,7 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 	// The deletability switch is the directory album's own field: a
 	// memory album's deletions never move files, so the switch has
 	// no home there -- the refusal names the field's own condition.
-	if request.AllowAppDeletion != nil && gate.Album.Type != dbgen.AlbumTypeDirectory {
+	if request.AllowAppWrites != nil && gate.Album.Type != dbgen.AlbumTypeDirectory {
 		s.writeMessageKey(w, "the deletability switch is a directory album's own setting", "album_deletable_not_directory")
 		return
 	}
@@ -578,11 +578,11 @@ func (s *server) UpdateAlbum(w http.ResponseWriter, r *http.Request, albumId ope
 		}
 		params.Title = pgtype.Text{String: title, Valid: true}
 	}
-	if request.AllowAppDeletion != nil {
+	if request.AllowAppWrites != nil {
 		// The owner's deletability posture, the edit dialog's switch:
 		// repeating the stored value converges through the COALESCE
 		// write like every property field.
-		params.AllowAppDeletion = pgtype.Bool{Bool: *request.AllowAppDeletion, Valid: true}
+		params.AllowAppDeletion = pgtype.Bool{Bool: *request.AllowAppWrites, Valid: true}
 	}
 
 	// The property fields and the cover's full-set write land in one

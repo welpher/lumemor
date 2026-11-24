@@ -424,42 +424,45 @@ func (e DownloadFormat) Valid() bool {
 
 // Defines values for ErrorCode.
 const (
-	ALBUMNOTFOUND          ErrorCode = "ALBUM_NOT_FOUND"
-	ALBUMPATHINMANAGEDTREE ErrorCode = "ALBUM_PATH_IN_MANAGED_TREE"
-	ALBUMPATHNOTDIRECTORY  ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
-	ALBUMPATHNOTFOUND      ErrorCode = "ALBUM_PATH_NOT_FOUND"
-	ALBUMPATHNOTREADABLE   ErrorCode = "ALBUM_PATH_NOT_READABLE"
-	ASSETCOMPONENTCONFLICT ErrorCode = "ASSET_COMPONENT_CONFLICT"
-	ASSETNOTFOUND          ErrorCode = "ASSET_NOT_FOUND"
-	ASSETNOTREADY          ErrorCode = "ASSET_NOT_READY"
-	ASSETRESTOREMOVEFAILED ErrorCode = "ASSET_RESTORE_MOVE_FAILED"
-	ASSETTOOLARGE          ErrorCode = "ASSET_TOO_LARGE"
-	ASSETTRASHMOVEFAILED   ErrorCode = "ASSET_TRASH_MOVE_FAILED"
-	AUTHFORBIDDEN          ErrorCode = "AUTH_FORBIDDEN"
-	AUTHINVALIDCREDENTIALS ErrorCode = "AUTH_INVALID_CREDENTIALS"
-	AUTHRATELIMITED        ErrorCode = "AUTH_RATE_LIMITED"
-	INTERNAL               ErrorCode = "INTERNAL"
-	JOBNOTCANCELLABLE      ErrorCode = "JOB_NOT_CANCELLABLE"
-	JOBRUNNOTFOUND         ErrorCode = "JOB_RUN_NOT_FOUND"
-	MODELCONFIRMREQUIRED   ErrorCode = "MODEL_CONFIRM_REQUIRED"
-	MODELDOWNLOADFAILED    ErrorCode = "MODEL_DOWNLOAD_FAILED"
-	MODELINVALID           ErrorCode = "MODEL_INVALID"
-	MODELNOTFOUND          ErrorCode = "MODEL_NOT_FOUND"
-	MODELPROBENOTFOUND     ErrorCode = "MODEL_PROBE_NOT_FOUND"
-	MODELPROBEREQUIRED     ErrorCode = "MODEL_PROBE_REQUIRED"
-	MODELSLOTLOCKED        ErrorCode = "MODEL_SLOT_LOCKED"
-	MODELSLOTUNKNOWN       ErrorCode = "MODEL_SLOT_UNKNOWN"
-	PAIRINGTOKENINVALID    ErrorCode = "PAIRING_TOKEN_INVALID"
-	PERSONNOTFOUND         ErrorCode = "PERSON_NOT_FOUND"
-	REBUILDNOTRUNNING      ErrorCode = "REBUILD_NOT_RUNNING"
-	SETUPALREADYCOMPLETED  ErrorCode = "SETUP_ALREADY_COMPLETED"
-	TAGNAMETAKEN           ErrorCode = "TAG_NAME_TAKEN"
-	TAGNOTFOUND            ErrorCode = "TAG_NOT_FOUND"
-	USEREMAILTAKEN         ErrorCode = "USER_EMAIL_TAKEN"
-	USERLASTADMIN          ErrorCode = "USER_LAST_ADMIN"
-	USERNOTFOUND           ErrorCode = "USER_NOT_FOUND"
-	USERTRANSFERTOSELF     ErrorCode = "USER_TRANSFER_TO_SELF"
-	VALIDATIONFAILED       ErrorCode = "VALIDATION_FAILED"
+	ALBUMNOTFOUND            ErrorCode = "ALBUM_NOT_FOUND"
+	ALBUMPATHINMANAGEDTREE   ErrorCode = "ALBUM_PATH_IN_MANAGED_TREE"
+	ALBUMPATHNOTDIRECTORY    ErrorCode = "ALBUM_PATH_NOT_DIRECTORY"
+	ALBUMPATHNOTFOUND        ErrorCode = "ALBUM_PATH_NOT_FOUND"
+	ALBUMPATHNOTREADABLE     ErrorCode = "ALBUM_PATH_NOT_READABLE"
+	ASSETCOMPONENTCONFLICT   ErrorCode = "ASSET_COMPONENT_CONFLICT"
+	ASSETMETADATAREADONLY    ErrorCode = "ASSET_METADATA_READONLY"
+	ASSETMETADATAUNSUPPORTED ErrorCode = "ASSET_METADATA_UNSUPPORTED"
+	ASSETMETADATAWRITEFAILED ErrorCode = "ASSET_METADATA_WRITE_FAILED"
+	ASSETNOTFOUND            ErrorCode = "ASSET_NOT_FOUND"
+	ASSETNOTREADY            ErrorCode = "ASSET_NOT_READY"
+	ASSETRESTOREMOVEFAILED   ErrorCode = "ASSET_RESTORE_MOVE_FAILED"
+	ASSETTOOLARGE            ErrorCode = "ASSET_TOO_LARGE"
+	ASSETTRASHMOVEFAILED     ErrorCode = "ASSET_TRASH_MOVE_FAILED"
+	AUTHFORBIDDEN            ErrorCode = "AUTH_FORBIDDEN"
+	AUTHINVALIDCREDENTIALS   ErrorCode = "AUTH_INVALID_CREDENTIALS"
+	AUTHRATELIMITED          ErrorCode = "AUTH_RATE_LIMITED"
+	INTERNAL                 ErrorCode = "INTERNAL"
+	JOBNOTCANCELLABLE        ErrorCode = "JOB_NOT_CANCELLABLE"
+	JOBRUNNOTFOUND           ErrorCode = "JOB_RUN_NOT_FOUND"
+	MODELCONFIRMREQUIRED     ErrorCode = "MODEL_CONFIRM_REQUIRED"
+	MODELDOWNLOADFAILED      ErrorCode = "MODEL_DOWNLOAD_FAILED"
+	MODELINVALID             ErrorCode = "MODEL_INVALID"
+	MODELNOTFOUND            ErrorCode = "MODEL_NOT_FOUND"
+	MODELPROBENOTFOUND       ErrorCode = "MODEL_PROBE_NOT_FOUND"
+	MODELPROBEREQUIRED       ErrorCode = "MODEL_PROBE_REQUIRED"
+	MODELSLOTLOCKED          ErrorCode = "MODEL_SLOT_LOCKED"
+	MODELSLOTUNKNOWN         ErrorCode = "MODEL_SLOT_UNKNOWN"
+	PAIRINGTOKENINVALID      ErrorCode = "PAIRING_TOKEN_INVALID"
+	PERSONNOTFOUND           ErrorCode = "PERSON_NOT_FOUND"
+	REBUILDNOTRUNNING        ErrorCode = "REBUILD_NOT_RUNNING"
+	SETUPALREADYCOMPLETED    ErrorCode = "SETUP_ALREADY_COMPLETED"
+	TAGNAMETAKEN             ErrorCode = "TAG_NAME_TAKEN"
+	TAGNOTFOUND              ErrorCode = "TAG_NOT_FOUND"
+	USEREMAILTAKEN           ErrorCode = "USER_EMAIL_TAKEN"
+	USERLASTADMIN            ErrorCode = "USER_LAST_ADMIN"
+	USERNOTFOUND             ErrorCode = "USER_NOT_FOUND"
+	USERTRANSFERTOSELF       ErrorCode = "USER_TRANSFER_TO_SELF"
+	VALIDATIONFAILED         ErrorCode = "VALIDATION_FAILED"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -476,6 +479,12 @@ func (e ErrorCode) Valid() bool {
 	case ALBUMPATHNOTREADABLE:
 		return true
 	case ASSETCOMPONENTCONFLICT:
+		return true
+	case ASSETMETADATAREADONLY:
+		return true
+	case ASSETMETADATAUNSUPPORTED:
+		return true
+	case ASSETMETADATAWRITEFAILED:
 		return true
 	case ASSETNOTFOUND:
 		return true
@@ -1505,16 +1514,17 @@ type AlbumAudienceSkipReason string
 // already carried by title/date-range+count/place/cover), and
 // the property patch carries no field that could set one.
 type AlbumCreateRequest struct {
-	// AllowAppDeletion The owner's deletability switch, carried from the
-	// creation dialog: whether the album's photos may be
-	// deleted through the application (the trash move of the
-	// source file). On by default; the dialog renders the
-	// switch only where the source is writable (the
-	// completion row's `writable` fact), and on a read-only
-	// source the stored value governs nothing -- the derived
-	// `deletable` face stays false whatever it says. Editable
-	// later through the property patch.
-	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+	// AllowAppWrites The owner's write switch, carried from the creation
+	// dialog: whether the application may modify the album's
+	// source files -- delete them through the trash move, and
+	// write a capture-time edit back into their metadata. On
+	// by default; the dialog renders the switch only where the
+	// source is writable (the completion row's `writable`
+	// fact), and on a read-only source the stored value
+	// governs nothing -- the derived `deletable` and
+	// `metadataWritable` faces stay false whatever it says.
+	// Editable later through the property patch.
+	AllowAppWrites *bool `json:"allowAppWrites,omitempty"`
 
 	// Audience The accounts the album starts being visible to: the
 	// initial `album_shares` set, empty (or absent) meaning
@@ -1702,15 +1712,17 @@ type AlbumCreateResponseType string
 // the caller's role, the member count, the photo count and one
 // keyset page of the members.
 type AlbumDetail struct {
-	// AllowAppDeletion The owner's deletability switch: whether deleting this
-	// album's photos THROUGH the application -- the trash move
-	// of the source file -- is permitted. Present exactly on
-	// the OWNER's view of a `directory` album (the edit
-	// dialog's switch state; a viewer holds no write
-	// affordance to read it for). A read-only source carries
-	// the stored value too, but it governs nothing there: the
-	// derived `deletable` face stays false whatever it says.
-	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+	// AllowAppWrites The owner's write switch: whether the application may
+	// modify this album's source files -- the trash move of the
+	// source file on delete, and the metadata write-back of a
+	// capture-time edit. Present exactly on the OWNER's view of
+	// a `directory` album (the edit dialog's switch state; a
+	// viewer holds no write affordance to read it for). A
+	// read-only source carries the stored value too, but it
+	// governs nothing there: the derived `deletable` face and
+	// the assets' `metadataWritable` stay false whatever it
+	// says.
+	AllowAppWrites *bool `json:"allowAppWrites,omitempty"`
 
 	// CallerRole The caller's relation to this album: the owner holds the
 	// write affordances, a viewer is read-only.
@@ -1927,19 +1939,20 @@ type AlbumOwnerRef struct {
 // on an album and refused on a memory). The write publishes one
 // `album.updated` event whatever fields changed.
 type AlbumPatch struct {
-	// AllowAppDeletion The owner's deletability switch of a DIRECTORY album:
-	// whether the album's photos may be deleted through the
-	// application (the trash move of the source file). On for
-	// a writable source by default; the owner who manages
-	// file-system deletions themselves turns it off, and the
-	// wall's delete affordances disappear with it (the derived
-	// `deletable` face of the detail read). A patch carrying
-	// the field on a memory album answers 400 with the
-	// message key `album_deletable_not_directory` -- the
-	// switch is the directory album's own, a memory album's
+	// AllowAppWrites The owner's write switch of a DIRECTORY album: whether
+	// the application may modify the album's source files --
+	// delete them through the trash move, and write a
+	// capture-time edit back into their metadata. On for a
+	// writable source by default; the owner who manages the
+	// files themselves turns it off, and the wall's delete
+	// affordances and the assets' time edits disappear with it
+	// (the derived `deletable` and `metadataWritable` faces).
+	// A patch carrying the field on a memory album answers 400
+	// with the message key `album_deletable_not_directory` --
+	// the switch is the directory album's own, a memory album's
 	// deletions never move files. Idempotent: repeating the
 	// stored value converges.
-	AllowAppDeletion *bool `json:"allowAppDeletion,omitempty"`
+	AllowAppWrites *bool `json:"allowAppWrites,omitempty"`
 
 	// CoverAssetIds The owner's pin, as a full set: the frames of the cover in
 	// render order (the order the owner picked them in -- the
@@ -2408,6 +2421,18 @@ type AssetDetail struct {
 	// location row stays unrendered. The PATCH response serves
 	// the same face, exactly as the GET serves it.
 	Location *AssetCoordinates `json:"location"`
+
+	// MetadataWritable Whether the calling owner may edit this asset's capture
+	// time with a write into the original file. True for a
+	// managed original (the caller owns it) and for a
+	// directory-source photo whose caller is the album's owner,
+	// whose source was writable at creation, and whose album
+	// write switch is on; false for a sharee, a read-only
+	// source, the switch off, or a format with no standard
+	// capture-time field (PNG and the like). The info panel
+	// renders the time edit only when true, and the PATCH
+	// enforces the same rule server-side.
+	MetadataWritable bool `json:"metadataWritable"`
 
 	// MimeType Canonical content type of the stored format, for example
 	// `image/jpeg` or `video/quicktime`.

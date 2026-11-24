@@ -1245,8 +1245,8 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 		if detail.SourceWritable == nil || !*detail.SourceWritable {
 			t.Errorf("sourceWritable = %v, want true (the probe passed)", detail.SourceWritable)
 		}
-		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
-			t.Errorf("allowAppDeletion = %v, want true (the default)", detail.AllowAppDeletion)
+		if detail.AllowAppWrites == nil || !*detail.AllowAppWrites {
+			t.Errorf("allowAppWrites = %v, want true (the default)", detail.AllowAppWrites)
 		}
 		if detail.Deletable == nil || !*detail.Deletable {
 			t.Errorf("deletable = %v, want true (owner, writable, on)", detail.Deletable)
@@ -1254,18 +1254,18 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 	})
 
 	t.Run("SwitchOffKillsTheAffordance", func(t *testing.T) {
-		env.patchAlbum(t, env.cookie, writable, `{"allowAppDeletion":false}`)
+		env.patchAlbum(t, env.cookie, writable, `{"allowAppWrites":false}`)
 		detail := env.getAlbumDetail(t, env.cookie, writable, "")
 		if detail.SourceWritable == nil || !*detail.SourceWritable {
 			t.Errorf("sourceWritable = %v, want true (the fact is untouched by the switch)", detail.SourceWritable)
 		}
-		if detail.AllowAppDeletion == nil || *detail.AllowAppDeletion {
-			t.Errorf("allowAppDeletion = %v, want false (switched off)", detail.AllowAppDeletion)
+		if detail.AllowAppWrites == nil || *detail.AllowAppWrites {
+			t.Errorf("allowAppWrites = %v, want false (switched off)", detail.AllowAppWrites)
 		}
 		if detail.Deletable == nil || *detail.Deletable {
 			t.Errorf("deletable = %v, want false (the switch is off)", detail.Deletable)
 		}
-		env.patchAlbum(t, env.cookie, writable, `{"allowAppDeletion":true}`) // back on
+		env.patchAlbum(t, env.cookie, writable, `{"allowAppWrites":true}`) // back on
 	})
 
 	t.Run("ReadOnlySourceKillsTheAffordance", func(t *testing.T) {
@@ -1276,8 +1276,8 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 		if detail.SourceWritable == nil || *detail.SourceWritable {
 			t.Errorf("sourceWritable = %v, want false (the probe failed over the read-only source)", detail.SourceWritable)
 		}
-		if detail.AllowAppDeletion == nil || !*detail.AllowAppDeletion {
-			t.Errorf("allowAppDeletion = %v, want true (the stored switch, governing nothing)", detail.AllowAppDeletion)
+		if detail.AllowAppWrites == nil || !*detail.AllowAppWrites {
+			t.Errorf("allowAppWrites = %v, want true (the stored switch, governing nothing)", detail.AllowAppWrites)
 		}
 		if detail.Deletable == nil || *detail.Deletable {
 			t.Errorf("deletable = %v, want false (the source is read-only, whatever the switch says)", detail.Deletable)
@@ -1307,8 +1307,8 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 		if detail.SourceWritable == nil || !*detail.SourceWritable {
 			t.Errorf("sourceWritable = %v, want true (the fact rides the viewer's view too)", detail.SourceWritable)
 		}
-		if detail.AllowAppDeletion != nil {
-			t.Errorf("allowAppDeletion = %v, want absent on the viewer's view (no write affordance to read it for)", detail.AllowAppDeletion)
+		if detail.AllowAppWrites != nil {
+			t.Errorf("allowAppWrites = %v, want absent on the viewer's view (no write affordance to read it for)", detail.AllowAppWrites)
 		}
 		if detail.Deletable != nil {
 			t.Errorf("deletable = %v, want absent on the viewer's view (a sharee holds no delete affordance)", detail.Deletable)
@@ -1317,9 +1317,9 @@ func TestAlbumDetailDeletionFaces(t *testing.T) {
 
 	t.Run("MemoryAlbumCarriesNoFaces", func(t *testing.T) {
 		detail := env.getAlbumDetail(t, env.cookie, memory, "")
-		if detail.SourceWritable != nil || detail.AllowAppDeletion != nil || detail.Deletable != nil {
+		if detail.SourceWritable != nil || detail.AllowAppWrites != nil || detail.Deletable != nil {
 			t.Errorf("deletion faces = (%v, %v, %v), want all absent on a memory album",
-				detail.SourceWritable, detail.AllowAppDeletion, detail.Deletable)
+				detail.SourceWritable, detail.AllowAppWrites, detail.Deletable)
 		}
 	})
 }

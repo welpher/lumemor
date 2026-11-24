@@ -377,6 +377,7 @@ func (q *Queries) GetAssetByOwnerChecksum(ctx context.Context, arg GetAssetByOwn
 const getAssetDetail = `-- name: GetAssetDetail :one
 SELECT a.id,
        a.owner_id,
+       a.storage_kind,
        a.media_kind,
        a.original_filename,
        a.file_size,
@@ -438,6 +439,7 @@ type GetAssetDetailParams struct {
 type GetAssetDetailRow struct {
 	ID               pgtype.UUID        `json:"id"`
 	OwnerID          pgtype.UUID        `json:"owner_id"`
+	StorageKind      StorageKind        `json:"storage_kind"`
 	MediaKind        MediaKind          `json:"media_kind"`
 	OriginalFilename string             `json:"original_filename"`
 	FileSize         int64              `json:"file_size"`
@@ -511,6 +513,7 @@ func (q *Queries) GetAssetDetail(ctx context.Context, arg GetAssetDetailParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.OwnerID,
+		&i.StorageKind,
 		&i.MediaKind,
 		&i.OriginalFilename,
 		&i.FileSize,
@@ -1062,6 +1065,52 @@ func (q *Queries) UpdateAssetTakenAt(ctx context.Context, arg UpdateAssetTakenAt
 	result, err := q.db.Exec(ctx, updateAssetTakenAt,
 		arg.TakenAt,
 		arg.TakenAtZone,
+		arg.ID,
+		arg.OwnerID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateAssetTakenAtWritten = `-- name: UpdateAssetTakenAtWritten :execrows
+UPDATE assets SET
+    taken_at        = $1,
+    taken_at_source = 'exif'::taken_at_source,
+    taken_at_zone   = $2,
+    checksum        = $3,
+    file_size       = $4,
+    file_mtime      = COALESCE($5, file_mtime),
+    updated_at      = now()
+WHERE id = $6 AND owner_id = $7
+`
+
+type UpdateAssetTakenAtWrittenParams struct {
+	TakenAt     pgtype.Timestamptz `json:"taken_at"`
+	TakenAtZone pgtype.Text        `json:"taken_at_zone"`
+	Checksum    string             `json:"checksum"`
+	FileSize    int64              `json:"file_size"`
+	FileMtime   pgtype.Timestamptz `json:"file_mtime"`
+	ID          pgtype.UUID        `json:"id"`
+	OwnerID     pgtype.UUID        `json:"owner_id"`
+}
+
+// The capture-time edit's write-back arm: the file's metadata was
+// rewritten (staged and atomically committed), so the row takes the
+// new capture time AND the file's new facts -- the checksum the
+// serving ETags read, the size, the external snapshot's mtime -- in
+// one statement. The caller only reaches here when the requested
+// value differs from the stored one (the idempotent repeat never
+// touches the file), so no set-semantics guard is needed; the owner
+// guard is the permission check's second half.
+func (q *Queries) UpdateAssetTakenAtWritten(ctx context.Context, arg UpdateAssetTakenAtWrittenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, updateAssetTakenAtWritten,
+		arg.TakenAt,
+		arg.TakenAtZone,
+		arg.Checksum,
+		arg.FileSize,
+		arg.FileMtime,
 		arg.ID,
 		arg.OwnerID,
 	)

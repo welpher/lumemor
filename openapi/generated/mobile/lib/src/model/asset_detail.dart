@@ -38,6 +38,7 @@ part 'asset_detail.g.dart';
 /// * [durationMs] - Playback duration of a video in milliseconds; null for images and until the metadata job refined it. 
 /// * [blurhash] - The blurhash of the tile (image assets) or poster frame (video assets) for placeholder rendering; null until the thumbnail job stored it. 
 /// * [contentCopies] - How many OTHER live rows of the same owner carry this asset's content (same checksum) -- the twin copies a delete leaves behind. A directory album mirrors its folder, so one photo can be an uploaded copy and a source copy at once; trashing one leaves the other. 0 means this row is the content's only live copy. The count is owner-scoped: it never reveals rows outside the asset's owner, and it counts rows, not surfaces. The PATCH response serves the same value, exactly as the GET serves it. 
+/// * [metadataWritable] - Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
 /// * [livePhotoVideoId] - For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
 /// * [exif] - The EXIF hot fields. Always present as an object; every field inside it is null until the metadata job wrote the extraction. 
 /// * [location] - The coordinates the info panel renders -- the photo's current location. The owner's manual pair when a location edit wrote one (`PATCH /assets/{id}`'s `latitude` / `longitude`), the camera-recorded GPS otherwise (the `exif` fields' own values). Null when the asset carries neither -- no GPS and no manual edit -- and the whole location row stays unrendered. The PATCH response serves the same face, exactly as the GET serves it. 
@@ -129,6 +130,10 @@ abstract class AssetDetail implements Built<AssetDetail, AssetDetailBuilder> {
   /// How many OTHER live rows of the same owner carry this asset's content (same checksum) -- the twin copies a delete leaves behind. A directory album mirrors its folder, so one photo can be an uploaded copy and a source copy at once; trashing one leaves the other. 0 means this row is the content's only live copy. The count is owner-scoped: it never reveals rows outside the asset's owner, and it counts rows, not surfaces. The PATCH response serves the same value, exactly as the GET serves it. 
   @BuiltValueField(wireName: r'contentCopies')
   int get contentCopies;
+
+  /// Whether the calling owner may edit this asset's capture time with a write into the original file. True for a managed original (the caller owns it) and for a directory-source photo whose caller is the album's owner, whose source was writable at creation, and whose album write switch is on; false for a sharee, a read-only source, the switch off, or a format with no standard capture-time field (PNG and the like). The info panel renders the time edit only when true, and the PATCH enforces the same rule server-side. 
+  @BuiltValueField(wireName: r'metadataWritable')
+  bool get metadataWritable;
 
   /// For a Live Photo image, the id of its linked component video row (never in the timeline; its original is downloadable by that id, and its transcoded play stream is served there too); null otherwise. 
   @BuiltValueField(wireName: r'livePhotoVideoId')
@@ -284,6 +289,11 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
     yield serializers.serialize(
       object.contentCopies,
       specifiedType: const FullType(int),
+    );
+    yield r'metadataWritable';
+    yield serializers.serialize(
+      object.metadataWritable,
+      specifiedType: const FullType(bool),
     );
     yield r'livePhotoVideoId';
     yield object.livePhotoVideoId == null ? null : serializers.serialize(
@@ -492,6 +502,13 @@ class _$AssetDetailSerializer implements PrimitiveSerializer<AssetDetail> {
             specifiedType: const FullType(int),
           ) as int;
           result.contentCopies = valueDes;
+          break;
+        case r'metadataWritable':
+          final valueDes = serializers.deserialize(
+            value,
+            specifiedType: const FullType(bool),
+          ) as bool;
+          result.metadataWritable = valueDes;
           break;
         case r'livePhotoVideoId':
           final valueDes = serializers.deserialize(

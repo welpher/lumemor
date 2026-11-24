@@ -56,6 +56,9 @@ type timelineAssetOpts struct {
 	// video switches the row's media kind: the photo-count fixtures
 	// need a member that is real but not a photo.
 	video bool
+	// mime overrides the row's content type (the capture-time
+	// capability's format arm: PNG carries no standard field).
+	mime string
 }
 
 // insertTimelineAsset inserts one fixture asset row directly. The row
@@ -77,6 +80,9 @@ func (e *assetEnv) insertTimelineAsset(t *testing.T, id, owner uuid.UUID, taken 
 	kind, mimeType, name := "image", "image/jpeg", "fixture-"+id.String()+".jpg"
 	if opts.video {
 		kind, mimeType, name = "video", "video/mp4", "fixture-"+id.String()+".mp4"
+	}
+	if opts.mime != "" {
+		mimeType = opts.mime
 	}
 	if _, err := e.pool.Exec(context.Background(), `
 		INSERT INTO assets (
