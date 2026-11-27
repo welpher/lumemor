@@ -40,6 +40,7 @@
 	import StateCard from '$lib/components/StateCard.svelte';
 	import LoadingLine from '$lib/components/LoadingLine.svelte';
 	import CountLabel from '$lib/components/CountLabel.svelte';
+	import { tabIdle, tabSelected } from '$lib/components/selectedState';
 	import MapPin from '@lucide/svelte/icons/map-pin';
 	import List from '@lucide/svelte/icons/list';
 	import Map from '@lucide/svelte/icons/map';
@@ -272,6 +273,13 @@
 		});
 	}
 
+	/** The view switch's face: the current one is a filled accent block,
+	 * the other stays plain on the track (see selectedState.ts). */
+	function viewClass(current: boolean): string {
+		const state = current ? tabSelected : tabIdle;
+		return `places__view inline-flex items-center gap-1 px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control no-underline cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard ${state}`;
+	}
+
 	/** The escape hatch: the panel collapses (the map returns to full width). */
 	function handleWindowKeydown(event: KeyboardEvent): void {
 		if (event.key === 'Escape' && selectedIds.length > 0) {
@@ -391,7 +399,7 @@
 			aria-label={$_('places_view_switch')}
 		>
 			<a
-				class="places__view inline-flex items-center gap-1 px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control no-underline text-text-soft hover:text-text aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-soft-text"
+				class={viewClass(!isMap)}
 				href="/places"
 				aria-current={isMap ? undefined : 'page'}
 				data-places-mode="list"
@@ -404,7 +412,7 @@
 				{$_('places_view_list')}
 			</a>
 			<a
-				class="places__view inline-flex items-center gap-1 px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control no-underline text-text-soft hover:text-text aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent-soft-text"
+				class={viewClass(isMap)}
 				href="/places?mode=map"
 				aria-current={isMap ? 'page' : undefined}
 				data-places-mode="map"
