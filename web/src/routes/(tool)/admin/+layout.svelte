@@ -16,6 +16,7 @@
 	// label.
 	import { _ } from 'svelte-i18n';
 	import { page } from '$app/state';
+	import { navItemIdle, navItemIsCurrent, navItemSelected } from '$lib/components/selectedState';
 	import type { LayoutProps } from './$types';
 	import Users from '@lucide/svelte/icons/users';
 	import Sliders from '@lucide/svelte/icons/sliders';
@@ -40,6 +41,11 @@
 		{ labelKey: 'admin_nav_jobs', href: '/admin/jobs', disabled: false, icon: ListChecks },
 		{ labelKey: 'admin_nav_backup', href: '/admin/backup', disabled: true, icon: DatabaseBackup }
 	];
+
+	/** Whether the rail's row is the current route (see navItem.ts). */
+	function isCurrent(item: AdminNavItem): boolean {
+		return navItemIsCurrent(page.url.pathname, item.href);
+	}
 </script>
 
 <div class="admin flex min-h-full items-stretch">
@@ -76,15 +82,16 @@
 							</button>
 						{:else}
 							<a
-								class="admin-nav__item flex w-full items-center gap-2 px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:bg-accent-soft focus-visible:text-accent-soft-text"
+								class="admin-nav__item flex w-full items-center gap-2 px-3 py-[9px] font-body text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard {isCurrent(
+									item
+								)
+									? navItemSelected
+									: navItemIdle}"
 								href={item.href}
-								class:admin-nav__item--active={page.url.pathname === item.href}
-								class:bg-accent-soft={page.url.pathname === item.href}
-								class:bg-transparent={page.url.pathname !== item.href}
-								class:text-accent-soft-text={page.url.pathname === item.href}
-								class:text-text={page.url.pathname !== item.href}
-								class:font-bold={page.url.pathname === item.href}
-								class:font-semibold={page.url.pathname !== item.href}
+								class:admin-nav__item--active={isCurrent(item)}
+								class:font-bold={isCurrent(item)}
+								class:font-semibold={!isCurrent(item)}
+								aria-current={isCurrent(item) ? 'page' : undefined}
 							>
 								<item.icon size={18} strokeWidth={2} aria-hidden="true" class="shrink-0" />
 								{$_(item.labelKey)}
