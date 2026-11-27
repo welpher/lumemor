@@ -83,7 +83,7 @@
 	let { open = $bindable(false), currentPath = '' }: Props = $props();
 
 	/** The drawer row's classes: the selected block and the idle row are
-	 * two exclusive strings (see navItem.ts for why). */
+	 * two exclusive strings (see selectedState.ts for why). */
 	function itemClass(current: boolean): string {
 		const state = current ? navItemSelected : navItemIdle;
 		const pressed = current ? '' : 'active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]';
@@ -146,7 +146,7 @@
 						     the background, riding the same fast transition;
 						     the icon leads the label, decorative. The current
 						     route's row is the filled accent block (the idle
-						     row's tint never rides on it: see navItem.ts). -->
+						     row's tint never rides on it: see selectedState.ts). -->
 						<a
 							class={itemClass(isCurrent(item))}
 							href={item.href}

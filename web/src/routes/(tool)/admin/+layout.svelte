@@ -42,7 +42,7 @@
 		{ labelKey: 'admin_nav_backup', href: '/admin/backup', disabled: true, icon: DatabaseBackup }
 	];
 
-	/** Whether the rail's row is the current route (see navItem.ts). */
+	/** Whether the rail's row is the current route (see selectedState.ts). */
 	function isCurrent(item: AdminNavItem): boolean {
 		return navItemIsCurrent(page.url.pathname, item.href);
 	}
