@@ -1037,7 +1037,7 @@
 			class="viewer__bar absolute inset-x-0 top-0 z-(--z-stage-arrow) flex flex-wrap items-center gap-3 px-4 py-2.5 text-cream-text bg-linear-to-b from-night/70 via-night/30 to-transparent"
 		>
 			<button
-				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+				class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px]"
 				type="button"
 				aria-label={$_('viewer_close')}
 				onclick={onexit}
@@ -1055,7 +1055,7 @@
 						     renders for the shared member too -- playing is a
 						     read, not a write. -->
 						<button
-							class="viewer__icon viewer__live-toggle inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							class="viewer__icon viewer__live-toggle inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px]"
 							type="button"
 							aria-label={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
 							title={livePlaying ? $_('viewer_live_stop') : $_('viewer_live_play')}
@@ -1070,7 +1070,7 @@
 						</button>
 					{/if}
 					<button
-						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 						type="button"
 						aria-label={favorite ? $_('action_unfavorite') : $_('action_favorite')}
 						aria-pressed={favorite}
@@ -1091,7 +1091,7 @@
 						     disabled state must stay focusable so the reason
 						     reaches keyboard and screen-reader users. -->
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent {canTrash
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-transparent {canTrash
 								? ''
 								: 'opacity-55 cursor-not-allowed'}"
 							type="button"
@@ -1122,7 +1122,7 @@
 					     clamp ends (the engine's targets, not the
 					     interpolated scale, drive them). -->
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 							type="button"
 							aria-label={$_('viewer_zoom_in')}
 							disabled={zoomTarget >= VIEWER_ZOOM_MAX}
@@ -1131,7 +1131,7 @@
 							<ZoomIn size={20} />
 						</button>
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 							type="button"
 							aria-label={$_('viewer_zoom_out')}
 							disabled={zoomTarget <= VIEWER_ZOOM_BASE}
@@ -1140,7 +1140,7 @@
 							<ZoomOut size={20} />
 						</button>
 						<button
-							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
+							class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] disabled:cursor-not-allowed disabled:opacity-55"
 							type="button"
 							aria-label={$_('viewer_zoom_reset')}
 							disabled={zoomTarget <= VIEWER_ZOOM_BASE}
@@ -1153,7 +1153,7 @@
 					     bar owns it beside the zoom utilities (the anchor
 					     form keeps the native download, no script). -->
 					<a
-						class="viewer__icon viewer__download inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						class="viewer__icon viewer__download inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px]"
 						href={assetOriginalUrl(detail.id)}
 						download
 						aria-label={$_('viewer_download')}
@@ -1163,7 +1163,7 @@
 					<!-- The info toggle: one of the panel's three paths --
 					     pressed state synced, the panel named. -->
 					<button
-						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						class="viewer__icon inline-flex items-center justify-center w-[38px] h-[38px] rounded-control bg-transparent cursor-pointer transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-[rgb(255_255_255/0.12)] focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px]"
 						type="button"
 						aria-label={$_('viewer_info_open')}
 						aria-pressed={drawerOpen}
@@ -1440,7 +1440,7 @@
 												? 'opacity-100 border-cream-text/45'
 												: linked
 													? 'opacity-100 border-accent [box-shadow:0_0_0_9999px_color-mix(in_srgb,var(--color-night)_52%,transparent)]'
-													: 'opacity-0 border-transparent [@media(hover:none)]:pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+													: 'opacity-0 border-transparent [@media(hover:none)]:pointer-events-none'} focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px]"
 										style:left={`${box.x * 100}%`}
 										style:top={`${box.y * 100}%`}
 										style:width={`${box.width * 100}%`}
@@ -1597,7 +1597,7 @@
 				     focus 100% (the keyboard user must see the focus), the
 				     touch form 90% (no hover to lift them). -->
 				<button
-					class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer opacity-45 transition-[background-color,opacity] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on hover:opacity-100 focus-visible:opacity-100 focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] [@media(hover:none)]:opacity-90"
+					class="viewer__arrow viewer__arrow--left absolute left-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer opacity-45 transition-[background-color,opacity] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on hover:opacity-100 focus-visible:opacity-100 focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] [@media(hover:none)]:opacity-90"
 					type="button"
 					aria-label={$_('viewer_previous')}
 					onclick={() => navigate(-1)}
@@ -1607,7 +1607,7 @@
 			{/if}
 			{#if detail !== null && position !== -1 && position < sequence.length - 1}
 				<button
-					class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer opacity-45 transition-[background-color,opacity] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on hover:opacity-100 focus-visible:opacity-100 focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] [@media(hover:none)]:opacity-90"
+					class="viewer__arrow viewer__arrow--right absolute right-4 top-1/2 -translate-y-1/2 z-(--z-stage-arrow) inline-flex items-center justify-center w-11 h-11 rounded-full text-cream-text bg-night/55 backdrop-blur-[2px] cursor-pointer opacity-45 transition-[background-color,opacity] duration-(--motion-fast) ease-standard hover:bg-accent hover:text-accent-on hover:opacity-100 focus-visible:opacity-100 focus-visible:[outline:2px_solid_var(--color-violet-300)] focus-visible:outline-offset-[-2px] [@media(hover:none)]:opacity-90"
 					type="button"
 					aria-label={$_('viewer_next')}
 					onclick={() => navigate(1)}
