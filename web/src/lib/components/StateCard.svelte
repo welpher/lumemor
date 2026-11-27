@@ -8,12 +8,15 @@
 	// retry.
 	//
 	// TWO TONES, ONE SHAPE:
-	// - `empty`: the quiet card -- a 16px display title (never an h1:
+	// - `empty`: the quiet card -- the gold line art (the frame, the
+	//   hill, the sun; emotional, never informational: it explains no
+	//   state and carries no text), a 16px display title (never an h1:
 	//   the page's own title lives in its bar), a 14px line, the
 	//   optional action.
 	// - `error`: the same box in the danger border with the failure
 	//   text and its retry. A load failure is a STATE, never a toast
-	//   (the toast belongs to action feedback).
+	//   (the toast belongs to action feedback). No line art: the
+	//   failed face is information, not a pause.
 	import Button from './Button.svelte';
 	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 
@@ -47,9 +50,30 @@
 		{/if}
 	</div>
 {:else}
+	<!-- The empty card's line art: the brand's emotional gold, drawn in
+	     currentColor so `.empty-art` (theme.css) owns the shade --
+	     gold-600 on paper, sun on night. Decorative: aria-hidden, no
+	     text inside, one pause point for an empty screen. -->
 	<div
 		class="state-card max-w-[420px] box-content mx-auto my-12 p-6 text-center bg-card border border-border rounded-card shadow-card"
 	>
+		<span class="empty-art inline-flex items-center justify-center w-14 h-12 mb-1" aria-hidden="true">
+			<svg
+				width="56"
+				height="40"
+				viewBox="0 0 56 40"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="1.6"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<rect x="8" y="11" width="40" height="26" rx="3" />
+				<path d="M8 17h40" />
+				<path d="M15 31l7-7 5 5 4-4 6 6" />
+				<circle cx="37" cy="23" r="2.2" fill="currentColor" stroke="none" />
+			</svg>
+		</span>
 		{#if title !== ''}
 			<p class="state-card__title m-0 font-display font-bold text-[16px] leading-[1.3] text-text">{title}</p>
 		{/if}

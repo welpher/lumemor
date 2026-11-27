@@ -218,6 +218,23 @@ test('the empty card is one 420px box with a 16px title, never an h1, and one ac
 	const title = element?.querySelector<HTMLElement>('.state-card__title');
 	expect(title?.className).toContain('text-[16px]');
 	expect(title?.textContent).toBe('No photos yet');
+	// The empty face opens with the gold line art: the shared `.empty-art`
+	// span (theme.css owns its shade), the brand's 56x40 frame drawing,
+	// decorative -- never text, never a second explanation.
+	const art = element?.querySelector<HTMLElement>('.empty-art');
+	expect(art, 'the empty card carries the line art').not.toBeNull();
+	expect(art?.getAttribute('aria-hidden')).toBe('true');
+	expect(art?.textContent?.trim()).toBe('');
+	expect(art?.className).toContain('w-14');
+	expect(art?.className).toContain('h-12');
+	const artSvg = art?.querySelector<SVGSVGElement>('svg');
+	expect(artSvg?.getAttribute('width')).toBe('56');
+	expect(artSvg?.getAttribute('height')).toBe('40');
+	expect(artSvg?.getAttribute('viewBox')).toBe('0 0 56 40');
+	expect(artSvg?.getAttribute('stroke')).toBe('currentColor');
+	expect(artSvg?.getAttribute('stroke-width')).toBe('1.6');
+	// The art precedes the title: the card opens with the pause point.
+	expect(element?.firstElementChild).toBe(art);
 	// One action, and the card's own class names prove the click
 	// reaches the handler.
 	const buttons = element?.querySelectorAll('button');
@@ -259,6 +276,9 @@ test('the error card is the danger box with role alert and its retry', () => {
 	expect(element?.getAttribute('role')).toBe('alert');
 	expect(element?.className).toContain('border-danger');
 	expect(element?.querySelector('.state-card__title')).toBeNull();
+	// The failed face is information, not a pause: no line art.
+	expect(element?.querySelector('.empty-art')).toBeNull();
+	expect(element?.querySelector('svg[viewBox="0 0 56 40"]')).toBeNull();
 	expect(element?.textContent).toContain('Something went wrong.');
 	const retry = element?.querySelector('button');
 	expect(retry?.textContent).toContain('Try again');
