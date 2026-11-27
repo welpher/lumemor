@@ -30,6 +30,7 @@
 	import Button from '$lib/components/Button.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
+	import { tabIdle, tabSelected } from '$lib/components/selectedState';
 	import {
 		activateModel,
 		deleteModel,
@@ -135,6 +136,15 @@
 	// The import panel: which tab, the URL and pin fields, the file,
 	// and the probe's lifecycle.
 	let importTab = $state<'url' | 'file'>('url');
+
+	/** The import tab's face: the chosen face is a filled accent block
+	 * with the on-accent ink, the other stays plain on the track (the
+	 * selected block never carries the transparent ground or the plain
+	 * ink -- see selectedState.ts). */
+	function importTabClass(chosen: boolean): string {
+		const state = chosen ? tabSelected : tabIdle;
+		return `models__import-tab flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 font-body font-semibold text-[13px] leading-[1.4] rounded-control border-0 cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard ${state}`;
+	}
 	let importURL = $state('');
 	let importSHA = $state('');
 	let importFile = $state<File | null>(null);
@@ -1324,7 +1334,7 @@
 						aria-label={$_('admin_models_import_title')}
 					>
 						<button
-							class="models__import-tab flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 font-body font-semibold text-[13px] leading-[1.4] rounded-control bg-transparent border-0 text-text-soft cursor-pointer aria-selected:bg-card aria-selected:text-text aria-selected:shadow-card"
+							class={importTabClass(importTab === 'url')}
 							type="button"
 							role="tab"
 							aria-selected={importTab === 'url'}
@@ -1333,7 +1343,7 @@
 							{$_('admin_models_source_url')}
 						</button>
 						<button
-							class="models__import-tab flex-1 inline-flex items-center justify-center gap-2 px-3 py-1.5 font-body font-semibold text-[13px] leading-[1.4] rounded-control bg-transparent border-0 text-text-soft cursor-pointer aria-selected:bg-card aria-selected:text-text aria-selected:shadow-card"
+							class={importTabClass(importTab === 'file')}
 							type="button"
 							role="tab"
 							aria-selected={importTab === 'file'}

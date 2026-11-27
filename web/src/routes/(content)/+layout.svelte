@@ -316,7 +316,7 @@
 			</div>
 		</header>
 	{/if}
-	<Drawer bind:open={drawerOpen} />
+	<Drawer bind:open={drawerOpen} currentPath={page.url.pathname} />
 	<!-- The `?` shortcut sheet: the shared Modal over the
 	     shell, listing every binding the app actually carries. -->
 	<ShortcutsDialog bind:open={shortcutsOpen} />

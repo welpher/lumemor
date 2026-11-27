@@ -22,7 +22,9 @@ const { navigationCallbacks, pageState, connectionState } = vi.hoisted(() => ({
 	// album detail's route id hides the shell topbar (the page
 	// owns its chrome there); every other route keeps it.
 	pageState: {
-		route: { id: '/(content)/timeline' as string | null }
+		route: { id: '/(content)/timeline' as string | null },
+		// The pathname the shell hands the drawer for its selected row.
+		url: { pathname: '/timeline' }
 	},
 	// The offline strip's truth, mocked at the store the strip
 	// reads: the layout's pins drive the state directly instead of

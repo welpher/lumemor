@@ -25,6 +25,7 @@
 	// label it leads.
 	import { _ } from 'svelte-i18n';
 	import { sessionRole } from '$lib/auth/session.svelte';
+	import { navItemIdle, navItemIsCurrent, navItemSelected } from './selectedState';
 	import Images from '@lucide/svelte/icons/images';
 	import BookImage from '@lucide/svelte/icons/book-image';
 	import Users from '@lucide/svelte/icons/users';
@@ -44,6 +45,10 @@
 		disabled: boolean;
 		/** The leading icon component (decorative, aria-hidden). */
 		icon: Component;
+		/** The route family the item owns, when it is not simply its href
+		 * (the admin door links to its landing but lights up for every
+		 * management route). */
+		section?: string;
 	};
 
 	const items: readonly DrawerItem[] = [
@@ -62,15 +67,32 @@
 	// The landing is the users page -- the first live management
 	// section; /admin itself has no index route.
 	const adminEntry = $derived(
-		sessionRole() === 'admin' ? { labelKey: 'nav_admin', href: '/admin/users', icon: Shield } : null
+		sessionRole() === 'admin'
+			? { labelKey: 'nav_admin', href: '/admin/users', section: '/admin', icon: Shield }
+			: null
 	);
 
 	type Props = {
 		/** Open state; bind it from the shell, the drawer closes itself. */
 		open?: boolean;
+		/** The route the shell is on: the drawer marks the owning item as
+		 * the selected (filled accent) block with aria-current="page". */
+		currentPath?: string;
 	};
 
-	let { open = $bindable(false) }: Props = $props();
+	let { open = $bindable(false), currentPath = '' }: Props = $props();
+
+	/** The drawer row's classes: the selected block and the idle row are
+	 * two exclusive strings (see selectedState.ts for why). */
+	function itemClass(current: boolean): string {
+		const state = current ? navItemSelected : navItemIdle;
+		const pressed = current ? '' : 'active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]';
+		return `drawer__item flex items-center gap-3 w-full ps-3 pe-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-left no-underline rounded-control cursor-pointer transition-[background-color,padding] duration-(--motion-fast) ease-standard hover:ps-3.5 focus-visible:ps-3.5 ${state} ${pressed}`;
+	}
+
+	function isCurrent(item: { href: string; section?: string }): boolean {
+		return navItemIsCurrent(currentPath, item.section ?? item.href);
+	}
 
 	function close(): void {
 		open = false;
@@ -122,10 +144,13 @@
 						     not prevent it. The hover adds G10's small padding
 						     nudge (the 3 -> 3.5 spacing step, ~2px) alongside
 						     the background, riding the same fast transition;
-						     the icon leads the label, decorative. -->
+						     the icon leads the label, decorative. The current
+						     route's row is the filled accent block (the idle
+						     row's tint never rides on it: see selectedState.ts). -->
 						<a
-							class="drawer__item flex items-center gap-3 w-full ps-3 pe-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color,padding] duration-(--motion-fast) ease-standard hover:ps-3.5 hover:bg-accent-soft hover:text-accent-soft-text focus-visible:ps-3.5 focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+							class={itemClass(isCurrent(item))}
 							href={item.href}
+							aria-current={isCurrent(item) ? 'page' : undefined}
 							onclick={close}
 						>
 							<item.icon size={18} class="shrink-0" />
@@ -144,8 +169,9 @@
 			<ul class="drawer__list flex flex-col gap-0.5 list-none">
 				<li>
 					<a
-						class="drawer__item flex items-center gap-3 w-full ps-3 pe-3 py-2.5 font-body font-semibold text-[15px] leading-[1.4] text-text text-left no-underline rounded-control bg-transparent cursor-pointer transition-[background-color,padding] duration-(--motion-fast) ease-standard hover:ps-3.5 hover:bg-accent-soft hover:text-accent-soft-text focus-visible:ps-3.5 focus-visible:bg-accent-soft focus-visible:text-accent-soft-text active:bg-[color-mix(in_srgb,var(--color-accent-soft)_60%,transparent)]"
+						class={itemClass(isCurrent(adminEntry))}
 						href={adminEntry.href}
+						aria-current={isCurrent(adminEntry) ? 'page' : undefined}
 						onclick={close}
 					>
 						<adminEntry.icon size={18} class="shrink-0" />

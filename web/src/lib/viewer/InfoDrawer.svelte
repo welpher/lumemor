@@ -448,7 +448,7 @@
 			{:else if isOwner}
 				{#if detail.description !== ''}
 					<button
-						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text truncate cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text truncate cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 						type="button"
 						title={detail.description}
 						onclick={startEdit}
@@ -457,7 +457,7 @@
 					</button>
 				{:else}
 					<button
-						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text-faint cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+						class="info__description block w-full border-0 bg-transparent p-0 py-1.5 text-left font-body font-normal text-[14px] leading-[1.5] text-text-faint cursor-text rounded-control transition-[background-color] duration-(--motion-fast) ease-standard hover:bg-accent-soft focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 						type="button"
 						onclick={startEdit}
 					>
@@ -492,7 +492,7 @@
 				{#if canCurate}
 					<div class="flex items-center gap-0.5">
 						<button
-							class="info__faces-add inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							class="info__faces-add inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 							type="button"
 							aria-label={$_('viewer_faces_add')}
 							title={$_('viewer_faces_add')}
@@ -502,7 +502,7 @@
 						</button>
 						{#if facesListed}
 							<button
-								class="info__faces-edit inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+								class="info__faces-edit inline-flex items-center justify-center w-7 h-7 shrink-0 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 								type="button"
 								aria-label={$_('people_edit_faces')}
 								title={$_('people_edit_faces')}
@@ -639,7 +639,7 @@
 						     button, focusable, the reason in title and aria. A
 						     non-owner has no such action at all. -->
 						<button
-							class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px] {detail.metadataWritable
+							class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px] {detail.metadataWritable
 								? ''
 								: 'opacity-55 cursor-not-allowed'}"
 							type="button"
@@ -699,7 +699,7 @@
 										{tag.name}
 									</a>
 									<button
-										class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-transparent border-0 text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-[color-mix(in_srgb,var(--color-danger)_18%,transparent)] hover:text-danger-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+										class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-transparent border-0 text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-[color-mix(in_srgb,var(--color-danger)_18%,transparent)] hover:text-danger-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 										type="button"
 										aria-label={$_('viewer_tag_remove', { values: { name: tag.name } })}
 										onclick={() => onremovetag(tag.id)}
@@ -710,7 +710,7 @@
 							{/each}
 						{/if}
 						<button
-							class="info__tag-add inline-flex items-center gap-1 px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-soft bg-transparent border border-border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							class="info__tag-add inline-flex items-center gap-1 px-2 py-0.5 font-body font-semibold text-[12px] leading-[1.4] text-text-soft bg-transparent border border-border rounded-full cursor-pointer whitespace-nowrap transition-[background-color,border-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:border-accent-soft-text hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 							type="button"
 							onclick={onassigntag}
 						>
@@ -758,7 +758,7 @@
 					     button. -->
 					<li class="info__fact py-[7px]" data-testid="viewer-path">
 						<button
-							class="flex w-full items-center gap-2 border-0 bg-transparent p-0 text-left cursor-pointer focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+							class="flex w-full items-center gap-2 border-0 bg-transparent p-0 text-left cursor-pointer focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 							type="button"
 							aria-expanded={pathOpen}
 							aria-controls="asset-path"
@@ -786,7 +786,7 @@
 									>{detail.path}</span
 								>
 								<button
-									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 									type="button"
 									aria-label={$_('viewer_path_copy')}
 									title={$_('viewer_path_copy')}
@@ -813,7 +813,7 @@
 							</span>
 							{#if isOwner}
 								<button
-									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-blue-300)] focus-visible:outline-offset-[-2px]"
+									class="flex-none inline-flex items-center justify-center w-7 h-7 rounded-control bg-transparent text-text-faint cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard hover:bg-accent-soft hover:text-accent-soft-text focus-visible:[outline:2px_solid_var(--color-accent)] focus-visible:outline-offset-[-2px]"
 									type="button"
 									aria-label={$_('viewer_edit_location_open')}
 									title={$_('viewer_edit_location_open')}

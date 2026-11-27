@@ -46,6 +46,7 @@
 	import { goto } from '$app/navigation';
 	import Button from '$lib/components/Button.svelte';
 	import AdminPageHeader from '$lib/components/AdminPageHeader.svelte';
+	import { tabIdle, tabSelected } from '$lib/components/selectedState';
 	import { toast } from '$lib/components/toast.svelte';
 	import {
 		cancelJobRun,
@@ -141,6 +142,15 @@
 			url.searchParams.delete('tab');
 		}
 		void goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true });
+	}
+
+	/** The tab's face: the pressed one is a filled accent block with the
+	 * on-accent ink, the other stays plain on the group's track. The two
+	 * strings are exclusive -- the selected block never carries the
+	 * transparent ground or the plain ink (see selectedState.ts). */
+	function tabClass(pressed: boolean): string {
+		const state = pressed ? tabSelected : tabIdle;
+		return `inline-flex items-center px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control border-0 cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard ${state}`;
 	}
 
 	// ---- the catalog's summary ----
@@ -809,7 +819,7 @@
 				aria-label={$_('admin_jobs_tabs_label')}
 			>
 				<button
-					class="inline-flex items-center px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control border-0 bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard aria-pressed:bg-accent-soft aria-pressed:text-accent-soft-text"
+					class={tabClass(tab === 'tasks')}
 					type="button"
 					aria-pressed={tab === 'tasks'}
 					data-testid="jobs-tab-tasks"
@@ -818,7 +828,7 @@
 					{$_('admin_jobs_tab_tasks')}
 				</button>
 				<button
-					class="inline-flex items-center px-2.5 py-1 font-body font-semibold text-[13px] leading-[1.4] rounded-control border-0 bg-transparent text-text-soft cursor-pointer transition-[background-color,color] duration-(--motion-fast) ease-standard aria-pressed:bg-accent-soft aria-pressed:text-accent-soft-text"
+					class={tabClass(tab === 'runs')}
 					type="button"
 					aria-pressed={tab === 'runs'}
 					data-testid="jobs-tab-runs"

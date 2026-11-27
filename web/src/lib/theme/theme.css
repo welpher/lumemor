@@ -18,12 +18,17 @@
  *
  * Layer 2 (semantic roles) maps the palette onto UI roles and IS
  * theme-dependent: `:root` carries the light theme (Paper page,
- * Surface cards, Navy 900 text, Blue 700 accent), `html.dark` carries
- * the dark theme (Night page, Night Surface cards, Cream text,
- * Blue 300 accent). The contrast pairs follow the AA rules of the
- * same spec section: primary button Blue 700 + white text in light
- * (6.1:1) and Blue 300 + Navy 900 text in dark (7.6:1), links
- * Blue 700 with Blue 800 hover in light and Blue 300 in dark.
+ * Surface cards, Navy 900 text, Violet 700 accent), `html.dark`
+ * carries the dark theme (Night page, Night Surface cards, Cream
+ * text, Violet 300 accent). The contrast pairs follow the AA rules of
+ * the same spec section: primary button Violet 700 + white text in
+ * light (7.9:1), links Violet 700 with Violet 900 hover (7.4:1),
+ * Violet 300 + Navy 900 text on the dark ground (7.2:1).
+ *
+ * THE ROLES: violet is the structural accent (buttons, links, the
+ * selected state); gold is the emotional fill (the favorite star, the
+ * empty states' line art) and never text; blue survives as the
+ * logo/chart colour and the illustration palette only.
  *
  * Typography, radii, shadows and motion follow the brand language: Nunito for
  * the wordmark and headings, a system stack for body text, card radii
@@ -59,16 +64,22 @@
 	--color-blue-300: #9dc3ff;
 	--color-blue-100: #dcebff;
 	--color-blue-900: #1c4f9c;
+	--color-violet-900: #3f2b75;
+	--color-violet-700: #5b3fa0;
+	--color-violet-300: #c3b2f0;
+	--color-violet-100: #ece6f8;
+	--color-gold-800: #7a5a21;
+	--color-gold-200: #f7e7c8;
 	--color-sun: #f6c15b;
 	--color-gold-600: #c9974f;
 	--color-teal: #2e7d74;
 	--color-ember: #e8694a;
-	--color-paper: #fff9f0;
-	--color-surface: #fffdf8;
+	--color-paper: #fbf7f2;
+	--color-surface: #ffffff;
 	--color-night: #141a2e;
 	--color-night-surface: #1b2238;
-	--color-text-secondary: #5b4e3f;
-	--color-muted: #8b7e6a;
+	--color-text-secondary: #4a4438;
+	--color-muted: #78705f;
 	--color-cream-text: #f5efe2;
 
 	/* Semantic roles — light-theme values (mirrors Layer 2 below);
@@ -79,13 +90,13 @@
 	--color-text: var(--color-navy-900);
 	--color-text-soft: var(--color-text-secondary);
 	--color-text-faint: var(--color-muted);
-	--color-accent: var(--color-blue-700);
-	--color-accent-strong: var(--color-blue-800);
-	--color-accent-soft: var(--color-blue-100);
-	--color-accent-soft-text: var(--color-blue-900);
+	--color-accent: var(--color-violet-700);
+	--color-accent-strong: var(--color-violet-900);
+	--color-accent-soft: var(--color-violet-100);
+	--color-accent-soft-text: var(--color-violet-900);
 	--color-accent-on: #ffffff;
-	--color-link: var(--color-blue-700);
-	--color-link-hover: var(--color-blue-800);
+	--color-link: var(--color-violet-700);
+	--color-link-hover: var(--color-violet-900);
 	--color-success: var(--color-teal);
 	--color-danger: var(--color-ember);
 	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
@@ -96,7 +107,7 @@
 	 * pure yellow text on cream reads at ~1.6:1. The darker mixed text
 	 * is for the amber icon and the small print. */
 	--color-warning: var(--color-sun);
-	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-night));
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-navy-900));
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
 
@@ -151,22 +162,28 @@
 :root {
 	--color-navy-900: #1b2a5b; /* primary text, wordmark */
 	--color-navy-700: #2a3c75; /* secondary text, hover strokes */
-	--color-blue-800: #164a96; /* link hover, deep accent */
-	--color-blue-700: #1d5fbf; /* primary accent (light theme) */
+	--color-blue-800: #164a96; /* chart/illustration palette only (retired from UI) */
+	--color-blue-700: #1d5fbf; /* chart/illustration palette only (retired from UI) */
 	--color-blue-600: #2f7de1; /* logo/chart only; large bold text */
-	--color-blue-300: #9dc3ff; /* dark-theme accent and links */
-	--color-blue-100: #dcebff; /* selected/chip background */
-	--color-blue-900: #1c4f9c; /* text on Blue 100 backgrounds */
+	--color-blue-300: #9dc3ff; /* chart/illustration palette only (retired from UI) */
+	--color-blue-100: #dcebff; /* chart/illustration palette only (retired from UI) */
+	--color-blue-900: #1c4f9c; /* chart/illustration palette only (retired from UI) */
+	--color-violet-900: #3f2b75; /* deep accent, link hover, text on violet-100 */
+	--color-violet-700: #5b3fa0; /* primary accent (light theme) */
+	--color-violet-300: #c3b2f0; /* dark-theme accent, links, dark primary fills */
+	--color-violet-100: #ece6f8; /* selected/chip background, text violet-900 */
+	--color-gold-800: #7a5a21; /* text on gold-200 grounds */
+	--color-gold-200: #f7e7c8; /* gold chip ground: memories, anniversaries */
 	--color-sun: #f6c15b; /* highlights and notices (sparingly) */
-	--color-gold-600: #c9974f; /* favorite star and brand warmth only */
+	--color-gold-600: #c9974f; /* the emotional fill: star, badge, empty-state ink */
 	--color-teal: #2e7d74; /* success state */
 	--color-ember: #e8694a; /* danger, delete, error */
-	--color-paper: #fff9f0; /* light page background (warm paper) */
-	--color-surface: #fffdf8; /* light cards and floating layers */
+	--color-paper: #fbf7f2; /* light page background (warm paper) */
+	--color-surface: #ffffff; /* light cards and floating layers */
 	--color-night: #141a2e; /* dark page background */
 	--color-night-surface: #1b2238; /* dark cards and floating layers */
-	--color-text-secondary: #5b4e3f; /* secondary text on light */
-	--color-muted: #8b7e6a; /* placeholders and hints on light */
+	--color-text-secondary: #4a4438; /* secondary text on light (warm neutral) */
+	--color-muted: #78705f; /* placeholders and hints on light (4.6:1 on paper, 4.9:1 on white) */
 	--color-cream-text: #f5efe2; /* text on dark backgrounds */
 
 	/* ---------------------------------------------------------------- */
@@ -181,14 +198,14 @@
 	--color-text-soft: var(--color-text-secondary);
 	--color-text-faint: var(--color-muted);
 
-	--color-accent: var(--color-blue-700); /* buttons, links, selection */
-	--color-accent-strong: var(--color-blue-800); /* button/link hover */
-	--color-accent-soft: var(--color-blue-100); /* selected background */
-	--color-accent-soft-text: var(--color-blue-900); /* text on soft */
+	--color-accent: var(--color-violet-700); /* buttons, links, selection */
+	--color-accent-strong: var(--color-violet-900); /* button/link hover */
+	--color-accent-soft: var(--color-violet-100); /* selected background */
+	--color-accent-soft-text: var(--color-violet-900); /* text on soft */
 	--color-accent-on: #ffffff; /* text on primary accent fills */
 
-	--color-link: var(--color-blue-700);
-	--color-link-hover: var(--color-blue-800);
+	--color-link: var(--color-violet-700);
+	--color-link-hover: var(--color-violet-900);
 
 	--color-success: var(--color-teal);
 	--color-danger: var(--color-ember); /* borders, icons, fills */
@@ -197,10 +214,11 @@
 	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
 	--color-notice: var(--color-sun);
 	--color-star: var(--color-gold-600); /* favorite star accents only */
-	/* The warning tier (mirrors the light block): the sun ground and
-	 * edge, dark text — the dark value mixes toward paper instead. */
+	/* The warning tier: the sun ground and edge, the text mixed toward
+	 * Navy 900 (pure yellow on cream reads at ~1.6:1). The dark block
+	 * below re-mixes toward paper for the dark ground. */
 	--color-warning: var(--color-sun);
-	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper));
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-navy-900));
 
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
@@ -328,7 +346,7 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Layer 2 (dark): Night/Night Surface, Cream text, Blue 300 accent    */
+/* Layer 2 (dark): Night/Night Surface, Cream text, Violet 300 accent  */
 /* ------------------------------------------------------------------ */
 
 html.dark {
@@ -340,18 +358,23 @@ html.dark {
 	--color-text-soft: color-mix(in srgb, var(--color-cream-text) 78%, transparent);
 	--color-text-faint: color-mix(in srgb, var(--color-cream-text) 60%, transparent);
 
-	--color-accent: var(--color-blue-300);
-	--color-accent-strong: color-mix(in srgb, var(--color-blue-300) 82%, white);
-	--color-accent-soft: color-mix(in srgb, var(--color-blue-300) 18%, transparent);
-	--color-accent-soft-text: var(--color-blue-300);
-	/* Blue 300 fills carry Navy 900 text (7.6:1 on the dark theme). */
+	--color-accent: var(--color-violet-300);
+	--color-accent-strong: color-mix(in srgb, var(--color-violet-300) 82%, white);
+	--color-accent-soft: color-mix(in srgb, var(--color-violet-300) 18%, transparent);
+	--color-accent-soft-text: var(--color-violet-300);
+	/* Violet 300 fills carry Navy 900 text (7.2:1 on the dark theme). */
 	--color-accent-on: var(--color-navy-900);
 
-	--color-link: var(--color-blue-300);
-	--color-link-hover: color-mix(in srgb, var(--color-blue-300) 82%, white);
+	--color-link: var(--color-violet-300);
+	--color-link-hover: color-mix(in srgb, var(--color-violet-300) 82%, white);
 
 	/* Pure Ember passes AA on Night (about 5.3:1), no darkening needed. */
 	--color-danger-text: var(--color-ember);
+
+	/* The warning tier's dark arm: the sun ground stays, the text
+	 * re-mixes toward paper (the light arm mixes toward Navy 900). */
+	--color-warning: var(--color-sun);
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper));
 
 	--color-border: color-mix(in srgb, var(--color-cream-text) 16%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-cream-text) 30%, transparent);
@@ -373,6 +396,17 @@ html.dark {
 @layer base {
 	html {
 		background-color: var(--color-page);
+	}
+
+	/* The empty-state line art carries the emotional gold (brand: gold is
+	 * fill/ink only, never text). Dark mode swaps to Sun for AA on Night
+	 * (gold-600 reaches 6.6:1 there; gold on paper would not). */
+	.empty-art {
+		color: var(--color-gold-600);
+	}
+
+	html.dark .empty-art {
+		color: var(--color-sun);
 	}
 
 	body {

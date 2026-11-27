@@ -148,6 +148,28 @@ test('scene 1: the administrator signs in and the sealed check shows its off fac
 	await expect(page).toHaveURL(/\/admin\/settings$/);
 	await expect(page).toHaveTitle('Settings · lumemor');
 
+	// The rail's selected row is the FILLED accent block (the primary
+	// colour as a mass, brand §6.5): the current row paints an opaque
+	// ground and the on-accent ink, while every other row stays
+	// transparent. The utility-order trap this pins is real -- a
+	// transparent ground and the plain ink stacked on the selected row
+	// out-cascaded the accent classes in the design sample.
+	const currentRow = page.locator('.admin-nav__item[aria-current="page"]');
+	await expect(currentRow).toHaveCount(1);
+	await expect(currentRow).toHaveText('Instance settings');
+	const idleRow = page.locator('.admin-nav__item:not([aria-current="page"])').first();
+	const [currentBg, currentFg, idleBg, idleFg] = await Promise.all([
+		currentRow.evaluate((element) => getComputedStyle(element).backgroundColor),
+		currentRow.evaluate((element) => getComputedStyle(element).color),
+		idleRow.evaluate((element) => getComputedStyle(element).backgroundColor),
+		idleRow.evaluate((element) => getComputedStyle(element).color)
+	]);
+	// The idle row is transparent with the plain ink; the selected row
+	// paints the accent ground and swaps to the on-accent ink.
+	expect(idleBg).toBe('rgba(0, 0, 0, 0)');
+	expect(currentBg).not.toBe('rgba(0, 0, 0, 0)');
+	expect(currentFg).not.toBe(idleFg);
+
 	// The settings page is the collapsed index (E33): the release
 	// card's facts live inside its fold.
 	await openCard(page, 'admin-settings-update');

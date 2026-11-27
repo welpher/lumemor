@@ -193,6 +193,60 @@ test('Escape closes the drawer', async () => {
 	flushSync();
 });
 
+test('the current route is the filled accent block and only it carries aria-current', () => {
+	const drawer = mount(Drawer, {
+		target: document.body,
+		props: { open: true, currentPath: '/albums/6f9c2d18-9a4c-4a1b-b1a1-000000000001' }
+	});
+	flushSync();
+
+	// The detail route lights its section's row (not the bare
+	// `/albums` exact match alone).
+	const albums = document.body.querySelector<HTMLAnchorElement>('a.drawer__item[href="/albums"]');
+	expect(albums?.getAttribute('aria-current')).toBe('page');
+	// The selected block: filled accent ground, on-accent ink, and the
+	// idle face's transparent ground / plain ink are NOT on it.
+	expect(albums?.className).toContain('bg-accent');
+	expect(albums?.className).toContain('text-accent-on');
+	expect(albums?.className.split(/\s+/)).not.toContain('bg-transparent');
+	expect(albums?.className.split(/\s+/)).not.toContain('text-text');
+	expect(albums?.className).not.toContain('hover:bg-accent-soft');
+
+	// Every other row keeps the idle face and no current marker.
+	for (const other of document.body.querySelectorAll<HTMLAnchorElement>('a.drawer__item')) {
+		if (other === albums) {
+			continue;
+		}
+		expect(other.getAttribute('aria-current')).toBeNull();
+		expect(other.className).toContain('bg-transparent');
+		expect(other.className).toContain('hover:bg-accent-soft');
+	}
+
+	unmount(drawer);
+	flushSync();
+});
+
+test('an admin route lights the admin panel entry', async () => {
+	await bootSession('admin');
+
+	const drawer = mount(Drawer, {
+		target: document.body,
+		props: { open: true, currentPath: '/admin/jobs' }
+	});
+	flushSync();
+
+	const admin = document.body.querySelector<HTMLAnchorElement>('a.drawer__item[href="/admin/users"]');
+	expect(admin?.getAttribute('aria-current')).toBe('page');
+	expect(admin?.className).toContain('bg-accent');
+	expect(admin?.className).toContain('text-accent-on');
+	// The eight content rows stay idle on a management route.
+	const current = [...document.body.querySelectorAll('a.drawer__item[aria-current="page"]')];
+	expect(current).toHaveLength(1);
+
+	unmount(drawer);
+	flushSync();
+});
+
 test('a click outside (the scrim) closes the drawer', async () => {
 	const drawer = mount(Drawer, { target: document.body, props: { open: true } });
 	flushSync();
