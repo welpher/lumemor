@@ -74,7 +74,9 @@ test('the light ground is the brightened paper, white cards and warm neutral tex
 	expect(hex('paper')).toBe('#fbf7f2');
 	expect(hex('surface')).toBe('#ffffff');
 	expect(hex('text-secondary')).toBe('#4a4438');
-	expect(hex('muted')).toBe('#8a8175');
+	// The placeholder/hint tier is real text: the value carries AA on
+	// both light grounds (4.6:1 on paper, 4.9:1 on white).
+	expect(hex('muted')).toBe('#78705f');
 });
 
 test('the light roles bind accent and link to violet, not blue', () => {
@@ -95,6 +97,16 @@ test('the dark roles bind accent to violet-300 and the on-ink to navy', () => {
 	// The filled block's ink on the dark ground: navy, never a hard white.
 	expect(dark.get('--color-accent-on')).toBe('var(--color-navy-900)');
 	expect(dark.get('--color-link')).toBe('var(--color-violet-300)');
+});
+
+test('the warning tier mirrors the design source in both themes', () => {
+	// The mirror drift this closes: the light arm mixes toward Navy 900,
+	// the dark arm toward paper. Both blocks declare it explicitly, so
+	// neither can inherit the other's mix by accident.
+	expect(light.get('--color-warning-text')).toBe(
+		'color-mix(in srgb, var(--color-gold-600) 88%, var(--color-navy-900))'
+	);
+	expect(dark.get('--color-warning-text')).toBe('color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper))');
 });
 
 test('the blue family survives as the chart palette and binds no role', () => {
@@ -124,7 +136,10 @@ test('the AA pairs hold at their documented ratios (4.5:1 floor)', () => {
 		['#ffffff', 'violet-700', 7.9],
 		['violet-300', 'night', 9.0],
 		['navy-900', 'violet-300', 7.2],
-		['gold-800', 'gold-200', 5.2]
+		['gold-800', 'gold-200', 5.2],
+		// The placeholder/hint tier rides both light grounds.
+		['muted', 'paper', 4.6],
+		['muted', 'surface', 4.9]
 	];
 	for (const [foreground, background, documented] of pairs) {
 		const fg = foreground.startsWith('#') ? foreground : hex(foreground);

@@ -79,7 +79,7 @@
 	--color-night: #141a2e;
 	--color-night-surface: #1b2238;
 	--color-text-secondary: #4a4438;
-	--color-muted: #8a8175;
+	--color-muted: #78705f;
 	--color-cream-text: #f5efe2;
 
 	/* Semantic roles — light-theme values (mirrors Layer 2 below);
@@ -107,7 +107,7 @@
 	 * pure yellow text on cream reads at ~1.6:1. The darker mixed text
 	 * is for the amber icon and the small print. */
 	--color-warning: var(--color-sun);
-	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-night));
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-navy-900));
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
 
@@ -183,7 +183,7 @@
 	--color-night: #141a2e; /* dark page background */
 	--color-night-surface: #1b2238; /* dark cards and floating layers */
 	--color-text-secondary: #4a4438; /* secondary text on light (warm neutral) */
-	--color-muted: #8a8175; /* placeholders and hints on light */
+	--color-muted: #78705f; /* placeholders and hints on light (4.6:1 on paper, 4.9:1 on white) */
 	--color-cream-text: #f5efe2; /* text on dark backgrounds */
 
 	/* ---------------------------------------------------------------- */
@@ -214,10 +214,11 @@
 	--color-danger-text: color-mix(in srgb, var(--color-ember) 70%, var(--color-navy-900));
 	--color-notice: var(--color-sun);
 	--color-star: var(--color-gold-600); /* favorite star accents only */
-	/* The warning tier (mirrors the light block): the sun ground and
-	 * edge, dark text — the dark value mixes toward paper instead. */
+	/* The warning tier: the sun ground and edge, the text mixed toward
+	 * Navy 900 (pure yellow on cream reads at ~1.6:1). The dark block
+	 * below re-mixes toward paper for the dark ground. */
 	--color-warning: var(--color-sun);
-	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper));
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 88%, var(--color-navy-900));
 
 	--color-border: color-mix(in srgb, var(--color-navy-900) 14%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-navy-900) 28%, transparent);
@@ -369,6 +370,11 @@ html.dark {
 
 	/* Pure Ember passes AA on Night (about 5.3:1), no darkening needed. */
 	--color-danger-text: var(--color-ember);
+
+	/* The warning tier's dark arm: the sun ground stays, the text
+	 * re-mixes toward paper (the light arm mixes toward Navy 900). */
+	--color-warning: var(--color-sun);
+	--color-warning-text: color-mix(in srgb, var(--color-gold-600) 62%, var(--color-paper));
 
 	--color-border: color-mix(in srgb, var(--color-cream-text) 16%, transparent);
 	--color-border-strong: color-mix(in srgb, var(--color-cream-text) 30%, transparent);
